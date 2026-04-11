@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0f172a"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Live Reminder</title>
+  <link rel="manifest" href="manifest.json"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── STICKY FIX ── */
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .sticky-top {
+      flex-shrink: 0;
+      background: #0f172a;
+      z-index: 100;
+    }
+    #main-content {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    #schedule-list { padding: 0 12px 24px; }
+
+    /* ── HEADER ── */
+    header {
+      background: linear-gradient(135deg, #0f172a, #1e3a5f);
+      padding: 12px 16px 8px; text-align: center;
+      border-bottom: 1px solid #1e3a5f;
+    }
+    header h1   { font-size: 0.88rem; font-weight: 700; color: #93c5fd; margin-bottom: 2px; }
+    #clock      { font-size: 1.8rem; font-weight: 800; color: #fff; letter-spacing: 2px; }
+    #date-display { font-size: 0.7rem; color: #64748b; margin-top: 1px; }
+    #notif-count  { font-size: 0.66rem; color: #475569; margin-top: 1px; }
+
+    /* ── STATS ── */
+    .stats { display: flex; gap: 6px; padding: 6px 12px 4px; }
+    .stat-card { flex: 1; background: #1e293b; border-radius: 8px; padding: 6px; text-align: center; }
+    .stat-num   { font-size: 1.2rem; font-weight: 800; }
+    .stat-label { font-size: 0.58rem; color: #64748b; margin-top: 1px; }
+    .stat-card.total    .stat-num { color: #60a5fa; }
+    .stat-card.marathon .stat-num { color: #f59e0b; }
+    .stat-card.single   .stat-num { color: #34d399; }
+
+    /* ── BANNER ── */
+    .banner { display: none; padding: 5px 16px; font-size: 0.78rem; text-align: center; }
+    .banner.success { background: #065f46; color: #6ee7b7; }
+    .banner.error   { background: #7f1d1d; color: #fca5a5; }
+    .banner.warning { background: #78350f; color: #fcd34d; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; background: #1e293b; padding: 5px; gap: 4px; margin: 5px 12px 3px; border-radius: 10px; }
+    .tab-btn { flex: 1; padding: 7px 4px; border: none; border-radius: 7px; font-size: 0.74rem; font-weight: 600; cursor: pointer; background: transparent; color: #64748b; transition: all 0.2s; }
+    .tab-btn.active            { background: #0f172a; color: #fff; }
+    .tab-btn.active.t-marathon { color: #f59e0b; }
+    .tab-btn.active.t-timeline { color: #60a5fa; }
+    .tab-btn.active.t-single   { color: #34d399; }
+
+    /* ── REFRESH ── */
+    .actions { padding: 3px 12px 6px; }
+    .btn-refresh { width: 100%; padding: 7px; border: none; border-radius: 8px; background: #1e3a5f; color: #93c5fd; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+
+    /* ── LOADING ── */
+    #loading { display: none; justify-content: center; align-items: center; padding: 30px; gap: 10px; }
+    .spinner { width: 24px; height: 24px; border: 3px solid #1e293b; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── ACCORDION TIME BLOCK ── */
+    .time-block { margin-bottom: 6px; }
+    .time-header {
+      font-size: 0.82rem; font-weight: 700;
+      padding: 8px 10px;
+      display: flex; align-items: center; gap: 6px;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .time-header:active { opacity: 0.8; }
+    .start-header { background: #0d2d1f; color: #34d399; }
+    .end-header   { background: #2d0d0d; color: #f87171; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .start-dot { background: #34d399; }
+    .end-dot   { background: #f87171; }
+    .toggle-icon { font-size: 0.7rem; margin-right: 2px; transition: transform 0.2s; }
+    .count-badge {
+      margin-left: auto;
+      font-size: 0.65rem; font-weight: 700;
+      background: rgba(255,255,255,0.1);
+      padding: 1px 7px; border-radius: 999px;
+    }
+    .sessions-container {
+      overflow: hidden;
+      transition: max-height 0.25s ease;
+    }
+    .time-block.collapsed .sessions-container { max-height: 0 !important; }
+    .time-block.collapsed .toggle-icon { transform: rotate(-90deg); }
+
+    /* ── SESSION CARD ── */
+    .session-card {
+      background: #1e293b; border-radius: 10px;
+      padding: 9px 10px; margin: 4px 0;
+      display: flex; align-items: center; gap: 8px;
+      border-left: 4px solid #3b82f6;
+    }
+    .session-card.soon         { border-left-color: #f59e0b; background: #1c1a0e; }
+    .session-card.past         { opacity: 0.4; }
+    .session-card.marathon-card { border-left-color: #f59e0b; }
+
+    .session-num {
+      min-width: 20px; height: 20px; background: #334155;
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 0.62rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .session-info { flex: 1; min-width: 0; }
+    .session-brand {
+      font-weight: 700; font-size: 0.88rem; margin-bottom: 3px;
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+    }
+    .type-badge { font-size: 0.58rem; padding: 1px 5px; border-radius: 999px; font-weight: 700; }
+    .marathon-badge { background: #78350f; color: #fcd34d; }
+    .single-badge   { background: #064e3b; color: #6ee7b7; }
+    .session-meta  { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 3px; }
+    .badge { font-size: 0.62rem; padding: 2px 6px; border-radius: 999px; font-weight: 600; }
+    .badge.marketplace { background: #1d4ed8; color: #bfdbfe; }
+    .badge.studio      { background: #065f46; color: #6ee7b7; }
+    .badge.idline      { background: #292524; color: #d6d3d1; }
+    .session-host { font-size: 0.7rem; color: #94a3b8; }
+
+    /* ── PIC KANAN (BESAR) ── */
+    .session-pic-right {
+      flex-shrink: 0;
+      text-align: right;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #60a5fa;
+      max-width: 90px;
+      word-break: break-word;
+      line-height: 1.3;
+    }
+    .session-pic-right.lsc { color: #f59e0b; font-size: 0.78rem; }
+
+    /* ── MARATHON SESSION ── */
+    .marathon-session-card { background: #1a1200; border: 1px solid #78350f; border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+    .ms-header { background: #1c1500; padding: 8px 12px; border-bottom: 1px solid #78350f; }
+    .ms-brand  { font-size: 0.92rem; font-weight: 800; color: #fcd34d; margin-bottom: 4px; }
+    .ms-meta   { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 3px; }
+    .ms-time   { font-size: 0.67rem; color: #d97706; }
+    .ms-hosts  { padding: 5px 8px; }
+
+    /* ── HOST ROWS ── */
+    .host-row { display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 7px; margin-bottom: 3px; border-left: 3px solid transparent; }
+    .host-current { background: #1c2e1c; border-left-color: #22c55e; }
+    .host-next    { background: #1a1f2e; border-left-color: #3b82f6; }
+    .host-past    { opacity: 0.3; }
+    .hr-num   { min-width: 18px; height: 18px; background: #292524; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; flex-shrink: 0; }
+    .hr-time  { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+    .hr-start { font-size: 0.7rem; font-weight: 700; color: #34d399; }
+    .hr-arrow { font-size: 0.6rem; color: #475569; }
+    .hr-end   { font-size: 0.7rem; color: #f87171; }
+    .hr-info  { flex: 1; min-width: 0; }
+    .hr-name  { font-size: 0.78rem; }
+    .hr-pic   { font-size: 0.64rem; color: #475569; }
+    .live-badge { display: inline-block; background: #16a34a; color: #fff; font-size: 0.55rem; padding: 1px 5px; border-radius: 999px; font-weight: 700; margin-left: 4px; animation: pulse 1.5s infinite; }
+    .next-badge { display: inline-block; background: #1d4ed8; color: #fff; font-size: 0.55rem; padding: 1px 5px; border-radius: 999px; font-weight: 700; margin-left: 4px; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    .empty { text-align: center; padding: 40px 20px; color: #334155; font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── STICKY TOP ── -->
+<div class="sticky-top">
+  <header>
+    <h1>🎬 Live Schedule Reminder</h1>
+    <div id="clock">--:--:--</div>
+    <div id="date-display">Memuat...</div>
+    <div id="notif-count">🔔 ...</div>
+  </header>
+
+  <div id="banner" class="banner"></div>
+
+  <div class="stats">
+    <div class="stat-card total">
+      <div class="stat-num" id="stat-total">-</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat-card marathon">
+      <div class="stat-num" id="stat-marathon">-</div>
+      <div class="stat-label">🏃 Marathon</div>
+    </div>
+    <div class="stat-card single">
+      <div class="stat-num" id="stat-single">-</div>
+      <div class="stat-label">⚡ Single</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button id="tab-marathon" class="tab-btn t-marathon active" onclick="switchTab('marathon')">🏃 Marathon</button>
+    <button id="tab-timeline" class="tab-btn t-timeline"        onclick="switchTab('timeline')">📋 Start/End</button>
+    <button id="tab-single"   class="tab-btn t-single"          onclick="switchTab('single')">⚡ Single</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn-refresh" onclick="loadSchedule()">🔄 Refresh</button>
+  </div>
+</div>
+
+<!-- ── SCROLLABLE ── -->
+<div id="main-content">
+  <div id="loading">
+    <div class="spinner"></div>
+    <span style="color:#64748b;font-size:0.78rem">Memuat...</span>
+  </div>
+  <div id="schedule-list"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
