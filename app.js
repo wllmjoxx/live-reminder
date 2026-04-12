@@ -388,7 +388,6 @@ function renderTimeline(){
       const block=document.createElement("div");
       block.className="time-block";
       block.innerHTML=`<div class="time-header start-header"><span class="dot start-dot"></span> start ${displayTime}</div>`;
-      // ← pass time untuk isPast check yang benar
       ev.starts.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"start",time)));
       container.appendChild(block);
     }
@@ -396,12 +395,13 @@ function renderTimeline(){
       const block=document.createElement("div");
       block.className="time-block";
       block.innerHTML=`<div class="time-header end-header"><span class="dot end-dot"></span> end ${displayTime}</div>`;
-      // ← pass time untuk isPast check yang benar
       ev.ends.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"end",time)));
       container.appendChild(block);
     }
   });
+  // ← TIDAK ADA kode lagi setelah ini!
 }
+
 
 function makeTimelineCard(s,num,mode,eventTime=null){
   const now=Date.now();
