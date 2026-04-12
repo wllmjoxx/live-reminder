@@ -1,4 +1,5 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
+const API_URL    = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
+const NTFY_TOPIC = "castlive-ops-2026-xk9"; // ganti jadi nama unik kamu
 
 const PIC_MENTIONS = {
   "jonathan" : "@jonathan",  "tyo"      : "@Tyo",
@@ -17,7 +18,7 @@ const PIC_MENTIONS = {
 };
 
 const MAX_STUDIO_PER_PIC = 2;
-const MAX_OPERATOR_DIST  = 4; // ← naik dari 3 ke 4 (Eric bisa reach Studio 19)
+const MAX_OPERATOR_DIST  = 4;
 
 const LSC_NAMES_SET = new Set(["jonathan", "hamzah", "tyo", "hanif"]);
 const DEDICATED_OPS = ["arbi", "agung", "raffyco", "isaac", "roiisul", "eric"];
@@ -29,41 +30,33 @@ const MANDATORY_STUDIOS = {
 
 // ── DENAH STUDIO ─────────────────────────────
 const STUDIO_PHYSICAL = {};
-[1,2,3,5].forEach((s,i)                        => STUDIO_PHYSICAL[s] = {c:"entrance", p:i});
-[6,7,8,9,10,11,12,15].forEach((s,i)            => STUDIO_PHYSICAL[s] = {c:"A",  p:i});
-[16,17,18,19,20,21,22,23,25].forEach((s,i)     => STUDIO_PHYSICAL[s] = {c:"B1", p:i});
-[26,27,28,29,30,31,32].forEach((s,i)           => STUDIO_PHYSICAL[s] = {c:"B2", p:i});
+[1,2,3,5].forEach((s,i)                    => STUDIO_PHYSICAL[s] = {c:"entrance", p:i});
+[6,7,8,9,10,11,12,15].forEach((s,i)        => STUDIO_PHYSICAL[s] = {c:"A",  p:i});
+[16,17,18,19,20,21,22,23,25].forEach((s,i) => STUDIO_PHYSICAL[s] = {c:"B1", p:i});
+[26,27,28,29,30,31,32].forEach((s,i)       => STUDIO_PHYSICAL[s] = {c:"B2", p:i});
 
 function physicalDist(a, b) {
   if (a === b) return 0;
   const pA = STUDIO_PHYSICAL[a], pB = STUDIO_PHYSICAL[b];
   if (!pA || !pB) return 99;
   if (pA.c === pB.c) return Math.abs(pA.p - pB.p);
-
   if (pA.c === "B1" && pB.c === "B2") return Math.abs(pA.p - (pB.p + 4));
   if (pA.c === "B2" && pB.c === "B1") return Math.abs((pA.p + 4) - pB.p);
-
   if ((pA.c === "entrance" && pB.c === "A") || (pA.c === "A" && pB.c === "entrance"))
     return 1 + Math.abs(pA.p - pB.p);
-
   if ((pA.c === "entrance" && pB.c === "B1") || (pA.c === "B1" && pB.c === "entrance")) {
     const eP  = pA.c === "entrance" ? pA.p : pB.p;
     const b1P = pA.c === "B1"       ? pA.p : pB.p;
     return Math.abs(eP - 3) + Math.abs(b1P - 8) + 1;
   }
-
   if ((pA.c === "A" && pB.c === "B1") || (pA.c === "B1" && pB.c === "A"))
     return 4 + Math.abs(pA.p - pB.p);
-
   return 10;
 }
 
-// ── DEDICATED ZONES ───────────────────────────
 const DEDICATED_ZONE_A = new Set([1, 2, 3, 5, 6, 7]);
-// ← 19 ditambah, 22 & 23 dikeluarkan (biar Eric bisa ke 19, dan 22/23 jadi regular)
 const DEDICATED_ZONE_B = new Set([19, 20, 21, 25, 26, 27, 28, 29, 30, 31, 32]);
-
-const DEDICATED_HOME = {
+const DEDICATED_HOME   = {
   "agung": 2, "arbi": 2, "raffyco": 2,
   "roiisul": 29, "eric": 29, "isaac": 29,
 };
@@ -79,31 +72,41 @@ let sessions       = [];
 let scheduledTasks = [];
 let swRegistration = null;
 let activeTab      = "marathon";
+let ntfySource     = null;
+const seenNtfyIds  = new Set();
 
 window.addEventListener("DOMContentLoaded", async () => {
   updateClock();
   setInterval(updateClock, 1000);
   await registerSW();
   await requestNotifPermission();
+  connectNtfy();           // ← semua user mulai listen ntfy
   await loadSchedule();
   setInterval(loadSchedule, 5 * 120 * 1000);
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") loadSchedule();
+    if (document.visibilityState === "visible") {
+      connectNtfy();
+      loadSchedule();
+    }
   });
   window.addEventListener("pageshow", e => {
-    if (e.persisted) loadSchedule();
+    if (e.persisted) { connectNtfy(); loadSchedule(); }
   });
 });
 
+// ── SERVICE WORKER ───────────────────────────
 async function registerSW() {
   if ("serviceWorker" in navigator) {
-    // Pakai "./" bukan "/" — kompatibel localhost DAN GitHub Pages
-    swRegistration = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+    try {
+      swRegistration = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+    } catch(e) {
+      console.warn("SW register failed:", e);
+    }
   }
 }
 
-
+// ── NOTIF PERMISSION ─────────────────────────
 async function requestNotifPermission() {
   if (!("Notification" in window)) return false;
   if (Notification.permission === "granted") return true;
@@ -115,6 +118,80 @@ async function requestNotifPermission() {
   return r === "granted";
 }
 
+// ── NTFY — listen notif dari user lain ───────
+function connectNtfy() {
+  if (ntfySource && ntfySource.readyState === EventSource.OPEN) return;
+
+  ntfySource = new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
+
+  ntfySource.addEventListener("message", e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.event !== "message") return;
+      if (seenNtfyIds.has(d.id)) return;
+      seenNtfyIds.add(d.id);
+      setTimeout(() => seenNtfyIds.delete(d.id), 60000);
+      // Tampil lokal saja, TIDAK re-broadcast
+      sendNotification(d.title || "Live Reminder", d.message || d.body || "", `ntfy-${d.id}`);
+    } catch(err) {}
+  });
+
+  ntfySource.onerror = () => {
+    ntfySource?.close();
+    ntfySource = null;
+    setTimeout(connectNtfy, 5000);
+  };
+}
+
+// ── BROADCAST ke semua user ──────────────────
+async function broadcastNotif(title, body, urgent = false) {
+  sendNotification(title, body, `local-${Date.now()}`, urgent);
+
+  try {
+    const res = await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
+      method : "POST",
+      headers: {
+        "Title"       : title,
+        "Priority"    : urgent ? "urgent" : "high",
+        "Tags"        : urgent ? "rotating_light" : "bell",
+        "Content-Type": "text/plain",
+      },
+      body,
+    });
+    if (!res.ok) throw new Error(`ntfy ${res.status}`);
+    showBanner("🔔 Notif dikirim ke semua user!", "success");
+  } catch(e) {
+    showBanner("⚠️ Broadcast gagal: " + e.message, "warning");
+  }
+}
+
+// ── KIRIM NOTIF LOKAL ─────────────────────────
+function sendNotification(title, body, tag, urgent = false) {
+  if (Notification.permission !== "granted") {
+    requestNotifPermission();
+    return;
+  }
+
+  const options = {
+    body,
+    tag    : tag || `notif-${Date.now()}`,
+    icon   : "./icon-192.png",
+    badge  : "./icon-192.png",
+    vibrate: urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
+    requireInteraction: false,
+  };
+
+  if (swRegistration) {
+    swRegistration.showNotification(title, options)
+      .catch(() => { try { new Notification(title, options); } catch(e) {} });
+  } else {
+    navigator.serviceWorker?.ready
+      .then(reg => reg.showNotification(title, options))
+      .catch(() => { try { new Notification(title, options); } catch(e) {} });
+  }
+}
+
+// ── LOAD JADWAL ──────────────────────────────
 async function loadSchedule() {
   if (!sessions.length) {
     try {
@@ -162,7 +239,6 @@ function renderTab(tab) {
   if (tab === "standby")  renderStandby();
 }
 
-
 function formatPic(rawName) {
   if (!rawName || rawName === "-" || rawName === "") return "LSC";
   const key    = rawName.trim().toLowerCase();
@@ -180,18 +256,14 @@ function getShift(timeStr) {
 }
 
 function getAvailableOps(sessions, eventTimeStr) {
-  // Tentukan shift event
   let eventShift, tEvent;
 
   if (eventTimeStr === "23:59/00:00") {
-    eventShift = "siang";
-    tEvent     = 23 * 60 + 59;
+    eventShift = "siang"; tEvent = 23 * 60 + 59;
   } else {
     const [h, m] = (eventTimeStr || "0:0").split(":").map(Number);
     if (h === 0 && m === 0) {
-      // 00:00 sebagai START = awal shift malam (bukan akhir siang)
-      eventShift = "malam";
-      tEvent     = 0;
+      eventShift = "malam"; tEvent = 0;
     } else {
       eventShift = getShift(eventTimeStr);
       tEvent     = h * 60 + m;
@@ -202,7 +274,6 @@ function getAvailableOps(sessions, eventTimeStr) {
   sessions.forEach(s => {
     (s.hosts || []).forEach(h => {
       if (!h.picData || h.picData === "-") return;
-
       const endStr    = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
       const hostShift = getShift(endStr);
       if (hostShift !== eventShift) return;
@@ -214,20 +285,15 @@ function getAvailableOps(sessions, eventTimeStr) {
       if (tEnd === 0) tEnd = 24 * 60;
       if (tEnd <= tStart) tEnd += 24 * 60;
 
-      // Untuk malam shift, event 00:00 perlu handle crossing midnight
       let tEventAdj = tEvent;
       if (eventShift === "malam" && tEvent < tStart) tEventAdj = tEvent + 24 * 60;
 
-      if (tStart <= tEventAdj && tEventAdj <= tEnd) {
+      if (tStart <= tEventAdj && tEventAdj <= tEnd)
         available.add(h.picData.trim().toLowerCase());
-      }
     });
   });
-
   return available;
 }
-
-
 
 // ── ASSIGN PICS ───────────────────────────────
 function assignPics(starts, ends, validPics = null) {
@@ -239,37 +305,31 @@ function assignPics(starts, ends, validPics = null) {
     if (!name || name === "-" || name === "") return true;
     return LSC_NAMES_SET.has(name.trim().toLowerCase());
   }
-
   function sNum(s) {
     const m = String(s.studio || "").match(/\d+/);
     return m ? parseInt(m[0]) : 99;
   }
-
   function isInShift(key) {
     if (!validPics) return true;
     return validPics.has(key);
   }
-
   function reg(rawName) {
     if (!rawName || isCoord(rawName)) return;
     const key = rawName.trim().toLowerCase();
     if (picCount[key] === undefined) picCount[key] = 0;
     if (!picRawNames[key]) picRawNames[key] = rawName;
   }
-
   function assignKey(key, s) {
     picCount[key]++;
     if (!picStudios[key]) picStudios[key] = [];
     picStudios[key].push(sNum(s));
     s.assignedPic = formatPic(picRawNames[key] || key);
   }
-
   function opDistTo(key, studioN) {
     const assigned = picStudios[key] || [];
     if (assigned.length === 0) return 0;
     return Math.min(...assigned.map(s => physicalDist(s, studioN)));
   }
-
   function findMandatory(studioN) {
     const group = MANDATORY_STUDIOS[studioN];
     if (!group) return null;
@@ -280,7 +340,6 @@ function assignPics(starts, ends, validPics = null) {
     }
     return null;
   }
-
   function findDedicatedInGroup(group, studioN) {
     for (const name of group) {
       const key = name.toLowerCase();
@@ -291,7 +350,6 @@ function assignPics(starts, ends, validPics = null) {
     }
     return null;
   }
-
   function findIdle(excludeKey = null) {
     for (const [key, count] of Object.entries(picCount)) {
       if (key === excludeKey) continue;
@@ -301,11 +359,9 @@ function assignPics(starts, ends, validPics = null) {
     }
     return null;
   }
-
   function findBetterOp(studioN, excludeKey) {
     const idle = findIdle(excludeKey);
     if (idle) return idle;
-
     const excludeDist = opDistTo(excludeKey, studioN);
     let bestKey = null, bestDist = Infinity;
     for (const [key, count] of Object.entries(picCount)) {
@@ -320,52 +376,33 @@ function assignPics(starts, ends, validPics = null) {
     }
     return bestKey;
   }
-
   function doAssign(s, rawPic) {
     const studioN  = sNum(s);
     const dedGroup = getDedicatedGroup(studioN);
 
-    // ── MANDATORY ─────────────────────────────────
     if (MANDATORY_STUDIOS[studioN]) {
       const mandKey = findMandatory(studioN);
-      if (mandKey) assignKey(mandKey, s);
-      else s.assignedPic = "LSC";
+      if (mandKey) assignKey(mandKey, s); else s.assignedPic = "LSC";
       return;
     }
-
-    // ── ZONA DEDICATED: dedicated → idle → LSC ────
-    // ← DIUBAH: dedicated dulu, baru idle
     if (dedGroup) {
-      // 1. Dedicated dari grup zona (dalam jarak fisik)
       const ded = findDedicatedInGroup(dedGroup, studioN);
       if (ded) { assignKey(ded, s); return; }
-
-      // 2. Idle non-ded (kalau dedicated tidak tersedia/penuh)
       const idle = findIdle();
       if (idle) { assignKey(idle, s); return; }
-
-      // 3. LSC
       s.assignedPic = "LSC";
       return;
     }
-
-    // ── STUDIO BIASA: data PIC → idle/dekat → LSC ──
     if (!isCoord(rawPic)) {
       const key = rawPic.trim().toLowerCase();
       if (picCount[key] === undefined) picCount[key] = 0;
-
-      if (picCount[key] === 0) {
-        assignKey(key, s); return;
-      }
-
+      if (picCount[key] === 0) { assignKey(key, s); return; }
       if (picCount[key] === 1) {
         const better = findBetterOp(studioN, key);
         if (better) { assignKey(better, s); return; }
         assignKey(key, s); return;
       }
     }
-
-    // Fallback
     const idle = findIdle();
     if (idle) { assignKey(idle, s); return; }
     for (const [key, count] of Object.entries(picCount)) {
@@ -381,25 +418,16 @@ function assignPics(starts, ends, validPics = null) {
   });
 
   function sortMandatoryFirst(list) {
-  return [...list].sort((a, b) => {
-    const aN = sNum(a), bN = sNum(b);
-
-    // 1. Mandatory dulu
-    const aM = !!MANDATORY_STUDIOS[aN];
-    const bM = !!MANDATORY_STUDIOS[bN];
-    if (aM !== bM) return aM ? -1 : 1;
-
-    // 2. Zone B → Zone A → Regular
-    // (dedicated zones diproses dulu biar idle operator hemat untuk zona yg tepat)
-    const aZone = DEDICATED_ZONE_B.has(aN) ? 0 : DEDICATED_ZONE_A.has(aN) ? 1 : 2;
-    const bZone = DEDICATED_ZONE_B.has(bN) ? 0 : DEDICATED_ZONE_A.has(bN) ? 1 : 2;
-    if (aZone !== bZone) return aZone - bZone;
-
-    // 3. By studio number
-    return aN - bN;
-  });
-}
-
+    return [...list].sort((a, b) => {
+      const aN = sNum(a), bN = sNum(b);
+      const aM = !!MANDATORY_STUDIOS[aN], bM = !!MANDATORY_STUDIOS[bN];
+      if (aM !== bM) return aM ? -1 : 1;
+      const aZ = DEDICATED_ZONE_B.has(aN) ? 0 : DEDICATED_ZONE_A.has(aN) ? 1 : 2;
+      const bZ = DEDICATED_ZONE_B.has(bN) ? 0 : DEDICATED_ZONE_A.has(bN) ? 1 : 2;
+      if (aZ !== bZ) return aZ - bZ;
+      return aN - bN;
+    });
+  }
 
   sortMandatoryFirst(ends).forEach(s   => doAssign(s, s.picForEvent || "-"));
   sortMandatoryFirst(starts).forEach(s => doAssign(s, s.picForEvent || "-"));
@@ -409,15 +437,10 @@ function assignPics(starts, ends, validPics = null) {
 function renderMarathon() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
-
   const list = sessions.filter(s => s.isMarathon);
-  if (!list.length) {
-    container.innerHTML = `<div class="empty">📭 Tidak ada sesi marathon</div>`;
-    return;
-  }
+  if (!list.length) { container.innerHTML = `<div class="empty">📭 Tidak ada sesi marathon</div>`; return; }
 
   const now = Date.now();
-
   list.forEach(s => {
     const curIdx  = getCurrentHostIdx(s);
     let endMs     = timeToMs(s.date, s.endTime);
@@ -429,46 +452,36 @@ function renderMarathon() {
     card.className = `marathon-session-card ${isEnded ? "ms-ended" : ""}`;
     card.innerHTML = `
       <div class="ms-header">
-        <div class="ms-brand">
-          🏃 ${s.brand}
-          ${isEnded ? `<span class="ended-badge">✓ ENDED</span>` : ""}
-        </div>
+        <div class="ms-brand">🏃 ${s.brand} ${isEnded ? `<span class="ended-badge">✓ ENDED</span>` : ""}</div>
         <div class="ms-meta">
           <span class="badge marketplace">${s.marketplace}</span>
           <span class="badge studio">${s.studio}</span>
           <span class="badge idline">📋 ${s.idLine || s.skpId || "-"}</span>
         </div>
-        <div class="ms-time">▶ ${s.startTime} &nbsp;·&nbsp; ⏹ ${s.endTime} &nbsp;·&nbsp; ${s.hosts.length} host</div>
+        <div class="ms-time">▶ ${s.startTime} · ⏹ ${s.endTime} · ${s.hosts.length} host</div>
       </div>
       <div class="ms-hosts" id="msh-${s.idLine || s.skpId}"></div>`;
-
     container.appendChild(card);
 
-    const hostContainer = card.querySelector(`#msh-${s.idLine || s.skpId}`);
+    const hc = card.querySelector(`#msh-${s.idLine || s.skpId}`);
     s.hosts.forEach((h, hi) => {
-      const isCurrent  = !isEnded && hi === curIdx;
-      const isNext     = !isEnded && hi === curIdx + 1;
-      const isPast     = isEnded || (curIdx >= 0 && hi < curIdx);
-
+      const isCurrent = !isEnded && hi === curIdx;
+      const isNext    = !isEnded && hi === curIdx + 1;
+      const isPast    = isEnded || (curIdx >= 0 && hi < curIdx);
       const row = document.createElement("div");
       row.className = `host-row ${isCurrent ? "host-current" : ""} ${isNext ? "host-next" : ""} ${isPast ? "host-past" : ""}`;
       row.innerHTML = `
         <div class="hr-num">${hi + 1}</div>
-        <div class="hr-time">
-          <span class="hr-start">▶ ${h.startTime}</span>
-          <span class="hr-arrow">→</span>
-          <span class="hr-end">⏹ ${h.endTime}</span>
-        </div>
+        <div class="hr-time"><span class="hr-start">▶ ${h.startTime}</span><span class="hr-arrow">→</span><span class="hr-end">⏹ ${h.endTime}</span></div>
         <div class="hr-info">
-          <div class="hr-name">
-            ${h.host}
+          <div class="hr-name">${h.host}
             ${isCurrent ? `<span class="live-badge">● LIVE</span>` : ""}
-            ${isNext    ? `<span class="next-badge">NEXT</span>`   : ""}
+            ${isNext    ? `<span class="next-badge">NEXT</span>` : ""}
             ${isEnded && hi === s.hosts.length - 1 ? `<span class="ended-host-badge">✓ selesai</span>` : ""}
           </div>
           <div class="hr-pic">🧑‍💼 PIC: ${h.picData || "-"}</div>
         </div>`;
-      hostContainer.appendChild(row);
+      hc.appendChild(row);
     });
   });
 }
@@ -477,24 +490,18 @@ function renderMarathon() {
 function renderTimeline() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
-
-  if (!sessions.length) {
-    container.innerHTML = `<div class="empty">📭 Tidak ada jadwal</div>`;
-    return;
-  }
+  if (!sessions.length) { container.innerHTML = `<div class="empty">📭 Tidak ada jadwal</div>`; return; }
 
   const events = {};
   sessions.forEach(s => {
     const firstPic = s.hosts?.[0]?.picData || "-";
     const lastPic  = s.hosts?.[s.hosts.length - 1]?.picData || "-";
-
     if (s.startTime && s.startTime !== "-") {
       if (!events[s.startTime]) events[s.startTime] = { starts: [], ends: [] };
       events[s.startTime].starts.push({ ...s, picForEvent: firstPic });
     }
     if (s.endTime && s.endTime !== "-") {
-      const endKey = (s.endTime === "00:00" || s.endTime === "23:59")
-        ? "23:59/00:00" : s.endTime;
+      const endKey = (s.endTime === "00:00" || s.endTime === "23:59") ? "23:59/00:00" : s.endTime;
       if (!events[endKey]) events[endKey] = { starts: [], ends: [] };
       events[endKey].ends.push({ ...s, picForEvent: lastPic });
     }
@@ -506,18 +513,13 @@ function renderTimeline() {
   });
 
   const sorted = Object.keys(events).sort((a, b) => {
-    const toMin = t => {
-      if (t === "23:59/00:00") return 1441;
-      const [h, m] = t.split(":").map(Number);
-      return h * 60 + m;
-    };
+    const toMin = t => { if (t === "23:59/00:00") return 1441; const [h,m] = t.split(":").map(Number); return h*60+m; };
     return toMin(a) - toMin(b);
   });
 
   sorted.forEach(time => {
-    const ev          = events[time];
+    const ev = events[time];
     const displayTime = time === "23:59/00:00" ? "23:59 / 00:00" : time;
-
     if (ev.starts.length) {
       const block = document.createElement("div");
       block.className = "time-block";
@@ -525,7 +527,6 @@ function renderTimeline() {
       ev.starts.forEach((s, i) => block.appendChild(makeTimelineCard(s, i + 1, "start")));
       container.appendChild(block);
     }
-
     if (ev.ends.length) {
       const block = document.createElement("div");
       block.className = "time-block";
@@ -537,24 +538,19 @@ function renderTimeline() {
 }
 
 function makeTimelineCard(s, num, mode) {
-  const now       = Date.now();
-  const startMs   = timeToMs(s.date, s.startTime);
-  const isPast    = startMs && startMs < now;
-  const isSoon    = startMs && (startMs - now) < 15 * 60 * 1000 && !isPast;
-  const picLabel  = s.assignedPic || "LSC";
-  const isLSC     = picLabel === "LSC";
+  const now = Date.now(), startMs = timeToMs(s.date, s.startTime);
+  const isPast = startMs && startMs < now;
+  const isSoon = startMs && (startMs - now) < 15 * 60 * 1000 && !isPast;
+  const picLabel = s.assignedPic || "LSC";
+  const isLSC   = picLabel === "LSC";
   const firstHost = s.hosts?.[0]?.host || "-";
-
   const card = document.createElement("div");
   card.className = `session-card ${isPast ? "past" : ""} ${isSoon ? "soon" : ""} ${s.isMarathon ? "marathon-card" : ""}`;
   card.innerHTML = `
     <div class="session-num">${num}</div>
     <div class="session-info">
-      <div class="session-brand">
-        ${s.brand}
-        ${s.isMarathon
-          ? `<span class="type-badge marathon-badge">🏃</span>`
-          : `<span class="type-badge single-badge">⚡</span>`}
+      <div class="session-brand">${s.brand}
+        ${s.isMarathon ? `<span class="type-badge marathon-badge">🏃</span>` : `<span class="type-badge single-badge">⚡</span>`}
       </div>
       <div class="session-meta">
         <span class="badge marketplace">${s.marketplace}</span>
@@ -569,30 +565,20 @@ function makeTimelineCard(s, num, mode) {
 function renderSingle() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
-
   const list = sessions.filter(s => !s.isMarathon);
-  if (!list.length) {
-    container.innerHTML = `<div class="empty">📭 Tidak ada sesi single</div>`;
-    return;
-  }
-
+  if (!list.length) { container.innerHTML = `<div class="empty">📭 Tidak ada sesi single</div>`; return; }
   const copies = list.map(s => Object.assign({}, s));
   assignPics(copies, []);
   copies.forEach((s, i) => container.appendChild(makeTimelineCard(s, i + 1, "start")));
 }
 
-// ── STANDBY TAB ───────────────────────────────
+// ── STANDBY ───────────────────────────────────
 const STANDBY_BRANDS = [
-  { key: "AT Tiktok",        slotFormat: false,
-    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok" },
-  { key: "Samsonite Tiktok", slotFormat: false,
-    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "tiktok" },
-  { key: "AT Shopee",        slotFormat: false,
-    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "Samsonite Shopee", slotFormat: true,   // ← per host slot
-    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "ASICS",            slotFormat: false,
-    match: s => s.brand.toLowerCase().includes("asics") },
+  { key: "AT Tiktok",        slotFormat: false, match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok" },
+  { key: "Samsonite Tiktok", slotFormat: false, match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "tiktok" },
+  { key: "AT Shopee",        slotFormat: false, match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "Samsonite Shopee", slotFormat: true,  match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "ASICS",            slotFormat: false, match: s => s.brand.toLowerCase().includes("asics") },
 ];
 
 function buildPicShiftData() {
@@ -614,229 +600,116 @@ function buildPicShiftData() {
   return shifts;
 }
 
-
-
 function buildStandbyData() {
   return STANDBY_BRANDS.map(b => {
     const matched = sessions.filter(b.match);
-    const slots   = [];
-    const seenKey = new Set();
-
+    const slots = [], seenKey = new Set();
     matched.forEach(s => {
       if (b.slotFormat) {
-        // ── PER HOST SLOT (Samsonite Shopee) ──
         s.hosts.forEach(h => {
           if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-          const shift  = getShift(endStr);
-          if (shift === "malam") return;
-
-          const st  = (h.startTime || "").substring(0, 5);
-          const en  = (h.endTime   || "").substring(0, 5);
+          if (getShift(endStr) === "malam") return;
+          const st = (h.startTime || "").substring(0,5), en = (h.endTime || "").substring(0,5);
           const key = `${st}-${en}-${h.picData}`;
-          if (seenKey.has(key)) return;
-          seenKey.add(key);
-
-          slots.push({
-            type   : "slot",
-            label  : `${st.replace(":00","")}–${en.replace(":00","")}`,
-            pic    : h.picData.trim(),
-            sortKey: toMinJS(h.startTime),
-          });
+          if (seenKey.has(key)) return; seenKey.add(key);
+          slots.push({ type:"slot", label:`${st.replace(":00","")}–${en.replace(":00","")}`, pic: h.picData.trim(), sortKey: toMinJS(h.startTime) });
         });
       } else {
-        // ── PAGI / SIANG (semua brand lain) ──
         s.hosts.forEach(h => {
           if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
           const shift  = getShift(endStr);
           if (shift === "malam") return;
-
           const key = `${shift}-${h.picData}`;
-          if (seenKey.has(key)) return;
-          seenKey.add(key);
-
-          slots.push({
-            type   : "shift",
-            label  : shift.toUpperCase(),
-            pic    : h.picData.trim(),
-            sortKey: shift === "pagi" ? 0 : 1,
-          });
+          if (seenKey.has(key)) return; seenKey.add(key);
+          slots.push({ type:"shift", label: shift.toUpperCase(), pic: h.picData.trim(), sortKey: shift === "pagi" ? 0 : 1 });
         });
       }
     });
-
-    slots.sort((a, b) => a.sortKey - b.sortKey);
+    slots.sort((a,b) => a.sortKey - b.sortKey);
     return { key: b.key, slotFormat: b.slotFormat, slots };
   }).filter(b => b.slots.length > 0);
 }
 
-
-function renderStandbyBrands(standbyData) {
-  let html = "";
-  standbyData.forEach(b => {
-    html += `<div class="standby-brand-card">
-      <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
-    b.slots.forEach(slot => {
-      const picDisp = formatPic(slot.pic) || "–";
-      html += `<div class="standby-row">
-        <span class="standby-time">${slot.label}</span>
-        <span class="standby-pic">${picDisp}</span>
-      </div>`;
-    });
-    html += `</div>`;
-  });
-  return html;
-}
-
-
 function renderStandby() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
-
-  if (!sessions.length) {
-    container.innerHTML = `<div class="empty">📭 Data belum dimuat</div>`;
-    return;
-  }
+  if (!sessions.length) { container.innerHTML = `<div class="empty">📭 Data belum dimuat</div>`; return; }
 
   const dateStr = sessions[0]?.date || "";
   let dateLabel = "";
-  try {
-    dateLabel = new Date(dateStr + "T12:00:00+07:00").toLocaleDateString("id-ID", {
-      weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta"
-    }).toUpperCase();
-  } catch(e) { dateLabel = dateStr; }
+  try { dateLabel = new Date(dateStr + "T12:00:00+07:00").toLocaleDateString("id-ID", { weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta" }).toUpperCase(); } catch(e) {}
 
-  const picShift   = buildPicShiftData();
-  const standbyList = buildStandbyData();
-
+  const picShift = buildPicShiftData(), standbyList = buildStandbyData();
   let html = `<div class="standby-wrapper">`;
+  html += `<div class="standby-section"><div class="standby-title">📅 REMINDER ${dateLabel}</div></div>`;
 
-  // Title
-  html += `<div class="standby-section">
-    <div class="standby-title">📅 REMINDER ${dateLabel}</div>
-  </div>`;
-
-  // PIC per shift
-  ["pagi", "siang"].forEach(shift => {
+  ["pagi","siang"].forEach(shift => {
     const data = picShift[shift];
-    if (!data || Object.keys(data).length === 0) return;
-    html += `<div class="standby-section">
-      <div class="standby-label">👥 PIC SHIFT ${shift.toUpperCase()}</div>`;
-    Object.entries(data)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .forEach(([, d]) => {
-        const studios = [...d.studios].sort((a, b) => a - b).join(", ");
-        html += `<div class="pic-row">
-          <span class="pic-name">${d.name}</span>
-          <span class="pic-studios">${studios}</span>
-        </div>`;
-      });
-    html += `</div>`;
-  });
-
-  // Standby per brand
-  standbyList.forEach(b => {
-    html += `<div class="standby-brand-card">
-      <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
-    b.slots.forEach(slot => {
-      const picDisp = formatPic(slot.pic);
-      const timeLabel = slot.type === "shift" ? slot.label : slot.label;
-      html += `<div class="standby-row">
-        <span class="standby-time">${timeLabel}</span>
-        <span class="standby-pic">${picDisp}</span>
-      </div>`;
+    if (!data || !Object.keys(data).length) return;
+    html += `<div class="standby-section"><div class="standby-label">👥 PIC SHIFT ${shift.toUpperCase()}</div>`;
+    Object.entries(data).sort((a,b) => a[0].localeCompare(b[0])).forEach(([,d]) => {
+      const studios = [...d.studios].sort((a,b) => a-b).join(", ");
+      html += `<div class="pic-row"><span class="pic-name">${d.name}</span><span class="pic-studios">${studios}</span></div>`;
     });
     html += `</div>`;
   });
 
-  // Prosedur
-  html += `<div class="standby-section">
-    <div class="standby-label">📋 PROSEDUR</div>
-    <div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
-2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
-3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div>
-  </div>`;
+  standbyList.forEach(b => {
+    html += `<div class="standby-brand-card"><div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
+    b.slots.forEach(slot => {
+      html += `<div class="standby-row"><span class="standby-time">${slot.label}</span><span class="standby-pic">${formatPic(slot.pic)}</span></div>`;
+    });
+    html += `</div>`;
+  });
 
-  // Links
-  html += `<div class="standby-section">
-    <div class="standby-label">🔗 LINKS</div>
+  html += `<div class="standby-section"><div class="standby-label">📋 PROSEDUR</div><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
+2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
+3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div></div>`;
+
+  html += `<div class="standby-section"><div class="standby-label">🔗 LINKS</div>
     <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
     <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
     <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
     <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
   </div>`;
-
-  // Copy button
-  html += `<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button>`;
-  html += `</div>`;
-
+  html += `<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button></div>`;
   container.innerHTML = html;
 }
 
 function copyStandbyText() {
   const dateStr = sessions[0]?.date || "";
   let dateLabel = "";
-  try {
-    dateLabel = new Date(dateStr + "T12:00:00+07:00").toLocaleDateString("id-ID", {
-      weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta"
-    }).toUpperCase();
-  } catch(e) { dateLabel = dateStr; }
-
-  const picShift   = buildPicShiftData();
-  const standbyList = buildStandbyData();
-
+  try { dateLabel = new Date(dateStr + "T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase(); } catch(e) {}
+  const picShift = buildPicShiftData(), standbyList = buildStandbyData();
   let text = `REMINDER ${dateLabel}\n\n`;
-
-  ["pagi", "siang"].forEach(shift => {
+  ["pagi","siang"].forEach(shift => {
     const data = picShift[shift];
-    if (!data || Object.keys(data).length === 0) return;
+    if (!data || !Object.keys(data).length) return;
     text += `PIC SHIFT ${shift.toUpperCase()}\n`;
-    Object.entries(data)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .forEach(([, d]) => {
-        const studios = [...d.studios].sort((a, b) => a - b).join(",");
-        text += `${d.name.replace("@", "")}\t${studios}\n`;
-      });
-    text += "\n";
-  });
-
-  standbyList.forEach(b => {
-    text += `STANDBY ${b.key.toUpperCase()}\n`;
-    b.slots.forEach(slot => {
-      const picName = slot.pic;
-      text += `${slot.label} ${picName}\n`;
+    Object.entries(data).sort((a,b) => a[0].localeCompare(b[0])).forEach(([,d]) => {
+      text += `${d.name.replace("@","")}\t${[...d.studios].sort((a,b)=>a-b).join(",")}\n`;
     });
     text += "\n";
   });
-
-  text += `1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
-2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
-3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST\n\n`;
-
-  text += `Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6VcZ7\n\n`;
-  text += `LINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\n`;
-  text += `BACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\n`;
-  text += `LINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
-
-  navigator.clipboard.writeText(text)
-    .then(() => showBanner("✅ Teks di-copy!", "success"))
-    .catch(() => showBanner("❌ Gagal copy", "error"));
+  standbyList.forEach(b => {
+    text += `STANDBY ${b.key.toUpperCase()}\n`;
+    b.slots.forEach(slot => { text += `${slot.label} ${slot.pic}\n`; });
+    text += "\n";
+  });
+  text += `1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT\n2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG\n3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST\n\n`;
+  text += `Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6VcZ7\n\nLINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\nBACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\nLINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
+  navigator.clipboard.writeText(text).then(() => showBanner("✅ Teks di-copy!", "success")).catch(() => showBanner("❌ Gagal copy", "error"));
 }
 
-// ── MANUAL NOTIFICATION ───────────────────────
+// ── NOTIF PANEL ───────────────────────────────
 function showNotifPanel() {
   const panel = document.getElementById("notif-panel");
-  if (panel.style.display !== "none") {
-    panel.style.display = "none"; return;
-  }
+  if (panel.style.display !== "none") { panel.style.display = "none"; return; }
 
-  // Build list of upcoming start times
-  const now  = Date.now();
-  const list = document.getElementById("notif-time-list");
+  const now = Date.now(), list = document.getElementById("notif-time-list");
   list.innerHTML = "";
-
-  // Collect unique start times
   const times = new Set();
   sessions.forEach(s => { if (s.startTime && s.startTime !== "-") times.add(s.startTime); });
 
@@ -844,20 +717,15 @@ function showNotifPanel() {
     const ms = timeToMs(sessions[0]?.date, time);
     if (!ms) return;
     const diff = ms - now;
-    if (diff < -60 * 60 * 1000) return; // skip if > 1 jam lalu
-
+    if (diff < -60 * 60 * 1000) return;
     const diffMin = Math.round(diff / 60000);
-    let label = time;
-    if (diffMin > 0)  label += ` (+${diffMin}m)`;
-    if (diffMin <= 0) label += ` (lewat)`;
-
+    const label   = time + (diffMin > 0 ? ` (+${diffMin}m)` : " (lewat)");
     const btn = document.createElement("button");
-    btn.className   = "notif-time-btn";
+    btn.className = "notif-time-btn";
     btn.textContent = label;
-    btn.onclick     = () => sendManualNotifFor(time);
+    btn.onclick = () => sendManualNotifFor(time);
     list.appendChild(btn);
   });
-
   panel.style.display = "block";
 }
 
@@ -868,65 +736,41 @@ function closeNotifPanel() {
 function sendManualNotifFor(time) {
   const group = sessions.filter(s => s.startTime === time);
   if (!group.length) { showBanner("Tidak ada sesi di jam ini", "warning"); return; }
-
   const lines = group.map((s, i) => {
-    const h    = s.hosts?.[0];
-    const host = h?.host    || "-";
-    const pic  = h?.picData ? formatPic(h.picData) : "LSC";
-    return `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`;
+    const h = s.hosts?.[0];
+    return `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${h?.host || "-"} ${h?.picData ? formatPic(h.picData) : "LSC"}`;
   });
-
-  sendNotification(
-    `⏰ REMINDER — START ${time}`,
-    lines.join("\n"),
-    `manual-start-${time}`,
-    false
-  );
-  showBanner(`🔔 Notif START ${time} dikirim!`, "success");
+  broadcastNotif(`⏰ REMINDER — START ${time}`, lines.join("\n"), false);
   closeNotifPanel();
 }
 
 function sendManualNotifAll() {
-  const now = Date.now();
-  const upcoming = {};
-
+  const now = Date.now(), upcoming = {};
   sessions.forEach(s => {
     if (!s.startTime || s.startTime === "-") return;
-    const ms   = timeToMs(s.date, s.startTime);
+    const ms = timeToMs(s.date, s.startTime);
     if (!ms) return;
     const diff = ms - now;
     if (diff < -5 * 60 * 1000 || diff > 2 * 60 * 60 * 1000) return;
     if (!upcoming[s.startTime]) upcoming[s.startTime] = [];
     upcoming[s.startTime].push(s);
   });
-
   const times = Object.keys(upcoming);
   if (!times.length) { showBanner("Tidak ada sesi upcoming (2 jam ke depan)", "warning"); return; }
-
   times.sort().forEach((time, idx) => {
     setTimeout(() => {
       const group = upcoming[time];
       const lines = group.map((s, i) => {
-        const h    = s.hosts?.[0];
-        const host = h?.host    || "-";
-        const pic  = h?.picData ? formatPic(h.picData) : "LSC";
-        return `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`;
+        const h = s.hosts?.[0];
+        return `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${h?.host || "-"} ${h?.picData ? formatPic(h.picData) : "LSC"}`;
       });
-      sendNotification(
-        `⏰ REMINDER — START ${time}`,
-        lines.join("\n"),
-        `manual-start-${time}`,
-        false
-      );
-    }, idx * 1500); // delay 1.5s antar notif biar tidak tumpuk
+      broadcastNotif(`⏰ REMINDER — START ${time}`, lines.join("\n"), false);
+    }, idx * 2000);
   });
-
-  showBanner(`🔔 ${times.length} notif dikirim: ${times.join(", ")}`, "success");
   closeNotifPanel();
 }
 
-
-
+// ── STATS ─────────────────────────────────────
 function updateStats() {
   const m  = sessions.filter(s => s.isMarathon).length;
   const sg = sessions.filter(s => !s.isMarathon).length;
@@ -935,10 +779,10 @@ function updateStats() {
   document.getElementById("stat-single").textContent   = sg;
 }
 
+// ── AUTO NOTIF ────────────────────────────────
 function scheduleAllNotifications(list) {
   const now = Date.now();
   let count = 0;
-
   const startGroups = {};
   list.forEach(s => {
     if (s.startTime && s.startTime !== "-") {
@@ -946,30 +790,22 @@ function scheduleAllNotifications(list) {
       startGroups[s.startTime].push(s);
     }
   });
-
   Object.entries(startGroups).forEach(([time, group]) => {
     const startMs = timeToMs(group[0].date, time);
     if (!startMs) return;
-
-    const reminders = [
-      { min: 60, prefix: "🔔 SETUP",         urgent: false },
-      { min: 10, prefix: "⏰ 10 MENIT LAGI", urgent: false },
-      { min: 5,  prefix: "🚨 5 MENIT LAGI",  urgent: true  },
-    ];
-
-    reminders.forEach(({ min, prefix, urgent }) => {
+    [{ min: 60, prefix: "🔔 SETUP", urgent: false },
+     { min: 10, prefix: "⏰ 10 MENIT LAGI", urgent: false },
+     { min: 5,  prefix: "🚨 5 MENIT LAGI",  urgent: true  }]
+    .forEach(({ min, prefix, urgent }) => {
       const t = startMs - min * 60 * 1000;
       if (t > now) {
-        scheduledTasks.push(setTimeout(() =>
-          fireGroupNotif(`${prefix} — START ${time}`, group, "start", urgent), t - now));
+        scheduledTasks.push(setTimeout(() => fireGroupNotif(`${prefix} — START ${time}`, group, "start", urgent), t - now));
         count++;
       }
     });
   });
-
   document.getElementById("notif-count").textContent = `🔔 ${count} notif terjadwal hari ini`;
 }
-
 
 function cancelAllScheduled() {
   scheduledTasks.forEach(id => clearTimeout(id));
@@ -978,94 +814,20 @@ function cancelAllScheduled() {
 
 function fireGroupNotif(title, group, type, urgent = false) {
   const lines = group.map((s, i) => {
-    const h    = type === "start" ? s.hosts?.[0] : s.hosts?.[s.hosts.length - 1];
-    const host = h?.host    || "-";
-    const pic  = h?.picData ? formatPic(h.picData) : "LSC";
+    const h = type === "start" ? s.hosts?.[0] : s.hosts?.[s.hosts.length - 1];
+    const host = h?.host || "-", pic = h?.picData ? formatPic(h.picData) : "LSC";
     return type === "start"
       ? `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
       : `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
   });
-
-  const body = lines.join("\n");
-  const tag  = `grp-${type}-${title}-${Date.now()}`;
-
-  sendNotification(title, body, tag, urgent);
-}
-// ── KIRIM NOTIFIKASI ──────────────────────────
-function sendNotification(title, body, tag, urgent = false) {
-  if (Notification.permission !== "granted") {
-    requestNotifPermission();
-    return;
-  }
-
-  const options = {
-    body,
-    tag   : tag || `notif-${Date.now()}`,
-    icon  : "/icon-192.png",
-    badge : "/icon-192.png",
-    vibrate: urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
-    requireInteraction: false,
-  };
-
-  // Pakai swRegistration langsung (paling reliable untuk installed PWA)
-  if (swRegistration) {
-    swRegistration.showNotification(title, options)
-      .catch(() => fallbackNotif(title, options));
-  } else if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.ready
-      .then(reg => reg.showNotification(title, options))
-      .catch(() => fallbackNotif(title, options));
-  } else {
-    fallbackNotif(title, options);
-  }
+  sendNotification(title, lines.join("\n"), `grp-${type}-${title}-${Date.now()}`, urgent);
 }
 
-function fallbackNotif(title, options) {
-  try { new Notification(title, options); } catch(e) {}
-}
-
-
-
-// ── TEST REMINDER ─────────────────────────────
-function testNotification() {
-  if (!("Notification" in window)) {
-    showBanner("❌ Browser tidak support notifikasi", "error"); return;
-  }
-
-  if (Notification.permission !== "granted") {
-    showBanner("❌ Izinkan notifikasi dulu", "error");
-    requestNotifPermission(); return;
-  }
-
-  // Test H-1 jam
-  sendNotification(
-    "🔔 SETUP — START 17:00",
-    "1. Levis | Tiktok | Studio 16\n   👤 Vanness Dharma @Rizky\n2. Philips Shopee | Shopee | Studio 6\n   👤 Nabila @Nadiem",
-    "test-setup", false
-  );
-
-  // Test H-10 menit (delay 2 detik)
-  setTimeout(() => sendNotification(
-    "⏰ 10 MENIT LAGI — START 17:00",
-    "1. Levis | Tiktok | Studio 16\n   👤 Vanness Dharma @Rizky\n2. Philips Shopee | Shopee | Studio 6\n   👤 Nabila @Nadiem",
-    "test-10min", false
-  ), 2000);
-
-  // Test H-5 menit (delay 4 detik)
-  setTimeout(() => sendNotification(
-    "🚨 5 MENIT LAGI — START 17:00",
-    "1. Levis | Tiktok | Studio 16\n   👤 Vanness Dharma @Rizky\n2. Philips Shopee | Shopee | Studio 6\n   👤 Nabila @Nadiem",
-    "test-5min", true
-  ), 4000);
-
-  showBanner("🔔 3 test notifikasi dikirim (interval 2 detik)", "success");
-}
-
-
+// ── HELPERS ───────────────────────────────────
 function getCurrentHostIdx(session) {
   const now = Date.now();
   for (let i = 0; i < session.hosts.length; i++) {
-    const h       = session.hosts[i];
+    const h = session.hosts[i];
     const startMs = timeToMs(session.date, h.startTime);
     let   endMs   = timeToMs(session.date, h.endTime);
     if (!startMs || !endMs) continue;
@@ -1091,10 +853,9 @@ function timeToMs(dateStr, timeStr) {
 
 function updateClock() {
   const now = new Date();
-  const el  = document.getElementById("clock");
-  const de  = document.getElementById("date-display");
-  if (el) el.textContent = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Jakarta" });
-  if (de) de.textContent = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
+  const el = document.getElementById("clock"), de = document.getElementById("date-display");
+  if (el) el.textContent = now.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", second:"2-digit", timeZone:"Asia/Jakarta" });
+  if (de) de.textContent = now.toLocaleDateString("id-ID", { weekday:"long", day:"numeric", month:"long", year:"numeric", timeZone:"Asia/Jakarta" });
 }
 
 function showLoading(show) {
@@ -1103,9 +864,7 @@ function showLoading(show) {
 
 function showBanner(msg, type = "info") {
   const el = document.getElementById("banner");
-  el.textContent   = msg;
-  el.className     = "banner " + type;
-  el.style.display = "block";
+  el.textContent = msg; el.className = "banner " + type; el.style.display = "block";
   setTimeout(() => el.style.display = "none", 4000);
 }
 
@@ -1113,35 +872,13 @@ async function debugNotif() {
   const lines = [
     `URL: ${location.href}`,
     `Permission: ${Notification.permission}`,
-    `SW supported: ${"serviceWorker" in navigator}`,
-    `SW registered: ${!!swRegistration}`,
-    `SW active: ${swRegistration?.active?.state || "none"}`,
+    `SW: ${!!swRegistration} (${swRegistration?.active?.state || "none"})`,
     `ntfy: ${ntfySource?.readyState === 1 ? "connected" : "disconnected"}`,
   ];
   alert(lines.join("\n"));
-
   if (Notification.permission !== "granted") {
     const r = await Notification.requestPermission();
-    alert("Permission result: " + r);
     if (r !== "granted") return;
   }
-
-  // Coba berbagai cara
-  try {
-    new Notification("Test Direct", { body: "Direct notification test" });
-    alert("✅ Direct Notification: OK");
-  } catch(e) {
-    alert("❌ Direct Notification: " + e.message);
-  }
-
-  if (swRegistration) {
-    try {
-      await swRegistration.showNotification("Test SW", { body: "SW notification test" });
-      alert("✅ SW Notification: OK");
-    } catch(e) {
-      alert("❌ SW Notification: " + e.message);
-    }
-  } else {
-    alert("❌ swRegistration: null");
-  }
+  sendNotification("🔔 Debug Test", "Notif berhasil dari " + location.hostname, "debug-" + Date.now());
 }
