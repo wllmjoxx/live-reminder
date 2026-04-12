@@ -596,36 +596,77 @@ function buildPicShiftData() {
 function buildStandbyData() {
   return STANDBY_BRANDS.map(b => {
     const matched = sessions.filter(b.match);
-    const slots = [];
-    const seen  = new Set();
+    const slots   = [];
+    const seenKey = new Set();
 
     matched.forEach(s => {
-      s.hosts.forEach(h => {
-        if (!h.picData || h.picData === "-") return;
-        const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-        const shift  = getShift(endStr);
-        if (shift === "malam") return;
+      if (b.isMarathon) {
+        // Per host session — ambil semua host dengan waktu dan operatornya
+        s.hosts.forEach(h => {
+          const pic    = h.picData || "";
+          const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+          const shift  = getShift(endStr);
+          if (shift === "malam") return;
 
-        if (s.isMarathon) {
-          const k = `${h.startTime}-${h.picData}`;
-          if (seen.has(k)) return;
-          seen.add(k);
-          const st = (h.startTime || "").substring(0, 5);
-          const en = (h.endTime   || "").substring(0, 5);
-          slots.push({ type: "slot", label: `${st}-${en}`, pic: h.picData.trim(), shift });
-        } else {
-          const k = `${shift}-${h.picData}`;
-          if (seen.has(k)) return;
-          seen.add(k);
-          slots.push({ type: "shift", label: shift.toUpperCase(), pic: h.picData.trim(), shift });
-        }
-      });
+          const st  = (h.startTime || "").substring(0, 5).replace(":00", "");
+          const en  = (h.endTime   || "").substring(0, 5).replace(":00", "");
+          const key = `${st}-${en}-${pic}`;
+          if (seenKey.has(key)) return;
+          seenKey.add(key);
+
+          slots.push({
+            type    : "slot",
+            label   : `${st}-${en}`,
+            pic,
+            shift,
+            sortKey : toMinJS(h.startTime)
+          });
+        });
+      } else {
+        // Per shift (pagi/siang) — ambil first host per shift
+        s.hosts.forEach(h => {
+          const pic    = h.picData || "";
+          const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+          const shift  = getShift(endStr);
+          if (shift === "malam") return;
+
+          const key = `${shift}-${pic}`;
+          if (seenKey.has(key)) return;
+          seenKey.add(key);
+
+          slots.push({
+            type    : "shift",
+            label   : shift.toUpperCase(),
+            pic,
+            shift,
+            sortKey : shift === "pagi" ? 0 : 1
+          });
+        });
+      }
     });
 
-    slots.sort((a, b) => toMinJS(a.label.split("-")[0]) - toMinJS(b.label.split("-")[0]));
+    slots.sort((a, b) => a.sortKey - b.sortKey);
     return { key: b.key, slots };
   }).filter(b => b.slots.length > 0);
 }
+
+function renderStandbyBrands(standbyData) {
+  let html = "";
+  standbyData.forEach(b => {
+    html += `<div class="standby-brand-card">
+      <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
+    b.slots.forEach(slot => {
+      const picDisp = formatPic(slot.pic) || "–";
+      html += `<div class="standby-row">
+        <span class="standby-time">${slot.label}</span>
+        <span class="standby-pic">${picDisp}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  return html;
+}
+
 
 function renderStandby() {
   const container = document.getElementById("schedule-list");
@@ -803,13 +844,22 @@ function closeNotifPanel() {
 }
 
 function sendManualNotifFor(time) {
-  const group = sessions
-    .filter(s => s.startTime === time)
-    .map(s => ({ ...s, picForEvent: s.hosts?.[0]?.picData || "-" }));
-
+  const group = sessions.filter(s => s.startTime === time);
   if (!group.length) { showBanner("Tidak ada sesi di jam ini", "warning"); return; }
 
-  fireGroupNotif(`⏰ REMINDER — START ${time}`, group, "start", false);
+  const lines = group.map((s, i) => {
+    const h    = s.hosts?.[0];
+    const host = h?.host    || "-";
+    const pic  = h?.picData ? formatPic(h.picData) : "LSC";
+    return `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`;
+  });
+
+  sendNotification(
+    `⏰ REMINDER — START ${time}`,
+    lines.join("\n"),
+    `manual-start-${time}`,
+    false
+  );
   showBanner(`🔔 Notif START ${time} dikirim!`, "success");
   closeNotifPanel();
 }
@@ -821,8 +871,9 @@ function sendManualNotifAll() {
   sessions.forEach(s => {
     if (!s.startTime || s.startTime === "-") return;
     const ms   = timeToMs(s.date, s.startTime);
+    if (!ms) return;
     const diff = ms - now;
-    if (diff < 0 || diff > 2 * 60 * 60 * 1000) return; // 0-2 jam ke depan
+    if (diff < -5 * 60 * 1000 || diff > 2 * 60 * 60 * 1000) return;
     if (!upcoming[s.startTime]) upcoming[s.startTime] = [];
     upcoming[s.startTime].push(s);
   });
@@ -830,13 +881,28 @@ function sendManualNotifAll() {
   const times = Object.keys(upcoming);
   if (!times.length) { showBanner("Tidak ada sesi upcoming (2 jam ke depan)", "warning"); return; }
 
-  times.forEach(time => {
-    fireGroupNotif(`⏰ REMINDER — START ${time}`, upcoming[time], "start", false);
+  times.sort().forEach((time, idx) => {
+    setTimeout(() => {
+      const group = upcoming[time];
+      const lines = group.map((s, i) => {
+        const h    = s.hosts?.[0];
+        const host = h?.host    || "-";
+        const pic  = h?.picData ? formatPic(h.picData) : "LSC";
+        return `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`;
+      });
+      sendNotification(
+        `⏰ REMINDER — START ${time}`,
+        lines.join("\n"),
+        `manual-start-${time}`,
+        false
+      );
+    }, idx * 1500); // delay 1.5s antar notif biar tidak tumpuk
   });
 
-  showBanner(`🔔 ${times.length} notif dikirim untuk: ${times.join(", ")}`, "success");
+  showBanner(`🔔 ${times.length} notif dikirim: ${times.join(", ")}`, "success");
   closeNotifPanel();
 }
+
 
 
 function updateStats() {
@@ -905,19 +971,31 @@ function fireGroupNotif(title, group, type, urgent = false) {
 }
 // ── KIRIM NOTIFIKASI ──────────────────────────
 function sendNotification(title, body, tag, urgent = false) {
-  if (Notification.permission !== "granted") return;
+  if (Notification.permission !== "granted") {
+    requestNotifPermission();
+    return;
+  }
 
-  if (swRegistration && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: "SHOW_NOTIFICATION", title, body, tag, urgent
-    });
+  const options = {
+    body,
+    tag   : tag || `notif-${Date.now()}`,
+    icon  : "/icon-192.png",
+    badge : "/icon-192.png",
+    vibrate: urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
+    requireInteraction: false,
+    silent: false,
+  };
+
+  // Pakai serviceWorker.ready (bukan controller) — reliable di installed PWA
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.ready
+      .then(reg => reg.showNotification(title, options))
+      .catch(() => new Notification(title, options));
   } else {
-    new Notification(title, { body, tag,
-      icon: "/icon-192.png",
-      vibrate: urgent ? [300,100,300] : [200,100,200]
-    });
+    new Notification(title, options);
   }
 }
+
 
 // ── TEST REMINDER ─────────────────────────────
 function testNotification() {
