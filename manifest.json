@@ -2,15 +2,15 @@
   "name": "Live Schedule Reminder",
   "short_name": "LiveReminder",
   "description": "Reminder otomatis jadwal live session",
-  "start_url": "/live-reminder/",
-  "scope": "/live-reminder/",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#3b82f6",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "./icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"

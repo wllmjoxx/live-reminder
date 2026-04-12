@@ -1,8 +1,12 @@
-const CACHE_NAME = "live-reminder-v3";
-const ASSETS = ["/", "/index.html", "/app.js", "/manifest.json"];
+const CACHE_NAME = "live-reminder-v4";
+const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json", "./icon-192.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
+  e.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(c => c.addAll(ASSETS))
+      .catch(() => {}) // jangan fail kalau ada asset yg ga ada
+  );
   self.skipWaiting();
 });
 
@@ -16,25 +20,38 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  if (e.request.url.includes("script.google.com")) {
-    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+  if (e.request.url.includes("script.google.com") ||
+      e.request.url.includes("ntfy.sh")) {
+    e.respondWith(fetch(e.request).catch(() => new Response("")));
     return;
   }
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+  e.respondWith(
+    caches.match(e.request).then(r => r || fetch(e.request))
+  );
 });
 
-// Tampilkan notifikasi dari app
+self.addEventListener("push", e => {
+  const data = e.data?.json?.() || {};
+  e.waitUntil(
+    self.registration.showNotification(data.title || "Live Reminder", {
+      body   : data.message || data.body || "",
+      icon   : "./icon-192.png",
+      badge  : "./icon-192.png",
+      vibrate: [200, 100, 200],
+    })
+  );
+});
+
 self.addEventListener("message", e => {
   if (e.data?.type === "SHOW_NOTIFICATION") {
     const { title, body, tag, urgent } = e.data;
     self.registration.showNotification(title, {
       body,
       tag,
-      icon         : "/icon-192.png",
-      badge        : "/icon-192.png",
-      vibrate      : urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
-      requireInteraction: urgent || false,
-      silent       : false,
+      icon   : "./icon-192.png",
+      badge  : "./icon-192.png",
+      vibrate: urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
+      requireInteraction: false,
     });
   }
 });

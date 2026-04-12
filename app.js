@@ -97,9 +97,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function registerSW() {
-  if ("serviceWorker" in navigator)
-    swRegistration = await navigator.serviceWorker.register("/sw.js");
+  if ("serviceWorker" in navigator) {
+    // Pakai "./" bukan "/" — kompatibel localhost DAN GitHub Pages
+    swRegistration = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+  }
 }
+
 
 async function requestNotifPermission() {
   if (!("Notification" in window)) return false;
