@@ -371,48 +371,47 @@ function renderTimeline(){
   });
 
   Object.entries(events).forEach(([time,ev])=>{
-    const validPics=getAvailableOps(sessions,time);
-    assignPics(ev.starts,ev.ends,validPics);
+    assignPics(ev.starts,ev.ends,getAvailableOps(sessions,time));
   });
 
   const sorted=Object.keys(events).sort((a,b)=>{
-    const toMin=t=>{if(t==="23:59/00:00")return 1441;const[h,m]=t.split(":").map(Number);return h*60+m;};
-    return toMin(a)-toMin(b);
+    const f=t=>t==="23:59/00:00"?1441:(([h,m])=>h*60+m)(t.split(":").map(Number));
+    return f(a)-f(b);
   });
 
   sorted.forEach(time=>{
     const ev=events[time];
-    const displayTime=time==="23:59/00:00"?"23:59 / 00:00":time;
+    const display=time==="23:59/00:00"?"23:59 / 00:00":time;
 
     if(ev.starts.length){
       const block=document.createElement("div");
       block.className="time-block";
-      block.innerHTML=`<div class="time-header start-header"><span class="dot start-dot"></span> start ${displayTime}</div>`;
-      ev.starts.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"start",time)));
+      block.innerHTML=`<div class="time-header start-header"><span class="dot start-dot"></span> start ${display}</div>`;
+      ev.starts.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"start",time))); // ← time diteruskan
       container.appendChild(block);
     }
     if(ev.ends.length){
       const block=document.createElement("div");
       block.className="time-block";
-      block.innerHTML=`<div class="time-header end-header"><span class="dot end-dot"></span> end ${displayTime}</div>`;
-      ev.ends.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"end",time)));
+      block.innerHTML=`<div class="time-header end-header"><span class="dot end-dot"></span> end ${display}</div>`;
+      ev.ends.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"end",time))); // ← time diteruskan
       container.appendChild(block);
     }
   });
-  // ← TIDAK ADA kode lagi setelah ini!
 }
+
 
 
 function makeTimelineCard(s,num,mode,eventTime=null){
   const now=Date.now();
-  // isPast berdasarkan JAM EVENT, bukan jam start sesi
+  // Gunakan jam EVENT (bukan jam start sesi) untuk cek apakah sudah lewat
   const checkTime=eventTime||s.startTime;
-  const eventMs=timeToMs(s.date,checkTime);
+  // Handle "23:59/00:00" — jangan dianggap lewat
+  const eventMs = checkTime==="23:59/00:00" ? null : timeToMs(s.date,checkTime);
   const isPast=eventMs&&eventMs<now;
   const isSoon=eventMs&&(eventMs-now)<15*60*1000&&!isPast;
+
   const picLabel=s.assignedPic||"LSC";
-  const isLSC=picLabel==="LSC";
-  const firstHost=s.hosts?.[0]?.host||"-";
   const card=document.createElement("div");
   card.className=`session-card ${isPast?"past":""} ${isSoon?"soon":""} ${s.isMarathon?"marathon-card":""}`;
   card.innerHTML=`
@@ -425,11 +424,12 @@ function makeTimelineCard(s,num,mode,eventTime=null){
         <span class="badge marketplace">${s.marketplace}</span>
         <span class="badge studio">${s.studio}</span>
       </div>
-      <div class="session-host">👤 ${firstHost}</div>
+      <div class="session-host">👤 ${s.hosts?.[0]?.host||"-"}</div>
     </div>
-    <div class="session-pic-right ${isLSC?"lsc":""}">${picLabel}</div>`;
+    <div class="session-pic-right ${picLabel==="LSC"?"lsc":""}">${picLabel}</div>`;
   return card;
 }
+
 
 function renderSingle(){
   const container=document.getElementById("schedule-list");
@@ -622,6 +622,7 @@ function updateStats(){
 function scheduleAllNotifications(list){
   const now=Date.now();let count=0;
   const startGroups={},endGroups={};
+
   list.forEach(s=>{
     if(s.startTime&&s.startTime!=="-"){
       if(!startGroups[s.startTime])startGroups[s.startTime]=[];
@@ -633,21 +634,30 @@ function scheduleAllNotifications(list){
     }
   });
 
+  // START: H-60, H-10, H-5
   Object.entries(startGroups).forEach(([time,group])=>{
-    const startMs=timeToMs(group[0].date,time);if(!startMs)return;
-    [{min:60,prefix:"🔔 SETUP",urgent:false},{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},{min:5,prefix:"🚨 5 MENIT LAGI",urgent:true}]
+    const startMs=timeToMs(group[0].date,time);
+    if(!startMs)return;
+    [{min:60,prefix:"🔔 SETUP",urgent:false},
+     {min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
+     {min:5, prefix:"🚨 5 MENIT LAGI", urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=startMs-min*60*1000;
       if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));count++;}
     });
   });
 
+  // END: H-10, H-5
   Object.entries(endGroups).forEach(([time,group])=>{
-    let endMs=timeToMs(group[0].date,time);
+    // Handle "23:59/00:00" special case
+    const effectiveTime = time==="23:59/00:00" ? "23:59" : time;
+    let endMs=timeToMs(group[0].date,effectiveTime);
     const sMs=timeToMs(group[0].date,group[0].startTime);
-    if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000;
+    if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000; // crossing midnight
     if(!endMs)return;
-    [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},{min:5,prefix:"🚨 5 MENIT LAGI",urgent:true}]
+
+    [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
+     {min:5, prefix:"🚨 5 MENIT LAGI", urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=endMs-min*60*1000;
       if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));count++;}
@@ -656,6 +666,7 @@ function scheduleAllNotifications(list){
 
   document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal hari ini`;
 }
+
 
 function cancelAllScheduled(){scheduledTasks.forEach(id=>clearTimeout(id));scheduledTasks=[];}
 
