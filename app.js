@@ -386,31 +386,70 @@ function renderTimeline(){
     assignPics(ev.starts,ev.ends,getAvailableOps(sessions,time));
   });
 
+  const now=Date.now();
   const sorted=Object.keys(events).sort((a,b)=>{
     const f=t=>t==="23:59/00:00"?1441:(([h,m])=>h*60+m)(t.split(":").map(Number));
     return f(a)-f(b);
   });
 
+  let firstUpcoming=null;
+
+  function makeBlock(ev,time,type){
+    const items=type==="start"?ev.starts:ev.ends;
+    if(!items.length)return null;
+
+    const display=time==="23:59/00:00"?"23:59 / 00:00":time;
+    const checkTime=time==="23:59/00:00"?"23:59":time;
+    const eventMs=timeToMs(sessions[0]?.date,checkTime);
+    const isPast=eventMs&&eventMs<now;
+
+    const block=document.createElement("div");
+    block.className=`time-block${isPast?" collapsed":""}`;
+
+    const header=document.createElement("div");
+    header.className=`time-header ${type==="start"?"start":"end"}-header`;
+
+    if(isPast){
+      header.style.opacity="0.5";
+      header.style.cursor="pointer";
+      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span> ${type} ${display} <span style="margin-left:auto;font-size:0.65rem">▸ ${items.length}</span>`;
+      header.onclick=()=>{
+        const wasCollapsed=block.classList.contains("collapsed");
+        block.classList.toggle("collapsed");
+        const cnt=block.querySelector(".sessions-container");
+        cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
+      };
+    }else{
+      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span> ${type} ${display}`;
+    }
+
+    const content=document.createElement("div");
+    content.className="sessions-container";
+    content.style.maxHeight=isPast?"0px":"none";
+
+    items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
+    block.appendChild(header);
+    block.appendChild(content);
+
+    // Track first upcoming block untuk auto-scroll
+    if(!isPast&&!firstUpcoming)firstUpcoming=block;
+    return block;
+  }
+
   sorted.forEach(time=>{
     const ev=events[time];
-    const display=time==="23:59/00:00"?"23:59 / 00:00":time;
-
-    if(ev.starts.length){
-      const block=document.createElement("div");
-      block.className="time-block";
-      block.innerHTML=`<div class="time-header start-header"><span class="dot start-dot"></span> start ${display}</div>`;
-      ev.starts.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"start",time))); // ← time diteruskan
-      container.appendChild(block);
-    }
-    if(ev.ends.length){
-      const block=document.createElement("div");
-      block.className="time-block";
-      block.innerHTML=`<div class="time-header end-header"><span class="dot end-dot"></span> end ${display}</div>`;
-      ev.ends.forEach((s,i)=>block.appendChild(makeTimelineCard(s,i+1,"end",time))); // ← time diteruskan
-      container.appendChild(block);
-    }
+    const sb=makeBlock(ev,time,"start");
+    const eb=makeBlock(ev,time,"end");
+    if(sb)container.appendChild(sb);
+    if(eb)container.appendChild(eb);
   });
+
+  // Auto-scroll ke jam terdekat yang belum lewat
+  if(firstUpcoming){
+    setTimeout(()=>firstUpcoming.scrollIntoView({behavior:"smooth",block:"start"}),150);
+  }
 }
+
 
 
 
