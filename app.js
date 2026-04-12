@@ -492,8 +492,7 @@ function renderMarathon() {
 
 // ── TIMELINE ──────────────────────────────────
 function renderTimeline() {
-  ev.starts.forEach((s, i) => block.appendChild(makeTimelineCard(s, i + 1, "start", time)));
-ev.ends.forEach((s, i)   => block.appendChild(makeTimelineCard(s, i + 1, "end",   time)));
+  
 
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
@@ -542,6 +541,9 @@ ev.ends.forEach((s, i)   => block.appendChild(makeTimelineCard(s, i + 1, "end", 
       container.appendChild(block);
     }
   });
+
+  ev.starts.forEach((s, i) => block.appendChild(makeTimelineCard(s, i + 1, "start", time)));
+  ev.ends.forEach((s, i)   => block.appendChild(makeTimelineCard(s, i + 1, "end",   time)));
 }
 
 
