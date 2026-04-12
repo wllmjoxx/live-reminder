@@ -495,8 +495,10 @@ function buildPicShiftData(){
 
 
 function buildStandbyData() {
-  // Kumpulkan non-dedicated per shift
-  const nonDedByShift = { pagi: [], siang: [] };
+  // Track operator per shift dengan waktu kerja mereka
+  const nonDedByShift = { pagi: {}, siang: {} };
+  // key → { name, minStart, maxEnd }
+
   sessions.forEach(s => {
     s.hosts.forEach(h => {
       if (!h.picData || h.picData === "-") return;
@@ -505,25 +507,30 @@ function buildStandbyData() {
       const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
       const shift  = getShift(endStr);
       if (shift === "malam") return;
-      if (!nonDedByShift[shift].includes(h.picData.trim()))
-        nonDedByShift[shift].push(h.picData.trim());
+
+      const cur = nonDedByShift[shift][key];
+      if (!cur) {
+        nonDedByShift[shift][key] = { name: h.picData.trim(), minStart: h.startTime, maxEnd: endStr };
+      } else {
+        if (toMinJS(h.startTime) < toMinJS(cur.minStart)) cur.minStart = h.startTime;
+        if (toMinJS(endStr)      > toMinJS(cur.maxEnd))   cur.maxEnd   = endStr;
+      }
     });
   });
 
-  // Cari backup: prefer non-deprioritized dulu, deprioritized sebagai last resort
+  // Cari backup entry (dengan waktu)
   function findBackup(shift, usedSet) {
+    const entries = Object.values(nonDedByShift[shift]);
     // 1. Non-deprioritized first
-    for (const nd of nonDedByShift[shift]) {
-      const k = nd.toLowerCase();
-      if (usedSet.has(k)) continue;
-      if (BACKUP_DEPRIORITY[shift]?.has(k)) continue;
-      return nd;
+    for (const e of entries) {
+      if (usedSet.has(e.name.toLowerCase())) continue;
+      if (BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase())) continue;
+      return e;
     }
-    // 2. Deprioritized sebagai last resort
-    for (const nd of nonDedByShift[shift]) {
-      const k = nd.toLowerCase();
-      if (usedSet.has(k)) continue;
-      return nd;
+    // 2. Last resort
+    for (const e of entries) {
+      if (usedSet.has(e.name.toLowerCase())) continue;
+      return e;
     }
     return null;
   }
@@ -535,22 +542,41 @@ function buildStandbyData() {
 
     matched.forEach(s => {
       if (b.slotFormat) {
-        // ── Samsonite Shopee: NON-DEDICATED only ──
+        // ── Samsonite Shopee: NON-DEDICATED per host slot ──
         s.hosts.forEach(h => {
-          if (!h.picData || h.picData === "-") return;
-          const key = h.picData.trim().toLowerCase();
-          if (DEDICATED_OPS.includes(key) || LSC_NAMES_SET.has(key)) return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-          if (getShift(endStr) === "malam") return;
+          const shift  = getShift(endStr);
+          if (shift === "malam") return;
+
           const st = (h.startTime || "").substring(0,5);
           const en = (h.endTime   || "").substring(0,5);
-          const slotKey = `${st}-${en}-${key}`;
+
+          let picForSlot = null;
+          const picKey = (h.picData || "").trim().toLowerCase();
+
+          if (!h.picData || h.picData === "-" || DEDICATED_OPS.includes(picKey) || LSC_NAMES_SET.has(picKey)) {
+            // Dedicated/kosong → cari non-ded dari pool (tidak bentrok)
+            const backup = findBackup(shift, usedNonDed[shift]);
+            if (!backup) return;
+            picForSlot = backup.name;
+            usedNonDed[shift].add(backup.name.toLowerCase());
+          } else {
+            picForSlot = h.picData.trim();
+          }
+
+          const slotKey = `${st}-${en}-${picForSlot.toLowerCase()}`;
           if (seenKey.has(slotKey)) return; seenKey.add(slotKey);
-          slots.push({ type:"slot", label:`${st.replace(":00","")}–${en.replace(":00","")}`, pic:h.picData.trim(), nonDedPic:null, sortKey:toMinJS(h.startTime) });
+
+          slots.push({
+            type: "slot",
+            label: `${st.replace(":00","")}–${en.replace(":00","")}`,
+            pic: picForSlot, nonDedPic: null, nonDedTime: null,
+            sortKey: toMinJS(h.startTime)
+          });
         });
 
       } else {
-        // ── Brand lain: dedicated (+ optional backup) ──
+        // ── Brand lain: dedicated (+ backup ber-waktu jika showBackup) ──
         s.hosts.forEach(h => {
           if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
@@ -560,22 +586,33 @@ function buildStandbyData() {
           const shiftKey = `${shift}-${h.picData.trim().toLowerCase()}`;
           if (seenKey.has(shiftKey)) return; seenKey.add(shiftKey);
 
-          // Backup: hanya untuk brand yang showBackup = true
-          let nonDedPic = null;
+          let nonDedPic = null, nonDedTime = null;
           if (b.showBackup) {
-            nonDedPic = findBackup(shift, usedNonDed[shift]);
-            if (nonDedPic) usedNonDed[shift].add(nonDedPic.toLowerCase());
+            const backup = findBackup(shift, usedNonDed[shift]);
+            if (backup) {
+              nonDedPic  = backup.name;
+              // Format jam: "09–13"
+              const st = backup.minStart.replace(":00","");
+              const en = backup.maxEnd.replace(":00","");
+              nonDedTime = `${st}–${en}`;
+              usedNonDed[shift].add(backup.name.toLowerCase());
+            }
           }
 
-          slots.push({ type:"shift", label:shift.toUpperCase(), pic:h.picData.trim(), nonDedPic, sortKey:shift==="pagi"?0:1 });
+          slots.push({
+            type: "shift", label: shift.toUpperCase(),
+            pic: h.picData.trim(), nonDedPic, nonDedTime,
+            sortKey: shift === "pagi" ? 0 : 1
+          });
         });
       }
     });
 
     slots.sort((a,b) => a.sortKey - b.sortKey);
-    return { key:b.key, slotFormat:b.slotFormat, slots };
+    return { key: b.key, slotFormat: b.slotFormat, slots };
   }).filter(b => b.slots.length > 0);
 }
+
 
 
 
@@ -603,16 +640,20 @@ function renderStandby(){
   html += `<div class="standby-brand-card">
     <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
   b.slots.forEach(slot => {
-    const picDisp    = formatPic(slot.pic);
-    // Format: "dedicated / non-dedicated" kalau ada
-    const nonDedDisp = slot.nonDedPic ? ` / ${formatPic(slot.nonDedPic)}` : "";
+    const picDisp = formatPic(slot.pic);
+    let backupStr = "";
+    if (slot.nonDedPic) {
+      backupStr = ` / ${formatPic(slot.nonDedPic)}`;
+      if (slot.nonDedTime) backupStr += ` <span style="color:#475569;font-size:0.65rem">(${slot.nonDedTime})</span>`;
+    }
     html += `<div class="standby-row">
       <span class="standby-time">${slot.label}</span>
-      <span class="standby-pic">${picDisp}${nonDedDisp}</span>
+      <span class="standby-pic">${picDisp}${backupStr}</span>
     </div>`;
   });
   html += `</div>`;
 });
+
 
   html+=`<div class="standby-section"><div class="standby-label">📋 PROSEDUR</div><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
 2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
