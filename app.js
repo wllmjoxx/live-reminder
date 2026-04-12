@@ -480,33 +480,89 @@ function buildPicShiftData(){
   return shifts;
 }
 
-function buildStandbyData(){
-  return STANDBY_BRANDS.map(b=>{
-    const matched=sessions.filter(b.match),slots=[],seen=new Set();
-    matched.forEach(s=>{
-      if(b.slotFormat){
-        s.hosts.forEach(h=>{
-          if(!h.picData||h.picData==="-")return;
-          const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
-          if(getShift(endStr)==="malam")return;
-          const st=(h.startTime||"").substring(0,5),en=(h.endTime||"").substring(0,5);
-          const key=`${st}-${en}-${h.picData}`;if(seen.has(key))return;seen.add(key);
-          slots.push({type:"slot",label:`${st.replace(":00","")}–${en.replace(":00","")}`,pic:h.picData.trim(),sortKey:toMinJS(h.startTime)});
+
+function buildStandbyData() {
+  // Kumpulkan non-dedicated operators per shift dari semua sesi
+  const nonDedByShift = { pagi: [], siang: [] };
+  sessions.forEach(s => {
+    s.hosts.forEach(h => {
+      if (!h.picData || h.picData === "-") return;
+      const key = h.picData.trim().toLowerCase();
+      if (DEDICATED_OPS.includes(key)) return;
+      if (LSC_NAMES_SET.has(key)) return;
+      const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+      const shift = getShift(endStr);
+      if (shift === "malam") return;
+      if (!nonDedByShift[shift].includes(h.picData.trim()))
+        nonDedByShift[shift].push(h.picData.trim());
+    });
+  });
+
+  return STANDBY_BRANDS.map(b => {
+    const matched = sessions.filter(b.match);
+    const slots = [], seenKey = new Set();
+    const usedNonDed = { pagi: new Set(), siang: new Set() };
+
+    matched.forEach(s => {
+      if (b.slotFormat) {
+        // ── Samsonite Shopee: NON-DEDICATED only per host slot ──
+        s.hosts.forEach(h => {
+          if (!h.picData || h.picData === "-") return;
+          const key = h.picData.trim().toLowerCase();
+          if (DEDICATED_OPS.includes(key)) return; // ← skip dedicated
+          if (LSC_NAMES_SET.has(key)) return;
+          const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+          if (getShift(endStr) === "malam") return;
+          const st = (h.startTime || "").substring(0,5);
+          const en = (h.endTime   || "").substring(0,5);
+          const slotKey = `${st}-${en}-${key}`;
+          if (seenKey.has(slotKey)) return; seenKey.add(slotKey);
+          slots.push({
+            type: "slot",
+            label: `${st.replace(":00","")}–${en.replace(":00","")}`,
+            pic: h.picData.trim(),
+            nonDedPic: null,
+            sortKey: toMinJS(h.startTime)
+          });
         });
-      }else{
-        s.hosts.forEach(h=>{
-          if(!h.picData||h.picData==="-")return;
-          const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
-          const shift=getShift(endStr);if(shift==="malam")return;
-          const key=`${shift}-${h.picData}`;if(seen.has(key))return;seen.add(key);
-          slots.push({type:"shift",label:shift.toUpperCase(),pic:h.picData.trim(),sortKey:shift==="pagi"?0:1});
+      } else {
+        // ── Brand lain: "dedicated / non-dedicated" per shift ──
+        s.hosts.forEach(h => {
+          if (!h.picData || h.picData === "-") return;
+          const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+          const shift  = getShift(endStr);
+          if (shift === "malam") return;
+
+          const shiftKey = `${shift}-${h.picData.trim().toLowerCase()}`;
+          if (seenKey.has(shiftKey)) return; seenKey.add(shiftKey);
+
+          // Cari non-dedicated backup dari shift yang sama
+          let nonDedPic = null;
+          for (const nd of nonDedByShift[shift]) {
+            if (!usedNonDed[shift].has(nd.toLowerCase())) {
+              nonDedPic = nd;
+              usedNonDed[shift].add(nd.toLowerCase());
+              break;
+            }
+          }
+
+          slots.push({
+            type: "shift",
+            label: shift.toUpperCase(),
+            pic: h.picData.trim(),
+            nonDedPic,
+            sortKey: shift === "pagi" ? 0 : 1
+          });
         });
       }
     });
-    slots.sort((a,b)=>a.sortKey-b.sortKey);
-    return{key:b.key,slots};
-  }).filter(b=>b.slots.length>0);
+
+    slots.sort((a,b) => a.sortKey - b.sortKey);
+    return { key: b.key, slotFormat: b.slotFormat, slots };
+  }).filter(b => b.slots.length > 0);
 }
+
+
 
 function renderStandby(){
   const container=document.getElementById("schedule-list");
@@ -527,11 +583,21 @@ function renderStandby(){
     });
     html+=`</div>`;
   });
-  standbyList.forEach(b=>{
-    html+=`<div class="standby-brand-card"><div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
-    b.slots.forEach(slot=>{html+=`<div class="standby-row"><span class="standby-time">${slot.label}</span><span class="standby-pic">${formatPic(slot.pic)}</span></div>`;});
-    html+=`</div>`;
+  standbyList.forEach(b => {
+  html += `<div class="standby-brand-card">
+    <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
+  b.slots.forEach(slot => {
+    const picDisp    = formatPic(slot.pic);
+    // Format: "dedicated / non-dedicated" kalau ada
+    const nonDedDisp = slot.nonDedPic ? ` / ${formatPic(slot.nonDedPic)}` : "";
+    html += `<div class="standby-row">
+      <span class="standby-time">${slot.label}</span>
+      <span class="standby-pic">${picDisp}${nonDedDisp}</span>
+    </div>`;
   });
+  html += `</div>`;
+});
+
   html+=`<div class="standby-section"><div class="standby-label">📋 PROSEDUR</div><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
 2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
 3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div></div>`;
