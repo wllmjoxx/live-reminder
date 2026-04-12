@@ -1,35 +1,80 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
 
-// ── CONFIG: sesuaikan mention per nama PIC ───
-// key = nama di DC sheet (lowercase), value = mention display
 const PIC_MENTIONS = {
-  "jonathan"  : "@jonathan",
-  "tyo"       : "@Tyo Sirclo",
-  "hamzah"    : "@Hamzah Sirclo",
-  "hanif"     : "@Hanif Sirclo",
-  "riva"      : "@Riva Sirclo",
-  "ferry"     : "@Ferry Sirclo",
-  "bernhard"  : "@Bernhard Sirclo",
-  "leleng"    : "@Leleng Sirclo",
-  "nadiem"    : "@Nadiem Sirclo",
-  "fadhil"    : "@Fadhil Sirclo",
-  "imam"      : "@Imam Sirclo",
-  "eric"      : "@Eric Sirclo",
-  "rizky"     : "@Rizky Sirclo",
-  "yohan"     : "@Yohan Sirclo",
-  "septian"   : "@Septian Sirclo",
-  "agung"     : "@Agung Sirclo",
-  "apri"      : "@Mas Apri",
-  "maulidan"  : "@Maul Sirclo",
-  "arbi"      : "@Arbi Intern Sirclo",
-  "afdal"     : "@Afdal Sirclo",
-  "roiisul"   : "@Roiisul Sirclo",
-  "rakha"     : "@Rakha Sirclo",
-  "isaac"     : "@Isaac Sirclo",
+  "jonathan" : "@jonathan",  "tyo"      : "@Tyo",
+  "hamzah"   : "@Hamzah",    "hanif"    : "@Hanif",
+  "riva"     : "@Riva",      "ferry"    : "@Ferry",
+  "bernhard" : "@Bernhard",  "leleng"   : "@Leleng",
+  "nadiem"   : "@Nadiem",    "fadhil"   : "@Fadhil",
+  "imam"     : "@Imam",      "eric"     : "@Eric",
+  "rizky"    : "@Rizky",     "yohan"    : "@Yohan",
+  "septian"  : "@Septian",   "agung"    : "@Agung",
+  "apri"     : "@Apri",      "maulidan" : "@Maul",
+  "arbi"     : "@Arbi",      "afdal"    : "@Afdal",
+  "roiisul"  : "@Roiisul",   "rakha"    : "@Rakha",
+  "isaac"    : "@Isaac",     "raffyco"  : "@Raffyco",
+  "luthfi rizal" : "@Luthfi Rizal",
 };
 
 const MAX_STUDIO_PER_PIC = 2;
+const MAX_OPERATOR_DIST  = 4; // ← naik dari 3 ke 4 (Eric bisa reach Studio 19)
 
+const LSC_NAMES_SET = new Set(["jonathan", "hamzah", "tyo", "hanif"]);
+const DEDICATED_OPS = ["arbi", "agung", "raffyco", "isaac", "roiisul", "eric"];
+
+const MANDATORY_STUDIOS = {
+  2  : ["agung", "arbi", "raffyco"],
+  29 : ["roiisul", "eric", "isaac"],
+};
+
+// ── DENAH STUDIO ─────────────────────────────
+const STUDIO_PHYSICAL = {};
+[1,2,3,5].forEach((s,i)                        => STUDIO_PHYSICAL[s] = {c:"entrance", p:i});
+[6,7,8,9,10,11,12,15].forEach((s,i)            => STUDIO_PHYSICAL[s] = {c:"A",  p:i});
+[16,17,18,19,20,21,22,23,25].forEach((s,i)     => STUDIO_PHYSICAL[s] = {c:"B1", p:i});
+[26,27,28,29,30,31,32].forEach((s,i)           => STUDIO_PHYSICAL[s] = {c:"B2", p:i});
+
+function physicalDist(a, b) {
+  if (a === b) return 0;
+  const pA = STUDIO_PHYSICAL[a], pB = STUDIO_PHYSICAL[b];
+  if (!pA || !pB) return 99;
+  if (pA.c === pB.c) return Math.abs(pA.p - pB.p);
+
+  if (pA.c === "B1" && pB.c === "B2") return Math.abs(pA.p - (pB.p + 4));
+  if (pA.c === "B2" && pB.c === "B1") return Math.abs((pA.p + 4) - pB.p);
+
+  if ((pA.c === "entrance" && pB.c === "A") || (pA.c === "A" && pB.c === "entrance"))
+    return 1 + Math.abs(pA.p - pB.p);
+
+  if ((pA.c === "entrance" && pB.c === "B1") || (pA.c === "B1" && pB.c === "entrance")) {
+    const eP  = pA.c === "entrance" ? pA.p : pB.p;
+    const b1P = pA.c === "B1"       ? pA.p : pB.p;
+    return Math.abs(eP - 3) + Math.abs(b1P - 8) + 1;
+  }
+
+  if ((pA.c === "A" && pB.c === "B1") || (pA.c === "B1" && pB.c === "A"))
+    return 4 + Math.abs(pA.p - pB.p);
+
+  return 10;
+}
+
+// ── DEDICATED ZONES ───────────────────────────
+const DEDICATED_ZONE_A = new Set([1, 2, 3, 5, 6, 7]);
+// ← 19 ditambah, 22 & 23 dikeluarkan (biar Eric bisa ke 19, dan 22/23 jadi regular)
+const DEDICATED_ZONE_B = new Set([19, 20, 21, 25, 26, 27, 28, 29, 30, 31, 32]);
+
+const DEDICATED_HOME = {
+  "agung": 2, "arbi": 2, "raffyco": 2,
+  "roiisul": 29, "eric": 29, "isaac": 29,
+};
+
+function getDedicatedGroup(studioN) {
+  if (DEDICATED_ZONE_A.has(studioN)) return ["agung", "arbi", "raffyco"];
+  if (DEDICATED_ZONE_B.has(studioN)) return ["roiisul", "eric", "isaac"];
+  return null;
+}
+
+// ─────────────────────────────────────────────
 let sessions       = [];
 let scheduledTasks = [];
 let swRegistration = null;
@@ -41,16 +86,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   await registerSW();
   await requestNotifPermission();
   await loadSchedule();
-  setInterval(loadSchedule, 5 * 60 * 1000);
+  setInterval(loadSchedule, 5 * 120 * 1000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") loadSchedule();
+  });
+  window.addEventListener("pageshow", e => {
+    if (e.persisted) loadSchedule();
+  });
 });
 
-// ── SERVICE WORKER ───────────────────────────
 async function registerSW() {
   if ("serviceWorker" in navigator)
     swRegistration = await navigator.serviceWorker.register("/sw.js");
 }
 
-// ── NOTIF PERMISSION ─────────────────────────
 async function requestNotifPermission() {
   if (!("Notification" in window)) return false;
   if (Notification.permission === "granted") return true;
@@ -62,8 +112,19 @@ async function requestNotifPermission() {
   return r === "granted";
 }
 
-// ── LOAD JADWAL ──────────────────────────────
 async function loadSchedule() {
+  if (!sessions.length) {
+    try {
+      const cached = localStorage.getItem("lastSchedule");
+      if (cached) {
+        const data = JSON.parse(cached);
+        sessions = data.sessions.map(s => { s.isMarathon = s.hosts.length > 1; return s; });
+        renderTab(activeTab);
+        updateStats();
+      }
+    } catch(e) {}
+  }
+
   showLoading(true);
   try {
     const res  = await fetch(API_URL + "?t=" + Date.now());
@@ -71,11 +132,8 @@ async function loadSchedule() {
     const data = JSON.parse(text);
     if (!data.success) throw new Error(data.error);
 
-    sessions = data.sessions.map(s => {
-      s.isMarathon = s.hosts.length > 1;
-      return s;
-    });
-
+    localStorage.setItem("lastSchedule", JSON.stringify(data));
+    sessions = data.sessions.map(s => { s.isMarathon = s.hosts.length > 1; return s; });
     renderTab(activeTab);
     cancelAllScheduled();
     scheduleAllNotifications(sessions);
@@ -87,7 +145,6 @@ async function loadSchedule() {
   showLoading(false);
 }
 
-// ── TAB ──────────────────────────────────────
 function switchTab(tab) {
   activeTab = tab;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -101,7 +158,6 @@ function renderTab(tab) {
   if (tab === "single")   renderSingle();
 }
 
-// ── FORMAT PIC MENTION ────────────────────────
 function formatPic(rawName) {
   if (!rawName || rawName === "-" || rawName === "") return "LSC";
   const key    = rawName.trim().toLowerCase();
@@ -109,38 +165,229 @@ function formatPic(rawName) {
   return mapped || ("@" + rawName.trim());
 }
 
-// ── ASSIGN PIC — max 2 per pic, end priority ──
-// Modifies .assignedPic on each session object
-function assignPics(starts, ends) {
-  const picCount = {}; // rawName -> count
-
-  function tryAssign(s, rawPic) {
-    if (!rawPic || rawPic === "-" || rawPic === "") {
-      s.assignedPic = "LSC"; return;
-    }
-    const key = rawPic.trim().toLowerCase();
-    if (!picCount[key]) picCount[key] = 0;
-    if (picCount[key] < MAX_STUDIO_PER_PIC) {
-      picCount[key]++;
-      s.assignedPic = formatPic(rawPic);
-    } else {
-      s.assignedPic = "LSC";
-    }
-  }
-
-  // Tentukan prioritas: banyak mana?
-  const endFirst = ends.length >= starts.length;
-
-  if (endFirst) {
-    ends.forEach(s   => tryAssign(s, s.picStudioEnd || s.picStudio));
-    starts.forEach(s => tryAssign(s, s.picStudio));
-  } else {
-    starts.forEach(s => tryAssign(s, s.picStudio));
-    ends.forEach(s   => tryAssign(s, s.picStudioEnd || s.picStudio));
-  }
+function getShift(timeStr) {
+  if (!timeStr || timeStr === "-" || timeStr === "23:59/00:00") return "siang";
+  const [h, m] = timeStr.split(":").map(Number);
+  if (h === 0 && m === 0) return "siang";
+  if (h < 8)  return "malam";
+  if (h < 16) return "pagi";
+  return "siang";
 }
 
-// ── TAB 1: MARATHON ──────────────────────────
+function getAvailableOps(sessions, eventTimeStr) {
+  const eventShift = getShift(eventTimeStr === "23:59/00:00" ? "23:59" : eventTimeStr);
+  let tEvent;
+  if (eventTimeStr === "23:59/00:00") {
+    tEvent = 23 * 60 + 59;
+  } else {
+    const [h, m] = (eventTimeStr || "0:0").split(":").map(Number);
+    tEvent = (h === 0 && m === 0) ? 24 * 60 : h * 60 + m;
+  }
+
+  const available = new Set();
+  sessions.forEach(s => {
+    (s.hosts || []).forEach(h => {
+      if (!h.picData || h.picData === "-") return;
+
+      // Shift operator ditentukan dari jam END (sesuai rule user)
+      // end ≥ 16:00 → siang, end < 16:00 → pagi
+      const endStr    = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+      const hostShift = getShift(endStr);
+      if (hostShift !== eventShift) return;
+
+      const [sh, sm] = (h.startTime || "99:99").split(":").map(Number);
+      const tStart    = sh * 60 + sm;
+      const [eh, em]  = endStr.split(":").map(Number);
+      let tEnd = eh * 60 + em;
+      if (tEnd === 0) tEnd = 24 * 60;
+      if (tEnd <= tStart) tEnd += 24 * 60;
+
+      if (tStart <= tEvent && tEvent <= tEnd) {
+        available.add(h.picData.trim().toLowerCase());
+      }
+    });
+  });
+  return available;
+}
+
+
+// ── ASSIGN PICS ───────────────────────────────
+function assignPics(starts, ends, validPics = null) {
+  const picCount    = {};
+  const picRawNames = {};
+  const picStudios  = {};
+
+  function isCoord(name) {
+    if (!name || name === "-" || name === "") return true;
+    return LSC_NAMES_SET.has(name.trim().toLowerCase());
+  }
+
+  function sNum(s) {
+    const m = String(s.studio || "").match(/\d+/);
+    return m ? parseInt(m[0]) : 99;
+  }
+
+  function isInShift(key) {
+    if (!validPics) return true;
+    return validPics.has(key);
+  }
+
+  function reg(rawName) {
+    if (!rawName || isCoord(rawName)) return;
+    const key = rawName.trim().toLowerCase();
+    if (picCount[key] === undefined) picCount[key] = 0;
+    if (!picRawNames[key]) picRawNames[key] = rawName;
+  }
+
+  function assignKey(key, s) {
+    picCount[key]++;
+    if (!picStudios[key]) picStudios[key] = [];
+    picStudios[key].push(sNum(s));
+    s.assignedPic = formatPic(picRawNames[key] || key);
+  }
+
+  function opDistTo(key, studioN) {
+    const assigned = picStudios[key] || [];
+    if (assigned.length === 0) return 0;
+    return Math.min(...assigned.map(s => physicalDist(s, studioN)));
+  }
+
+  function findMandatory(studioN) {
+    const group = MANDATORY_STUDIOS[studioN];
+    if (!group) return null;
+    for (const name of group) {
+      const key = name.toLowerCase();
+      if (!isInShift(key)) continue;
+      if ((picCount[key] || 0) < MAX_STUDIO_PER_PIC) return key;
+    }
+    return null;
+  }
+
+  function findDedicatedInGroup(group, studioN) {
+    for (const name of group) {
+      const key = name.toLowerCase();
+      if (!isInShift(key)) continue;
+      if ((picCount[key] || 0) >= MAX_STUDIO_PER_PIC) continue;
+      if (opDistTo(key, studioN) > MAX_OPERATOR_DIST) continue;
+      return key;
+    }
+    return null;
+  }
+
+  function findIdle(excludeKey = null) {
+    for (const [key, count] of Object.entries(picCount)) {
+      if (key === excludeKey) continue;
+      if (!isInShift(key)) continue;
+      if (DEDICATED_OPS.includes(key)) continue;
+      if (count === 0) return key;
+    }
+    return null;
+  }
+
+  function findBetterOp(studioN, excludeKey) {
+    const idle = findIdle(excludeKey);
+    if (idle) return idle;
+
+    const excludeDist = opDistTo(excludeKey, studioN);
+    let bestKey = null, bestDist = Infinity;
+    for (const [key, count] of Object.entries(picCount)) {
+      if (key === excludeKey) continue;
+      if (!isInShift(key)) continue;
+      if (DEDICATED_OPS.includes(key)) continue;
+      if (count >= MAX_STUDIO_PER_PIC) continue;
+      const assigned = picStudios[key] || [];
+      if (assigned.length === 0) continue;
+      const dist = Math.min(...assigned.map(s => physicalDist(s, studioN)));
+      if (dist < excludeDist && dist < bestDist) { bestDist = dist; bestKey = key; }
+    }
+    return bestKey;
+  }
+
+  function doAssign(s, rawPic) {
+    const studioN  = sNum(s);
+    const dedGroup = getDedicatedGroup(studioN);
+
+    // ── MANDATORY ─────────────────────────────────
+    if (MANDATORY_STUDIOS[studioN]) {
+      const mandKey = findMandatory(studioN);
+      if (mandKey) assignKey(mandKey, s);
+      else s.assignedPic = "LSC";
+      return;
+    }
+
+    // ── ZONA DEDICATED: dedicated → idle → LSC ────
+    // ← DIUBAH: dedicated dulu, baru idle
+    if (dedGroup) {
+      // 1. Dedicated dari grup zona (dalam jarak fisik)
+      const ded = findDedicatedInGroup(dedGroup, studioN);
+      if (ded) { assignKey(ded, s); return; }
+
+      // 2. Idle non-ded (kalau dedicated tidak tersedia/penuh)
+      const idle = findIdle();
+      if (idle) { assignKey(idle, s); return; }
+
+      // 3. LSC
+      s.assignedPic = "LSC";
+      return;
+    }
+
+    // ── STUDIO BIASA: data PIC → idle/dekat → LSC ──
+    if (!isCoord(rawPic)) {
+      const key = rawPic.trim().toLowerCase();
+      if (picCount[key] === undefined) picCount[key] = 0;
+
+      if (picCount[key] === 0) {
+        assignKey(key, s); return;
+      }
+
+      if (picCount[key] === 1) {
+        const better = findBetterOp(studioN, key);
+        if (better) { assignKey(better, s); return; }
+        assignKey(key, s); return;
+      }
+    }
+
+    // Fallback
+    const idle = findIdle();
+    if (idle) { assignKey(idle, s); return; }
+    for (const [key, count] of Object.entries(picCount)) {
+      if (!isInShift(key) || DEDICATED_OPS.includes(key)) continue;
+      if (count < MAX_STUDIO_PER_PIC) { assignKey(key, s); return; }
+    }
+    s.assignedPic = "LSC";
+  }
+
+  [...starts, ...ends].forEach(s => reg(s.picForEvent || "-"));
+  DEDICATED_OPS.forEach(name => {
+    if (!validPics || validPics.has(name.toLowerCase())) reg(name);
+  });
+
+  function sortMandatoryFirst(list) {
+  return [...list].sort((a, b) => {
+    const aN = sNum(a), bN = sNum(b);
+
+    // 1. Mandatory dulu
+    const aM = !!MANDATORY_STUDIOS[aN];
+    const bM = !!MANDATORY_STUDIOS[bN];
+    if (aM !== bM) return aM ? -1 : 1;
+
+    // 2. Zone B → Zone A → Regular
+    // (dedicated zones diproses dulu biar idle operator hemat untuk zona yg tepat)
+    const aZone = DEDICATED_ZONE_B.has(aN) ? 0 : DEDICATED_ZONE_A.has(aN) ? 1 : 2;
+    const bZone = DEDICATED_ZONE_B.has(bN) ? 0 : DEDICATED_ZONE_A.has(bN) ? 1 : 2;
+    if (aZone !== bZone) return aZone - bZone;
+
+    // 3. By studio number
+    return aN - bN;
+  });
+}
+
+
+  sortMandatoryFirst(ends).forEach(s   => doAssign(s, s.picForEvent || "-"));
+  sortMandatoryFirst(starts).forEach(s => doAssign(s, s.picForEvent || "-"));
+}
+
+// ── MARATHON ──────────────────────────────────
 function renderMarathon() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
@@ -151,14 +398,23 @@ function renderMarathon() {
     return;
   }
 
-  list.forEach(s => {
-    const curIdx = getCurrentHostIdx(s);
-    const card   = document.createElement("div");
-    card.className = "marathon-session-card";
+  const now = Date.now();
 
+  list.forEach(s => {
+    const curIdx  = getCurrentHostIdx(s);
+    let endMs     = timeToMs(s.date, s.endTime);
+    const startMs = timeToMs(s.date, s.startTime);
+    if (endMs && startMs && endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
+    const isEnded = endMs ? now > endMs : false;
+
+    const card = document.createElement("div");
+    card.className = `marathon-session-card ${isEnded ? "ms-ended" : ""}`;
     card.innerHTML = `
       <div class="ms-header">
-        <div class="ms-brand">🏃 ${s.brand}</div>
+        <div class="ms-brand">
+          🏃 ${s.brand}
+          ${isEnded ? `<span class="ended-badge">✓ ENDED</span>` : ""}
+        </div>
         <div class="ms-meta">
           <span class="badge marketplace">${s.marketplace}</span>
           <span class="badge studio">${s.studio}</span>
@@ -172,9 +428,9 @@ function renderMarathon() {
 
     const hostContainer = card.querySelector(`#msh-${s.idLine || s.skpId}`);
     s.hosts.forEach((h, hi) => {
-      const isCurrent = hi === curIdx;
-      const isNext    = hi === curIdx + 1;
-      const isPast    = curIdx >= 0 && hi < curIdx;
+      const isCurrent  = !isEnded && hi === curIdx;
+      const isNext     = !isEnded && hi === curIdx + 1;
+      const isPast     = isEnded || (curIdx >= 0 && hi < curIdx);
 
       const row = document.createElement("div");
       row.className = `host-row ${isCurrent ? "host-current" : ""} ${isNext ? "host-next" : ""} ${isPast ? "host-past" : ""}`;
@@ -190,6 +446,7 @@ function renderMarathon() {
             ${h.host}
             ${isCurrent ? `<span class="live-badge">● LIVE</span>` : ""}
             ${isNext    ? `<span class="next-badge">NEXT</span>`   : ""}
+            ${isEnded && hi === s.hosts.length - 1 ? `<span class="ended-host-badge">✓ selesai</span>` : ""}
           </div>
           <div class="hr-pic">🧑‍💼 PIC: ${h.picData || "-"}</div>
         </div>`;
@@ -198,7 +455,7 @@ function renderMarathon() {
   });
 }
 
-// ── TAB 2: TIMELINE (Start/End + PIC) ────────
+// ── TIMELINE ──────────────────────────────────
 function renderTimeline() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
@@ -209,21 +466,26 @@ function renderTimeline() {
   }
 
   const events = {};
-
   sessions.forEach(s => {
+    const firstPic = s.hosts?.[0]?.picData || "-";
+    const lastPic  = s.hosts?.[s.hosts.length - 1]?.picData || "-";
+
     if (s.startTime && s.startTime !== "-") {
       if (!events[s.startTime]) events[s.startTime] = { starts: [], ends: [] };
-      events[s.startTime].starts.push(Object.assign({}, s));
+      events[s.startTime].starts.push({ ...s, picForEvent: firstPic });
     }
     if (s.endTime && s.endTime !== "-") {
       const endKey = (s.endTime === "00:00" || s.endTime === "23:59")
         ? "23:59/00:00" : s.endTime;
       if (!events[endKey]) events[endKey] = { starts: [], ends: [] };
-      events[endKey].ends.push(Object.assign({}, s));
+      events[endKey].ends.push({ ...s, picForEvent: lastPic });
     }
   });
 
-  Object.values(events).forEach(ev => assignPics(ev.starts, ev.ends));
+  Object.entries(events).forEach(([time, ev]) => {
+    const validPics = getAvailableOps(sessions, time);
+    assignPics(ev.starts, ev.ends, validPics);
+  });
 
   const sorted = Object.keys(events).sort((a, b) => {
     const toMin = t => {
@@ -235,7 +497,7 @@ function renderTimeline() {
   });
 
   sorted.forEach(time => {
-    const ev = events[time];
+    const ev          = events[time];
     const displayTime = time === "23:59/00:00" ? "23:59 / 00:00" : time;
 
     if (ev.starts.length) {
@@ -256,19 +518,17 @@ function renderTimeline() {
   });
 }
 
-
 function makeTimelineCard(s, num, mode) {
-  const now     = Date.now();
-  const startMs = timeToMs(s.date, s.startTime);
-  const isPast  = startMs && startMs < now;
-  const isSoon  = startMs && (startMs - now) < 15 * 60 * 1000 && !isPast;
-  const picLabel = s.assignedPic || "LSC";
-  const isLSC   = picLabel === "LSC";
+  const now       = Date.now();
+  const startMs   = timeToMs(s.date, s.startTime);
+  const isPast    = startMs && startMs < now;
+  const isSoon    = startMs && (startMs - now) < 15 * 60 * 1000 && !isPast;
+  const picLabel  = s.assignedPic || "LSC";
+  const isLSC     = picLabel === "LSC";
   const firstHost = s.hosts?.[0]?.host || "-";
 
   const card = document.createElement("div");
   card.className = `session-card ${isPast ? "past" : ""} ${isSoon ? "soon" : ""} ${s.isMarathon ? "marathon-card" : ""}`;
-
   card.innerHTML = `
     <div class="session-num">${num}</div>
     <div class="session-info">
@@ -285,12 +545,9 @@ function makeTimelineCard(s, num, mode) {
       <div class="session-host">👤 ${firstHost}</div>
     </div>
     <div class="session-pic-right ${isLSC ? "lsc" : ""}">${picLabel}</div>`;
-
   return card;
 }
 
-
-// ── TAB 3: SINGLE ────────────────────────────
 function renderSingle() {
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
@@ -301,15 +558,11 @@ function renderSingle() {
     return;
   }
 
-  // Flat list, no dropdown
   const copies = list.map(s => Object.assign({}, s));
   assignPics(copies, []);
   copies.forEach((s, i) => container.appendChild(makeTimelineCard(s, i + 1, "start")));
 }
 
-
-
-// ── STATS ─────────────────────────────────────
 function updateStats() {
   const m  = sessions.filter(s => s.isMarathon).length;
   const sg = sessions.filter(s => !s.isMarathon).length;
@@ -318,48 +571,33 @@ function updateStats() {
   document.getElementById("stat-single").textContent   = sg;
 }
 
-// ── NOTIFIKASI — batch per jam ─────────────────
 function scheduleAllNotifications(list) {
   const now = Date.now();
   let count = 0;
 
   const startGroups = {};
-  const endGroups   = {};
-
   list.forEach(s => {
     if (s.startTime && s.startTime !== "-") {
       if (!startGroups[s.startTime]) startGroups[s.startTime] = [];
       startGroups[s.startTime].push(s);
-    }
-    if (s.endTime && s.endTime !== "-") {
-      if (!endGroups[s.endTime]) endGroups[s.endTime] = [];
-      endGroups[s.endTime].push(s);
     }
   });
 
   Object.entries(startGroups).forEach(([time, group]) => {
     const startMs = timeToMs(group[0].date, time);
     if (!startMs) return;
-    [[60, "🔔 1 JAM LAGI"], [10, "⏰ 10 MENIT LAGI"], [5, "🚨 5 MENIT LAGI"]].forEach(([min, prefix]) => {
+
+    const reminders = [
+      { min: 60, prefix: "🔔 SETUP",         urgent: false },
+      { min: 10, prefix: "⏰ 10 MENIT LAGI", urgent: false },
+      { min: 5,  prefix: "🚨 5 MENIT LAGI",  urgent: true  },
+    ];
+
+    reminders.forEach(({ min, prefix, urgent }) => {
       const t = startMs - min * 60 * 1000;
       if (t > now) {
         scheduledTasks.push(setTimeout(() =>
-          fireGroupNotif(`${prefix} — START ${time}`, group, "start"), t - now));
-        count++;
-      }
-    });
-  });
-
-  Object.entries(endGroups).forEach(([time, group]) => {
-    let endMs = timeToMs(group[0].date, time);
-    const sMs = timeToMs(group[0].date, group[0].startTime);
-    if (endMs && sMs && endMs <= sMs) endMs += 24 * 60 * 60 * 1000;
-    if (!endMs) return;
-    [[10, "⏰ 10 MENIT LAGI"], [5, "🚨 5 MENIT LAGI"]].forEach(([min, prefix]) => {
-      const t = endMs - min * 60 * 1000;
-      if (t > now) {
-        scheduledTasks.push(setTimeout(() =>
-          fireGroupNotif(`${prefix} — END ${time}`, group, "end"), t - now));
+          fireGroupNotif(`${prefix} — START ${time}`, group, "start", urgent), t - now));
         count++;
       }
     });
@@ -368,33 +606,29 @@ function scheduleAllNotifications(list) {
   document.getElementById("notif-count").textContent = `🔔 ${count} notif terjadwal hari ini`;
 }
 
+
 function cancelAllScheduled() {
   scheduledTasks.forEach(id => clearTimeout(id));
   scheduledTasks = [];
 }
 
-function fireGroupNotif(title, group, type) {
+function fireGroupNotif(title, group, type, urgent = false) {
   const lines = group.map((s, i) => {
     const h    = type === "start" ? s.hosts?.[0] : s.hosts?.[s.hosts.length - 1];
-    const host = h?.host || "-";
-    const pic  = formatPic(type === "start" ? s.picStudio : (s.picStudioEnd || s.picStudio));
-    const line = type === "start"
+    const host = h?.host    || "-";
+    const pic  = h?.picData ? formatPic(h.picData) : "LSC";
+    return type === "start"
       ? `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
       : `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
-    return line;
   });
 
   const body = lines.join("\n");
-  const tag  = `grp-${type}-${title}`;
+  const tag  = `grp-${type}-${title}-${Date.now()}`;
 
-  if (swRegistration) {
-    navigator.serviceWorker.controller?.postMessage({ type: "SHOW_NOTIFICATION", title, body, tag });
-  } else if (Notification.permission === "granted") {
-    new Notification(title, { body, tag });
-  }
+  sendNotification(title, body, tag, urgent);
 }
 
-// ── HELPERS ───────────────────────────────────
+
 function getCurrentHostIdx(session) {
   const now = Date.now();
   for (let i = 0; i < session.hosts.length; i++) {

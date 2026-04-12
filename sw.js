@@ -1,10 +1,8 @@
-const CACHE_NAME = "live-reminder-v1";
+const CACHE_NAME = "live-reminder-v3";
 const ASSETS = ["/", "/index.html", "/app.js", "/manifest.json"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
   self.skipWaiting();
 });
 
@@ -18,20 +16,25 @@ self.addEventListener("activate", e => {
 });
 
 self.addEventListener("fetch", e => {
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
-  );
+  if (e.request.url.includes("script.google.com")) {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
+  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
 });
 
+// Tampilkan notifikasi dari app
 self.addEventListener("message", e => {
   if (e.data?.type === "SHOW_NOTIFICATION") {
-    const { title, body, tag } = e.data;
+    const { title, body, tag, urgent } = e.data;
     self.registration.showNotification(title, {
       body,
       tag,
-      icon: "/icon-192.png",
-      vibrate: [200, 100, 200],
-      requireInteraction: false
+      icon         : "/icon-192.png",
+      badge        : "/icon-192.png",
+      vibrate      : urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
+      requireInteraction: urgent || false,
+      silent       : false,
     });
   }
 });

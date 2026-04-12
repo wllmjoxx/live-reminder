@@ -176,6 +176,17 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
     .empty { text-align: center; padding: 40px 20px; color: #334155; font-size: 0.88rem; }
+    .ms-ended { 
+  border-color: #334155 !important;
+  background: #111827 !important;
+}
+.ms-ended .ms-brand { color: #64748b; }
+.ms-ended .ms-time  { color: #475569; }
+.ms-ended .badge    { opacity: 0.5; }
+.actions    { padding: 3px 12px 6px; display: flex; gap: 6px; }
+.btn-refresh { flex: 1; padding: 7px; border: none; border-radius: 8px; background: #1e3a5f; color: #93c5fd; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+.btn-test    { flex: 1; padding: 7px; border: none; border-radius: 8px; background: #064e3b; color: #6ee7b7; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+
   </style>
 </head>
 <body>
@@ -213,9 +224,12 @@
   </div>
 
   <div class="actions">
-    <button class="btn-refresh" onclick="loadSchedule()">🔄 Refresh</button>
-  </div>
+  <button class="btn-refresh" onclick="loadSchedule()">🔄 Refresh</button>
+  <button class="btn-test"    onclick="testNotification()">🔔 Test Notif</button>
 </div>
+</div>
+
+
 
 <!-- ── SCROLLABLE ── -->
 <div id="main-content">
