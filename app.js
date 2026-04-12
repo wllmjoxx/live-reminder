@@ -271,18 +271,30 @@ function assignPics(starts,ends,validPics=null){
       const idle=findIdle();if(idle){assignKey(idle,s);return;}
       s.assignedPic="LSC";return;
     }
-    if(!isCoord(rawPic)){
-      const key=rawPic.trim().toLowerCase();
-      if(picCount[key]===undefined)picCount[key]=0;
-      if(picCount[key]===0){assignKey(key,s);return;}
-      if(picCount[key]===1){const b=findBetter(n,key);if(b){assignKey(b,s);return;}assignKey(key,s);return;}
+    // ── STUDIO BIASA: data PIC (harus sesuai shift) ──
+if(!isCoord(rawPic)){
+  const key=rawPic.trim().toLowerCase();
+  if(picCount[key]===undefined)picCount[key]=0;
+
+  // Hanya pakai data PIC jika sesuai shift
+  if(isInShift(key)){
+    if(picCount[key]===0){assignKey(key,s);return;}
+    if(picCount[key]===1){
+      const better=findBetter(n,key);
+      if(better){assignKey(better,s);return;}
+      assignKey(key,s);return;
     }
-    const idle=findIdle();if(idle){assignKey(idle,s);return;}
-    for(const[k,c]of Object.entries(picCount)){
-      if(!isInShift(k)||DEDICATED_OPS.includes(k))continue;
-      if(c<MAX_STUDIO_PER_PIC){assignKey(k,s);return;}
-    }
-    s.assignedPic="LSC";
+  }
+  // Data PIC beda shift / max → fall through ke fallback
+}
+const idle=findIdle();
+if(idle){assignKey(idle,s);return;}
+for(const[k,c]of Object.entries(picCount)){
+  if(!isInShift(k)||DEDICATED_OPS.includes(k))continue;
+  if(c<MAX_STUDIO_PER_PIC){assignKey(k,s);return;}
+}
+s.assignedPic="LSC";
+
   };
 
   [...starts,...ends].forEach(s=>reg(s.picForEvent||"-"));
@@ -404,14 +416,15 @@ function renderTimeline(){
 
 function makeTimelineCard(s,num,mode,eventTime=null){
   const now=Date.now();
-  // Gunakan jam EVENT (bukan jam start sesi) untuk cek apakah sudah lewat
   const checkTime=eventTime||s.startTime;
-  // Handle "23:59/00:00" — jangan dianggap lewat
-  const eventMs = checkTime==="23:59/00:00" ? null : timeToMs(s.date,checkTime);
+  const eventMs=checkTime==="23:59/00:00"?null:timeToMs(s.date,checkTime);
   const isPast=eventMs&&eventMs<now;
   const isSoon=eventMs&&(eventMs-now)<15*60*1000&&!isPast;
-
   const picLabel=s.assignedPic||"LSC";
+  const isLSC=picLabel==="LSC";
+  const firstHost=s.hosts?.[0]?.host||"-";
+  const isSingle=mode==="single"; // ← tampilkan jam di single tab
+
   const card=document.createElement("div");
   card.className=`session-card ${isPast?"past":""} ${isSoon?"soon":""} ${s.isMarathon?"marathon-card":""}`;
   card.innerHTML=`
@@ -424,11 +437,13 @@ function makeTimelineCard(s,num,mode,eventTime=null){
         <span class="badge marketplace">${s.marketplace}</span>
         <span class="badge studio">${s.studio}</span>
       </div>
-      <div class="session-host">👤 ${s.hosts?.[0]?.host||"-"}</div>
+      <div class="session-host">👤 ${firstHost}</div>
+      ${isSingle?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
     </div>
-    <div class="session-pic-right ${picLabel==="LSC"?"lsc":""}">${picLabel}</div>`;
+    <div class="session-pic-right ${isLSC?"lsc":""}">${picLabel}</div>`;
   return card;
 }
+
 
 
 function renderSingle(){
@@ -438,7 +453,7 @@ function renderSingle(){
   if(!list.length){container.innerHTML=`<div class="empty">📭 Tidak ada sesi single</div>`;return;}
   const copies=list.map(s=>Object.assign({},s));
   assignPics(copies,[]);
-  copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"start")));
+  copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"single")));
 }
 
 const STANDBY_BRANDS=[
@@ -559,58 +574,93 @@ function showNotifPanel(){
   if(panel.style.display!=="none"){panel.style.display="none";return;}
   const now=Date.now(),list=document.getElementById("notif-time-list");
   list.innerHTML="";
-  const times=new Set();
-  sessions.forEach(s=>{if(s.startTime&&s.startTime!=="-")times.add(s.startTime);});
-  [...times].sort().forEach(time=>{
-    const ms=timeToMs(sessions[0]?.date,time);if(!ms)return;
-    const diff=ms-now;if(diff<-60*60*1000)return;
+
+  const startTimes=new Set(), endTimes=new Set();
+  sessions.forEach(s=>{
+    if(s.startTime&&s.startTime!=="-")startTimes.add(s.startTime);
+    if(s.endTime&&s.endTime!=="-")endTimes.add(s.endTime);
+  });
+
+  const makeBtn=(time,type)=>{
+    const ms=timeToMs(sessions[0]?.date,time);
+    if(!ms)return;
+    const diff=ms-now;
+    if(diff<-60*60*1000)return;
     const diffMin=Math.round(diff/60000);
     const btn=document.createElement("button");
     btn.className="notif-time-btn";
-    btn.textContent=time+(diffMin>0?` (+${diffMin}m)`:" (lewat)");
-    btn.onclick=()=>sendManualNotifFor(time);
+    btn.style.background=type==="start"?"#1e3a5f":"#2d0d0d";
+    btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
+    btn.onclick=()=>sendManualNotifFor(time,type);
     list.appendChild(btn);
-  });
+  };
+
+  [...startTimes].sort().forEach(t=>makeBtn(t,"start"));
+  [...endTimes].sort().forEach(t=>makeBtn(t,"end"));
+
   panel.style.display="block";
 }
 
 function closeNotifPanel(){document.getElementById("notif-panel").style.display="none";}
 
-function sendManualNotifFor(time){
-  const group=sessions.filter(s=>s.startTime===time);
+function sendManualNotifFor(time,type="start"){
+  const group=sessions.filter(s=>type==="start"?s.startTime===time:s.endTime===time);
   if(!group.length){showBanner("Tidak ada sesi di jam ini","warning");return;}
   const lines=group.map((s,i)=>{
-    const h=s.hosts?.[0];
-    return`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${h?.host||"-"} ${h?.picData?formatPic(h.picData):"LSC"}`;
+    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
+    const host=h?.host||"-",pic=h?.picData?formatPic(h.picData):"LSC";
+    return type==="start"
+      ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
+      :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
   });
-  broadcastNotif(`⏰ REMINDER — START ${time}`,lines.join("\n"),false);
+  broadcastNotif(
+    `${type==="start"?"▶ START":"⏹ END"} ${time}`,
+    lines.join("\n"),
+    false
+  );
   closeNotifPanel();
 }
 
 function sendManualNotifAll(){
-  const now=Date.now(),upcoming={};
+  const now=Date.now();
+  const upcomingStart={},upcomingEnd={};
+
   sessions.forEach(s=>{
-    if(!s.startTime||s.startTime==="-")return;
-    const ms=timeToMs(s.date,s.startTime);if(!ms)return;
-    const diff=ms-now;
-    if(diff<-5*60*1000||diff>2*60*60*1000)return;
-    if(!upcoming[s.startTime])upcoming[s.startTime]=[];
-    upcoming[s.startTime].push(s);
+    const addGroup=(groups,time,key)=>{
+      const ms=timeToMs(s.date,time);if(!ms)return;
+      const diff=ms-now;
+      if(diff<-5*60*1000||diff>2*60*60*1000)return;
+      if(!groups[key])groups[key]=[];
+      groups[key].push(s);
+    };
+    if(s.startTime&&s.startTime!=="-")addGroup(upcomingStart,s.startTime,s.startTime);
+    if(s.endTime&&s.endTime!=="-")addGroup(upcomingEnd,s.endTime,s.endTime);
   });
-  const times=Object.keys(upcoming);
-  if(!times.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
-  times.sort().forEach((time,idx)=>{
+
+  const allEntries=[
+    ...Object.entries(upcomingStart).map(([t,g])=>({t,g,type:"start"})),
+    ...Object.entries(upcomingEnd).map(([t,g])=>({t,g,type:"end"})),
+  ].sort((a,b)=>toMinJS(a.t)-toMinJS(b.t));
+
+  if(!allEntries.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
+
+  allEntries.forEach(({t,g,type},idx)=>{
     setTimeout(()=>{
-      const group=upcoming[time];
-      const lines=group.map((s,i)=>{
-        const h=s.hosts?.[0];
-        return`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${h?.host||"-"} ${h?.picData?formatPic(h.picData):"LSC"}`;
+      const lines=g.map((s,i)=>{
+        const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
+        const host=h?.host||"-",pic=h?.picData?formatPic(h.picData):"LSC";
+        return type==="start"
+          ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
+          :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
       });
-      broadcastNotif(`⏰ REMINDER — START ${time}`,lines.join("\n"),false);
+      broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${t}`,lines.join("\n"),false);
     },idx*2000);
   });
+
   closeNotifPanel();
+  showBanner(`🔔 ${allEntries.length} notif dikirim (start+end)!`,"success");
 }
+
 
 function updateStats(){
   const m=sessions.filter(s=>s.isMarathon).length,sg=sessions.filter(s=>!s.isMarathon).length;
