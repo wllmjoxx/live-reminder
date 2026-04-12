@@ -154,22 +154,22 @@ async function broadcastNotif(title, body, urgent = false) {
     const res = await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
       method : "POST",
       headers: {
-        "Title"       : title,
+        "Title"       : encodeURIComponent(title), // ← encode biar aman
         "Priority"    : urgent ? "urgent" : "high",
-        "Tags"        : "bell",
-        "Content-Type": "text/plain",
+        "Tags"        : urgent ? "rotating_light" : "bell",
+        "Content-Type": "text/plain; charset=utf-8",
       },
-      body,
+      body: title + "\n\n" + body, // ← title juga di body biar tetap terbaca
     });
     const resText = await res.text();
-    console.log("ntfy response:", res.status, resText); // ← lihat di DevTools
     if (!res.ok) throw new Error(`ntfy ${res.status}: ${resText}`);
-    showBanner("🔔 Notif dikirim!", "success");
+    showBanner("🔔 Notif dikirim ke semua user!", "success");
   } catch(e) {
     console.error("ntfy error:", e);
-    showBanner("⚠️ " + e.message, "warning");
+    showBanner("⚠️ Broadcast gagal: " + e.message, "warning");
   }
 }
+
 
 
 // ── KIRIM NOTIF LOKAL ─────────────────────────
