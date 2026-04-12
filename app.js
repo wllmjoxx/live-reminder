@@ -151,17 +151,10 @@ async function broadcastNotif(title, body, urgent = false) {
   sendNotification(title, body, `local-${Date.now()}`, urgent);
 
   try {
-    // Kirim via JSON body — hindari masalah encoding di header
     const res = await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
-      method : "POST",
-      headers: { "Content-Type": "application/json" },
-      body   : JSON.stringify({
-        topic   : NTFY_TOPIC,
-        title   : title,
-        message : body,
-        priority: urgent ? 5 : 3,
-        tags    : urgent ? ["rotating_light"] : ["bell"],
-      }),
+      method: "POST",
+      body  : `${title}\n\n${body}`,
+      // ← no headers at all
     });
     if (!res.ok) throw new Error(`ntfy ${res.status}`);
     showBanner("🔔 Notif dikirim ke semua user!", "success");
@@ -170,6 +163,7 @@ async function broadcastNotif(title, body, urgent = false) {
     showBanner("⚠️ Broadcast gagal: " + e.message, "warning");
   }
 }
+
 
 
 
