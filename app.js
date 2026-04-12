@@ -1108,3 +1108,40 @@ function showBanner(msg, type = "info") {
   el.style.display = "block";
   setTimeout(() => el.style.display = "none", 4000);
 }
+
+async function debugNotif() {
+  const lines = [
+    `URL: ${location.href}`,
+    `Permission: ${Notification.permission}`,
+    `SW supported: ${"serviceWorker" in navigator}`,
+    `SW registered: ${!!swRegistration}`,
+    `SW active: ${swRegistration?.active?.state || "none"}`,
+    `ntfy: ${ntfySource?.readyState === 1 ? "connected" : "disconnected"}`,
+  ];
+  alert(lines.join("\n"));
+
+  if (Notification.permission !== "granted") {
+    const r = await Notification.requestPermission();
+    alert("Permission result: " + r);
+    if (r !== "granted") return;
+  }
+
+  // Coba berbagai cara
+  try {
+    new Notification("Test Direct", { body: "Direct notification test" });
+    alert("✅ Direct Notification: OK");
+  } catch(e) {
+    alert("❌ Direct Notification: " + e.message);
+  }
+
+  if (swRegistration) {
+    try {
+      await swRegistration.showNotification("Test SW", { body: "SW notification test" });
+      alert("✅ SW Notification: OK");
+    } catch(e) {
+      alert("❌ SW Notification: " + e.message);
+    }
+  } else {
+    alert("❌ swRegistration: null");
+  }
+}
