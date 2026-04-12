@@ -603,62 +603,60 @@ function showNotifPanel(){
 
 function closeNotifPanel(){document.getElementById("notif-panel").style.display="none";}
 
-function sendManualNotifFor(time,type="start"){
-  const group=sessions.filter(s=>type==="start"?s.startTime===time:s.endTime===time);
-  if(!group.length){showBanner("Tidak ada sesi di jam ini","warning");return;}
-  const lines=group.map((s,i)=>{
-    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
-    const host=h?.host||"-",pic=h?.picData?formatPic(h.picData):"LSC";
-    return type==="start"
-      ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
-      :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
-  });
+// Manual notif per jam
+function sendManualNotifFor(time, type = "start") {
+  const group = sessions.filter(s =>
+    type === "start" ? s.startTime === time : s.endTime === time
+  );
+  if (!group.length) { showBanner("Tidak ada sesi di jam ini", "warning"); return; }
+
+  const lines = buildNotifLines(group, type, time);
   broadcastNotif(
-    `${type==="start"?"▶ START":"⏹ END"} ${time}`,
+    `${type === "start" ? "▶ START" : "⏹ END"} ${time}`,
     lines.join("\n"),
     false
   );
   closeNotifPanel();
 }
 
-function sendManualNotifAll(){
-  const now=Date.now();
-  const upcomingStart={},upcomingEnd={};
+// Manual notif semua upcoming
+function sendManualNotifAll() {
+  const now = Date.now();
+  const upStart = {}, upEnd = {};
 
-  sessions.forEach(s=>{
-    const addGroup=(groups,time,key)=>{
-      const ms=timeToMs(s.date,time);if(!ms)return;
-      const diff=ms-now;
-      if(diff<-5*60*1000||diff>2*60*60*1000)return;
-      if(!groups[key])groups[key]=[];
-      groups[key].push(s);
+  sessions.forEach(s => {
+    const add = (map, time) => {
+      const ms = timeToMs(s.date, time);
+      if (!ms) return;
+      const diff = ms - now;
+      if (diff < -5 * 60 * 1000 || diff > 2 * 60 * 60 * 1000) return;
+      if (!map[time]) map[time] = [];
+      map[time].push(s);
     };
-    if(s.startTime&&s.startTime!=="-")addGroup(upcomingStart,s.startTime,s.startTime);
-    if(s.endTime&&s.endTime!=="-")addGroup(upcomingEnd,s.endTime,s.endTime);
+    if (s.startTime && s.startTime !== "-") add(upStart, s.startTime);
+    if (s.endTime   && s.endTime   !== "-") add(upEnd,   s.endTime);
   });
 
-  const allEntries=[
-    ...Object.entries(upcomingStart).map(([t,g])=>({t,g,type:"start"})),
-    ...Object.entries(upcomingEnd).map(([t,g])=>({t,g,type:"end"})),
-  ].sort((a,b)=>toMinJS(a.t)-toMinJS(b.t));
+  const entries = [
+    ...Object.entries(upStart).map(([t,g]) => ({t, g, type:"start"})),
+    ...Object.entries(upEnd).map(([t,g])   => ({t, g, type:"end"})),
+  ].sort((a,b) => toMinJS(a.t) - toMinJS(b.t));
 
-  if(!allEntries.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
+  if (!entries.length) { showBanner("Tidak ada sesi upcoming (2 jam ke depan)", "warning"); return; }
 
-  allEntries.forEach(({t,g,type},idx)=>{
-    setTimeout(()=>{
-      const lines=g.map((s,i)=>{
-        const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
-        const host=h?.host||"-",pic=h?.picData?formatPic(h.picData):"LSC";
-        return type==="start"
-          ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
-          :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
-      });
-      broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${t}`,lines.join("\n"),false);
-    },idx*2000);
+  entries.forEach(({t,g,type}, idx) => {
+    setTimeout(() => {
+      const lines = buildNotifLines(g, type, t);
+      broadcastNotif(
+        `${type === "start" ? "▶ START" : "⏹ END"} ${t}`,
+        lines.join("\n"),
+        false
+      );
+    }, idx * 2000);
   });
 
   closeNotifPanel();
-  showBanner(`🔔 ${allEntries.length} notif dikirim (start+end)!`,"success");
+  showBanner(`🔔 ${entries.length} notif dikirim (start+end)!`, "success");
 }
 
 
@@ -717,18 +715,39 @@ function scheduleAllNotifications(list){
   document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal hari ini`;
 }
 
+// Helper: build notif lines dengan PIC yang sudah di-assign (sama seperti tab)
+function buildNotifLines(group, type, eventTime) {
+  // Buat copy dan jalankan assignPics seperti di tab
+  const copies = group.map(s => ({
+    ...s,
+    picForEvent: type === "start"
+      ? (s.hosts?.[0]?.picData || "-")
+      : (s.hosts?.[s.hosts.length-1]?.picData || "-")
+  }));
 
+  const validPics = eventTime ? getAvailableOps(sessions, eventTime) : null;
+  if (type === "start") assignPics(copies, [], validPics);
+  else                  assignPics([], copies, validPics);
+
+  return copies.map((s, i) => {
+    const h    = type === "start" ? s.hosts?.[0] : s.hosts?.[s.hosts.length-1];
+    const host = h?.host || "-";
+    const pic  = s.assignedPic || "LSC"; // pakai hasil assignPics
+    return type === "start"
+      ? `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
+      : `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
+  });
+}
 function cancelAllScheduled(){scheduledTasks.forEach(id=>clearTimeout(id));scheduledTasks=[];}
 
-function fireGroupNotif(title,group,type,urgent=false){
-  const lines=group.map((s,i)=>{
-    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
-    const host=h?.host||"-",pic=h?.picData?formatPic(h.picData):"LSC";
-    return type==="start"
-      ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
-      :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
-  });
-  sendNotification(title,lines.join("\n"),`grp-${type}-${title}-${Date.now()}`,urgent);
+// Auto notif (H-60, H-10, H-5)
+function fireGroupNotif(title, group, type, urgent = false) {
+  // Extract jam dari title (e.g. "START 17:00" → "17:00")
+  const timeMatch = /(\d{2}:\d{2})/.exec(title);
+  const eventTime = timeMatch ? timeMatch[1] : null;
+
+  const lines = buildNotifLines(group, type, eventTime);
+  sendNotification(title, lines.join("\n"), `grp-${type}-${title}-${Date.now()}`, urgent);
 }
 
 function getCurrentHostIdx(session){
