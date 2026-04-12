@@ -186,6 +186,29 @@
 .actions    { padding: 3px 12px 6px; display: flex; gap: 6px; }
 .btn-refresh { flex: 1; padding: 7px; border: none; border-radius: 8px; background: #1e3a5f; color: #93c5fd; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
 .btn-test    { flex: 1; padding: 7px; border: none; border-radius: 8px; background: #064e3b; color: #6ee7b7; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+.tab-btn.active.t-standby { color: #c084fc; }
+.btn-notif { flex:1; padding:7px; border:none; border-radius:8px; background:#312e81; color:#c7d2fe; font-size:0.78rem; font-weight:600; cursor:pointer; }
+
+/* STANDBY TAB */
+.standby-wrapper { padding: 8px 12px 24px; }
+.standby-section { background:#1e293b; border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+.standby-title   { font-size:0.9rem; font-weight:800; color:#c084fc; margin-bottom:4px; text-align:center; }
+.standby-label   { font-size:0.72rem; font-weight:700; color:#94a3b8; margin-bottom:6px; letter-spacing:1px; }
+.pic-row         { display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #0f172a; }
+.pic-row:last-child { border-bottom:none; }
+.pic-name        { font-size:0.8rem; font-weight:700; color:#e2e8f0; }
+.pic-studios     { font-size:0.72rem; color:#60a5fa; }
+.standby-brand-card { background:#1e293b; border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+.standby-brand-title { font-size:0.82rem; font-weight:700; color:#fcd34d; margin-bottom:6px; }
+.standby-row     { display:flex; align-items:center; gap:10px; padding:4px 0; }
+.standby-time    { font-size:0.72rem; color:#64748b; min-width:60px; }
+.standby-pic     { font-size:0.82rem; font-weight:700; color:#a78bfa; }
+.standby-text    { font-size:0.75rem; color:#94a3b8; line-height:1.6; white-space:pre-line; }
+.standby-link    { display:block; color:#60a5fa; font-size:0.75rem; padding:4px 0; text-decoration:none; }
+.standby-link:active { opacity:0.7; }
+.standby-copy    { width:100%; padding:10px; border:none; border-radius:10px; background:#312e81; color:#c7d2fe; font-size:0.82rem; font-weight:700; cursor:pointer; margin-top:4px; }
+.notif-time-btn  { padding:5px 10px; border:none; border-radius:7px; background:#1e3a5f; color:#93c5fd; font-size:0.72rem; font-weight:600; cursor:pointer; }
+.notif-time-btn:active { background:#2563eb; }
 
   </style>
 </head>
@@ -218,16 +241,28 @@
   </div>
 
   <div class="tabs">
-    <button id="tab-marathon" class="tab-btn t-marathon active" onclick="switchTab('marathon')">🏃 Marathon</button>
-    <button id="tab-timeline" class="tab-btn t-timeline"        onclick="switchTab('timeline')">📋 Start/End</button>
-    <button id="tab-single"   class="tab-btn t-single"          onclick="switchTab('single')">⚡ Single</button>
-  </div>
+  <button id="tab-marathon" class="tab-btn t-marathon active" onclick="switchTab('marathon')">🏃</button>
+  <button id="tab-timeline" class="tab-btn t-timeline"        onclick="switchTab('timeline')">📋</button>
+  <button id="tab-single"   class="tab-btn t-single"          onclick="switchTab('single')">⚡</button>
+  <button id="tab-standby"  class="tab-btn t-standby"         onclick="switchTab('standby')">📌 Stby</button>
+</div>
+
 
   <div class="actions">
-  <button class="btn-refresh" onclick="loadSchedule()">🔄 Refresh</button>
-  <button class="btn-test"    onclick="testNotification()">🔔 Test Notif</button>
+  <button class="btn-refresh" onclick="loadSchedule()">🔄</button>
+  <button class="btn-notif"   onclick="showNotifPanel()">🔔 Notif</button>
 </div>
+
+<!-- Notif Panel -->
+<div id="notif-panel" style="display:none; padding:6px 12px; background:#1e293b; border-top:1px solid #334155;">
+  <div style="font-size:0.72rem; color:#64748b; margin-bottom:6px;">Kirim notif untuk jam:</div>
+  <div id="notif-time-list" style="display:flex; flex-wrap:wrap; gap:5px;"></div>
+  <div style="display:flex; gap:6px; margin-top:8px;">
+    <button onclick="sendManualNotifAll()" style="flex:1;padding:6px;border:none;border-radius:7px;background:#1d4ed8;color:#bfdbfe;font-size:0.75rem;font-weight:600;cursor:pointer;">📢 Kirim Semua Upcoming</button>
+    <button onclick="closeNotifPanel()" style="padding:6px 10px;border:none;border-radius:7px;background:#334155;color:#94a3b8;font-size:0.75rem;cursor:pointer;">✕</button>
+  </div>
 </div>
+
 
 
 

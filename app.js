@@ -156,7 +156,9 @@ function renderTab(tab) {
   if (tab === "marathon") renderMarathon();
   if (tab === "timeline") renderTimeline();
   if (tab === "single")   renderSingle();
+  if (tab === "standby")  renderStandby();
 }
+
 
 function formatPic(rawName) {
   if (!rawName || rawName === "-" || rawName === "") return "LSC";
@@ -563,6 +565,280 @@ function renderSingle() {
   copies.forEach((s, i) => container.appendChild(makeTimelineCard(s, i + 1, "start")));
 }
 
+// ── STANDBY TAB ───────────────────────────────
+const STANDBY_BRANDS = [
+  { key: "AT Tiktok",        match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok"  },
+  { key: "Samsonite Tiktok", match: s => s.brand.toLowerCase().includes("samsonite")          && s.marketplace.toLowerCase() === "tiktok"  },
+  { key: "AT Shopee",        match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "Samsonite Shopee", match: s => s.brand.toLowerCase().includes("samsonite")          && s.marketplace.toLowerCase() === "shopee" },
+  { key: "ASICS",            match: s => s.brand.toLowerCase().includes("asics")                                                           },
+];
+
+function buildPicShiftData() {
+  const shifts = { pagi: {}, siang: {} };
+  sessions.forEach(s => {
+    const studioNum = parseInt((s.studio || "").match(/\d+/)?.[0] || "0");
+    if (!studioNum) return;
+    s.hosts.forEach(h => {
+      if (!h.picData || h.picData === "-") return;
+      const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+      const shift  = getShift(endStr);
+      if (shift === "malam") return;
+      const key  = h.picData.trim().toLowerCase();
+      const name = formatPic(h.picData);
+      if (!shifts[shift][key]) shifts[shift][key] = { name, studios: new Set() };
+      shifts[shift][key].studios.add(studioNum);
+    });
+  });
+  return shifts;
+}
+
+function buildStandbyData() {
+  return STANDBY_BRANDS.map(b => {
+    const matched = sessions.filter(b.match);
+    const slots = [];
+    const seen  = new Set();
+
+    matched.forEach(s => {
+      s.hosts.forEach(h => {
+        if (!h.picData || h.picData === "-") return;
+        const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
+        const shift  = getShift(endStr);
+        if (shift === "malam") return;
+
+        if (s.isMarathon) {
+          const k = `${h.startTime}-${h.picData}`;
+          if (seen.has(k)) return;
+          seen.add(k);
+          const st = (h.startTime || "").substring(0, 5);
+          const en = (h.endTime   || "").substring(0, 5);
+          slots.push({ type: "slot", label: `${st}-${en}`, pic: h.picData.trim(), shift });
+        } else {
+          const k = `${shift}-${h.picData}`;
+          if (seen.has(k)) return;
+          seen.add(k);
+          slots.push({ type: "shift", label: shift.toUpperCase(), pic: h.picData.trim(), shift });
+        }
+      });
+    });
+
+    slots.sort((a, b) => toMinJS(a.label.split("-")[0]) - toMinJS(b.label.split("-")[0]));
+    return { key: b.key, slots };
+  }).filter(b => b.slots.length > 0);
+}
+
+function renderStandby() {
+  const container = document.getElementById("schedule-list");
+  container.innerHTML = "";
+
+  if (!sessions.length) {
+    container.innerHTML = `<div class="empty">📭 Data belum dimuat</div>`;
+    return;
+  }
+
+  const dateStr = sessions[0]?.date || "";
+  let dateLabel = "";
+  try {
+    dateLabel = new Date(dateStr + "T12:00:00+07:00").toLocaleDateString("id-ID", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta"
+    }).toUpperCase();
+  } catch(e) { dateLabel = dateStr; }
+
+  const picShift   = buildPicShiftData();
+  const standbyList = buildStandbyData();
+
+  let html = `<div class="standby-wrapper">`;
+
+  // Title
+  html += `<div class="standby-section">
+    <div class="standby-title">📅 REMINDER ${dateLabel}</div>
+  </div>`;
+
+  // PIC per shift
+  ["pagi", "siang"].forEach(shift => {
+    const data = picShift[shift];
+    if (!data || Object.keys(data).length === 0) return;
+    html += `<div class="standby-section">
+      <div class="standby-label">👥 PIC SHIFT ${shift.toUpperCase()}</div>`;
+    Object.entries(data)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([, d]) => {
+        const studios = [...d.studios].sort((a, b) => a - b).join(", ");
+        html += `<div class="pic-row">
+          <span class="pic-name">${d.name}</span>
+          <span class="pic-studios">${studios}</span>
+        </div>`;
+      });
+    html += `</div>`;
+  });
+
+  // Standby per brand
+  standbyList.forEach(b => {
+    html += `<div class="standby-brand-card">
+      <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
+    b.slots.forEach(slot => {
+      const picDisp = formatPic(slot.pic);
+      const timeLabel = slot.type === "shift" ? slot.label : slot.label;
+      html += `<div class="standby-row">
+        <span class="standby-time">${timeLabel}</span>
+        <span class="standby-pic">${picDisp}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  // Prosedur
+  html += `<div class="standby-section">
+    <div class="standby-label">📋 PROSEDUR</div>
+    <div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
+2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
+3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div>
+  </div>`;
+
+  // Links
+  html += `<div class="standby-section">
+    <div class="standby-label">🔗 LINKS</div>
+    <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
+  </div>`;
+
+  // Copy button
+  html += `<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button>`;
+  html += `</div>`;
+
+  container.innerHTML = html;
+}
+
+function copyStandbyText() {
+  const dateStr = sessions[0]?.date || "";
+  let dateLabel = "";
+  try {
+    dateLabel = new Date(dateStr + "T12:00:00+07:00").toLocaleDateString("id-ID", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta"
+    }).toUpperCase();
+  } catch(e) { dateLabel = dateStr; }
+
+  const picShift   = buildPicShiftData();
+  const standbyList = buildStandbyData();
+
+  let text = `REMINDER ${dateLabel}\n\n`;
+
+  ["pagi", "siang"].forEach(shift => {
+    const data = picShift[shift];
+    if (!data || Object.keys(data).length === 0) return;
+    text += `PIC SHIFT ${shift.toUpperCase()}\n`;
+    Object.entries(data)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([, d]) => {
+        const studios = [...d.studios].sort((a, b) => a - b).join(",");
+        text += `${d.name.replace("@", "")}\t${studios}\n`;
+      });
+    text += "\n";
+  });
+
+  standbyList.forEach(b => {
+    text += `STANDBY ${b.key.toUpperCase()}\n`;
+    b.slots.forEach(slot => {
+      const picName = slot.pic;
+      text += `${slot.label} ${picName}\n`;
+    });
+    text += "\n";
+  });
+
+  text += `1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
+2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
+3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST\n\n`;
+
+  text += `Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6VcZ7\n\n`;
+  text += `LINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\n`;
+  text += `BACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\n`;
+  text += `LINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
+
+  navigator.clipboard.writeText(text)
+    .then(() => showBanner("✅ Teks di-copy!", "success"))
+    .catch(() => showBanner("❌ Gagal copy", "error"));
+}
+
+// ── MANUAL NOTIFICATION ───────────────────────
+function showNotifPanel() {
+  const panel = document.getElementById("notif-panel");
+  if (panel.style.display !== "none") {
+    panel.style.display = "none"; return;
+  }
+
+  // Build list of upcoming start times
+  const now  = Date.now();
+  const list = document.getElementById("notif-time-list");
+  list.innerHTML = "";
+
+  // Collect unique start times
+  const times = new Set();
+  sessions.forEach(s => { if (s.startTime && s.startTime !== "-") times.add(s.startTime); });
+
+  [...times].sort().forEach(time => {
+    const ms = timeToMs(sessions[0]?.date, time);
+    if (!ms) return;
+    const diff = ms - now;
+    if (diff < -60 * 60 * 1000) return; // skip if > 1 jam lalu
+
+    const diffMin = Math.round(diff / 60000);
+    let label = time;
+    if (diffMin > 0)  label += ` (+${diffMin}m)`;
+    if (diffMin <= 0) label += ` (lewat)`;
+
+    const btn = document.createElement("button");
+    btn.className   = "notif-time-btn";
+    btn.textContent = label;
+    btn.onclick     = () => sendManualNotifFor(time);
+    list.appendChild(btn);
+  });
+
+  panel.style.display = "block";
+}
+
+function closeNotifPanel() {
+  document.getElementById("notif-panel").style.display = "none";
+}
+
+function sendManualNotifFor(time) {
+  const group = sessions
+    .filter(s => s.startTime === time)
+    .map(s => ({ ...s, picForEvent: s.hosts?.[0]?.picData || "-" }));
+
+  if (!group.length) { showBanner("Tidak ada sesi di jam ini", "warning"); return; }
+
+  fireGroupNotif(`⏰ REMINDER — START ${time}`, group, "start", false);
+  showBanner(`🔔 Notif START ${time} dikirim!`, "success");
+  closeNotifPanel();
+}
+
+function sendManualNotifAll() {
+  const now = Date.now();
+  const upcoming = {};
+
+  sessions.forEach(s => {
+    if (!s.startTime || s.startTime === "-") return;
+    const ms   = timeToMs(s.date, s.startTime);
+    const diff = ms - now;
+    if (diff < 0 || diff > 2 * 60 * 60 * 1000) return; // 0-2 jam ke depan
+    if (!upcoming[s.startTime]) upcoming[s.startTime] = [];
+    upcoming[s.startTime].push(s);
+  });
+
+  const times = Object.keys(upcoming);
+  if (!times.length) { showBanner("Tidak ada sesi upcoming (2 jam ke depan)", "warning"); return; }
+
+  times.forEach(time => {
+    fireGroupNotif(`⏰ REMINDER — START ${time}`, upcoming[time], "start", false);
+  });
+
+  showBanner(`🔔 ${times.length} notif dikirim untuk: ${times.join(", ")}`, "success");
+  closeNotifPanel();
+}
+
+
 function updateStats() {
   const m  = sessions.filter(s => s.isMarathon).length;
   const sg = sessions.filter(s => !s.isMarathon).length;
@@ -626,6 +902,56 @@ function fireGroupNotif(title, group, type, urgent = false) {
   const tag  = `grp-${type}-${title}-${Date.now()}`;
 
   sendNotification(title, body, tag, urgent);
+}
+// ── KIRIM NOTIFIKASI ──────────────────────────
+function sendNotification(title, body, tag, urgent = false) {
+  if (Notification.permission !== "granted") return;
+
+  if (swRegistration && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: "SHOW_NOTIFICATION", title, body, tag, urgent
+    });
+  } else {
+    new Notification(title, { body, tag,
+      icon: "/icon-192.png",
+      vibrate: urgent ? [300,100,300] : [200,100,200]
+    });
+  }
+}
+
+// ── TEST REMINDER ─────────────────────────────
+function testNotification() {
+  if (!("Notification" in window)) {
+    showBanner("❌ Browser tidak support notifikasi", "error"); return;
+  }
+
+  if (Notification.permission !== "granted") {
+    showBanner("❌ Izinkan notifikasi dulu", "error");
+    requestNotifPermission(); return;
+  }
+
+  // Test H-1 jam
+  sendNotification(
+    "🔔 SETUP — START 17:00",
+    "1. Levis | Tiktok | Studio 16\n   👤 Vanness Dharma @Rizky\n2. Philips Shopee | Shopee | Studio 6\n   👤 Nabila @Nadiem",
+    "test-setup", false
+  );
+
+  // Test H-10 menit (delay 2 detik)
+  setTimeout(() => sendNotification(
+    "⏰ 10 MENIT LAGI — START 17:00",
+    "1. Levis | Tiktok | Studio 16\n   👤 Vanness Dharma @Rizky\n2. Philips Shopee | Shopee | Studio 6\n   👤 Nabila @Nadiem",
+    "test-10min", false
+  ), 2000);
+
+  // Test H-5 menit (delay 4 detik)
+  setTimeout(() => sendNotification(
+    "🚨 5 MENIT LAGI — START 17:00",
+    "1. Levis | Tiktok | Studio 16\n   👤 Vanness Dharma @Rizky\n2. Philips Shopee | Shopee | Studio 6\n   👤 Nabila @Nadiem",
+    "test-5min", true
+  ), 4000);
+
+  showBanner("🔔 3 test notifikasi dikirim (interval 2 detik)", "success");
 }
 
 
