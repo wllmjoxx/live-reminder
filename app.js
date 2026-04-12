@@ -456,13 +456,25 @@ function renderSingle(){
   copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"single")));
 }
 
-const STANDBY_BRANDS=[
-  {key:"AT Tiktok",slotFormat:false,match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="tiktok"},
-  {key:"Samsonite Tiktok",slotFormat:false,match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="tiktok"},
-  {key:"AT Shopee",slotFormat:false,match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="shopee"},
-  {key:"Samsonite Shopee",slotFormat:true,match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="shopee"},
-  {key:"ASICS",slotFormat:false,match:s=>s.brand.toLowerCase().includes("asics")},
+const STANDBY_BRANDS = [
+  { key: "AT Tiktok",        slotFormat: false, showBackup: true,  // ← backup non-ded
+    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok" },
+  { key: "Samsonite Tiktok", slotFormat: false, showBackup: true,  // ← backup non-ded
+    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "tiktok" },
+  { key: "AT Shopee",        slotFormat: false, showBackup: false, // ← dedicated only
+    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "Samsonite Shopee", slotFormat: true,  showBackup: false, // ← non-ded per slot
+    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "ASICS",            slotFormat: false, showBackup: false, // ← dedicated only
+    match: s => s.brand.toLowerCase().includes("asics") },
 ];
+
+// Operator yang deprioritaskan sebagai backup (last resort)
+const BACKUP_DEPRIORITY = {
+  pagi : new Set(["nadiem"]),
+  siang: new Set(["maulidan"]),
+};
+
 
 function buildPicShiftData(){
   const shifts={pagi:{},siang:{}};
@@ -481,52 +493,64 @@ function buildPicShiftData(){
 }
 
 
+
 function buildStandbyData() {
-  // Kumpulkan non-dedicated operators per shift dari semua sesi
+  // Kumpulkan non-dedicated per shift
   const nonDedByShift = { pagi: [], siang: [] };
   sessions.forEach(s => {
     s.hosts.forEach(h => {
       if (!h.picData || h.picData === "-") return;
       const key = h.picData.trim().toLowerCase();
-      if (DEDICATED_OPS.includes(key)) return;
-      if (LSC_NAMES_SET.has(key)) return;
+      if (DEDICATED_OPS.includes(key) || LSC_NAMES_SET.has(key)) return;
       const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-      const shift = getShift(endStr);
+      const shift  = getShift(endStr);
       if (shift === "malam") return;
       if (!nonDedByShift[shift].includes(h.picData.trim()))
         nonDedByShift[shift].push(h.picData.trim());
     });
   });
 
+  // Cari backup: prefer non-deprioritized dulu, deprioritized sebagai last resort
+  function findBackup(shift, usedSet) {
+    // 1. Non-deprioritized first
+    for (const nd of nonDedByShift[shift]) {
+      const k = nd.toLowerCase();
+      if (usedSet.has(k)) continue;
+      if (BACKUP_DEPRIORITY[shift]?.has(k)) continue;
+      return nd;
+    }
+    // 2. Deprioritized sebagai last resort
+    for (const nd of nonDedByShift[shift]) {
+      const k = nd.toLowerCase();
+      if (usedSet.has(k)) continue;
+      return nd;
+    }
+    return null;
+  }
+
   return STANDBY_BRANDS.map(b => {
     const matched = sessions.filter(b.match);
-    const slots = [], seenKey = new Set();
+    const slots   = [], seenKey = new Set();
     const usedNonDed = { pagi: new Set(), siang: new Set() };
 
     matched.forEach(s => {
       if (b.slotFormat) {
-        // ── Samsonite Shopee: NON-DEDICATED only per host slot ──
+        // ── Samsonite Shopee: NON-DEDICATED only ──
         s.hosts.forEach(h => {
           if (!h.picData || h.picData === "-") return;
           const key = h.picData.trim().toLowerCase();
-          if (DEDICATED_OPS.includes(key)) return; // ← skip dedicated
-          if (LSC_NAMES_SET.has(key)) return;
+          if (DEDICATED_OPS.includes(key) || LSC_NAMES_SET.has(key)) return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
           if (getShift(endStr) === "malam") return;
           const st = (h.startTime || "").substring(0,5);
           const en = (h.endTime   || "").substring(0,5);
           const slotKey = `${st}-${en}-${key}`;
           if (seenKey.has(slotKey)) return; seenKey.add(slotKey);
-          slots.push({
-            type: "slot",
-            label: `${st.replace(":00","")}–${en.replace(":00","")}`,
-            pic: h.picData.trim(),
-            nonDedPic: null,
-            sortKey: toMinJS(h.startTime)
-          });
+          slots.push({ type:"slot", label:`${st.replace(":00","")}–${en.replace(":00","")}`, pic:h.picData.trim(), nonDedPic:null, sortKey:toMinJS(h.startTime) });
         });
+
       } else {
-        // ── Brand lain: "dedicated / non-dedicated" per shift ──
+        // ── Brand lain: dedicated (+ optional backup) ──
         s.hosts.forEach(h => {
           if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
@@ -536,31 +560,23 @@ function buildStandbyData() {
           const shiftKey = `${shift}-${h.picData.trim().toLowerCase()}`;
           if (seenKey.has(shiftKey)) return; seenKey.add(shiftKey);
 
-          // Cari non-dedicated backup dari shift yang sama
+          // Backup: hanya untuk brand yang showBackup = true
           let nonDedPic = null;
-          for (const nd of nonDedByShift[shift]) {
-            if (!usedNonDed[shift].has(nd.toLowerCase())) {
-              nonDedPic = nd;
-              usedNonDed[shift].add(nd.toLowerCase());
-              break;
-            }
+          if (b.showBackup) {
+            nonDedPic = findBackup(shift, usedNonDed[shift]);
+            if (nonDedPic) usedNonDed[shift].add(nonDedPic.toLowerCase());
           }
 
-          slots.push({
-            type: "shift",
-            label: shift.toUpperCase(),
-            pic: h.picData.trim(),
-            nonDedPic,
-            sortKey: shift === "pagi" ? 0 : 1
-          });
+          slots.push({ type:"shift", label:shift.toUpperCase(), pic:h.picData.trim(), nonDedPic, sortKey:shift==="pagi"?0:1 });
         });
       }
     });
 
     slots.sort((a,b) => a.sortKey - b.sortKey);
-    return { key: b.key, slotFormat: b.slotFormat, slots };
+    return { key:b.key, slotFormat:b.slotFormat, slots };
   }).filter(b => b.slots.length > 0);
 }
+
 
 
 
