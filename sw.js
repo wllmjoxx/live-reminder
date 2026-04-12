@@ -35,12 +35,13 @@ self.addEventListener("push", e => {
   e.waitUntil(
     self.registration.showNotification(data.title || "Live Reminder", {
       body   : data.message || data.body || "",
-      icon   : "./icon-192.png",
+      icon   : "./icon-192.png",  // relative to SW scope = /live-reminder/icon-192.png ✓
       badge  : "./icon-192.png",
       vibrate: [200, 100, 200],
     })
   );
 });
+
 
 self.addEventListener("message", e => {
   if (e.data?.type === "SHOW_NOTIFICATION") {

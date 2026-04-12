@@ -1,5 +1,8 @@
 const API_URL    = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
 const NTFY_TOPIC = "castlive-ops-2026-xk9"; // ganti jadi nama unik kamu
+// Icon URL absolut — kompatibel localhost DAN GitHub Pages
+const ICON_URL = new URL("./icon-192.png", location.href).href;
+
 
 const PIC_MENTIONS = {
   "jonathan" : "@jonathan",  "tyo"      : "@Tyo",
@@ -179,8 +182,8 @@ function sendNotification(title, body, tag, urgent = false) {
   const options = {
     body,
     tag    : tag || `notif-${Date.now()}`,
-    icon   : "./icon-192.png",
-    badge  : "./icon-192.png",
+    icon   : ICON_URL,   // ← pakai ICON_URL absolut
+    badge  : ICON_URL,
     vibrate: urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
     requireInteraction: false,
   };
@@ -194,6 +197,7 @@ function sendNotification(title, body, tag, urgent = false) {
       .catch(() => { try { new Notification(title, options); } catch(e) {} });
   }
 }
+
 
 // ── LOAD JADWAL ──────────────────────────────
 async function loadSchedule() {
