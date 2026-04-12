@@ -492,6 +492,9 @@ function renderMarathon() {
 
 // ── TIMELINE ──────────────────────────────────
 function renderTimeline() {
+  ev.starts.forEach((s, i) => block.appendChild(makeTimelineCard(s, i + 1, "start", time)));
+ev.ends.forEach((s, i)   => block.appendChild(makeTimelineCard(s, i + 1, "end",   time)));
+
   const container = document.getElementById("schedule-list");
   container.innerHTML = "";
   if (!sessions.length) { container.innerHTML = `<div class="empty">📭 Tidak ada jadwal</div>`; return; }
@@ -541,20 +544,32 @@ function renderTimeline() {
   });
 }
 
-function makeTimelineCard(s, num, mode) {
-  const now = Date.now(), startMs = timeToMs(s.date, s.startTime);
-  const isPast = startMs && startMs < now;
-  const isSoon = startMs && (startMs - now) < 15 * 60 * 1000 && !isPast;
-  const picLabel = s.assignedPic || "LSC";
-  const isLSC   = picLabel === "LSC";
+
+
+// Updated makeTimelineCard:
+function makeTimelineCard(s, num, mode, eventTime = null) {
+  const now = Date.now();
+
+  // Pakai jam EVENT (bukan jam start sesi) untuk cek isPast
+  const checkTime = eventTime || s.startTime;
+  const eventMs   = timeToMs(s.date, checkTime);
+  const isPast    = eventMs && eventMs < now;
+  const isSoon    = eventMs && (eventMs - now) < 15 * 60 * 1000 && !isPast;
+
+  const picLabel  = s.assignedPic || "LSC";
+  const isLSC     = picLabel === "LSC";
   const firstHost = s.hosts?.[0]?.host || "-";
+
   const card = document.createElement("div");
   card.className = `session-card ${isPast ? "past" : ""} ${isSoon ? "soon" : ""} ${s.isMarathon ? "marathon-card" : ""}`;
   card.innerHTML = `
     <div class="session-num">${num}</div>
     <div class="session-info">
-      <div class="session-brand">${s.brand}
-        ${s.isMarathon ? `<span class="type-badge marathon-badge">🏃</span>` : `<span class="type-badge single-badge">⚡</span>`}
+      <div class="session-brand">
+        ${s.brand}
+        ${s.isMarathon
+          ? `<span class="type-badge marathon-badge">🏃</span>`
+          : `<span class="type-badge single-badge">⚡</span>`}
       </div>
       <div class="session-meta">
         <span class="badge marketplace">${s.marketplace}</span>
@@ -565,6 +580,7 @@ function makeTimelineCard(s, num, mode) {
     <div class="session-pic-right ${isLSC ? "lsc" : ""}">${picLabel}</div>`;
   return card;
 }
+
 
 function renderSingle() {
   const container = document.getElementById("schedule-list");
@@ -787,29 +803,58 @@ function updateStats() {
 function scheduleAllNotifications(list) {
   const now = Date.now();
   let count = 0;
-  const startGroups = {};
+
+  const startGroups = {}, endGroups = {};
+
   list.forEach(s => {
     if (s.startTime && s.startTime !== "-") {
       if (!startGroups[s.startTime]) startGroups[s.startTime] = [];
       startGroups[s.startTime].push(s);
     }
+    if (s.endTime && s.endTime !== "-") {
+      if (!endGroups[s.endTime]) endGroups[s.endTime] = [];
+      endGroups[s.endTime].push(s);
+    }
   });
+
+  // ── START: H-60, H-10, H-5 ────────────────
   Object.entries(startGroups).forEach(([time, group]) => {
     const startMs = timeToMs(group[0].date, time);
     if (!startMs) return;
-    [{ min: 60, prefix: "🔔 SETUP", urgent: false },
+    [{ min: 60, prefix: "🔔 SETUP",         urgent: false },
      { min: 10, prefix: "⏰ 10 MENIT LAGI", urgent: false },
      { min: 5,  prefix: "🚨 5 MENIT LAGI",  urgent: true  }]
     .forEach(({ min, prefix, urgent }) => {
       const t = startMs - min * 60 * 1000;
       if (t > now) {
-        scheduledTasks.push(setTimeout(() => fireGroupNotif(`${prefix} — START ${time}`, group, "start", urgent), t - now));
+        scheduledTasks.push(setTimeout(() =>
+          fireGroupNotif(`${prefix} — START ${time}`, group, "start", urgent), t - now));
         count++;
       }
     });
   });
+
+  // ── END: H-10, H-5 ────────────────────────
+  Object.entries(endGroups).forEach(([time, group]) => {
+    let endMs = timeToMs(group[0].date, time);
+    const sMs = timeToMs(group[0].date, group[0].startTime);
+    if (endMs && sMs && endMs <= sMs) endMs += 24 * 60 * 60 * 1000;
+    if (!endMs) return;
+    [{ min: 10, prefix: "⏰ 10 MENIT LAGI", urgent: false },
+     { min: 5,  prefix: "🚨 5 MENIT LAGI",  urgent: true  }]
+    .forEach(({ min, prefix, urgent }) => {
+      const t = endMs - min * 60 * 1000;
+      if (t > now) {
+        scheduledTasks.push(setTimeout(() =>
+          fireGroupNotif(`${prefix} — END ${time}`, group, "end", urgent), t - now));
+        count++;
+      }
+    });
+  });
+
   document.getElementById("notif-count").textContent = `🔔 ${count} notif terjadwal hari ini`;
 }
+
 
 function cancelAllScheduled() {
   scheduledTasks.forEach(id => clearTimeout(id));
