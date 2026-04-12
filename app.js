@@ -177,13 +177,22 @@ function getShift(timeStr) {
 }
 
 function getAvailableOps(sessions, eventTimeStr) {
-  const eventShift = getShift(eventTimeStr === "23:59/00:00" ? "23:59" : eventTimeStr);
-  let tEvent;
+  // Tentukan shift event
+  let eventShift, tEvent;
+
   if (eventTimeStr === "23:59/00:00") {
-    tEvent = 23 * 60 + 59;
+    eventShift = "siang";
+    tEvent     = 23 * 60 + 59;
   } else {
     const [h, m] = (eventTimeStr || "0:0").split(":").map(Number);
-    tEvent = (h === 0 && m === 0) ? 24 * 60 : h * 60 + m;
+    if (h === 0 && m === 0) {
+      // 00:00 sebagai START = awal shift malam (bukan akhir siang)
+      eventShift = "malam";
+      tEvent     = 0;
+    } else {
+      eventShift = getShift(eventTimeStr);
+      tEvent     = h * 60 + m;
+    }
   }
 
   const available = new Set();
@@ -191,26 +200,30 @@ function getAvailableOps(sessions, eventTimeStr) {
     (s.hosts || []).forEach(h => {
       if (!h.picData || h.picData === "-") return;
 
-      // Shift operator ditentukan dari jam END (sesuai rule user)
-      // end ≥ 16:00 → siang, end < 16:00 → pagi
       const endStr    = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
       const hostShift = getShift(endStr);
       if (hostShift !== eventShift) return;
 
       const [sh, sm] = (h.startTime || "99:99").split(":").map(Number);
-      const tStart    = sh * 60 + sm;
-      const [eh, em]  = endStr.split(":").map(Number);
+      const tStart   = sh * 60 + sm;
+      const [eh, em] = endStr.split(":").map(Number);
       let tEnd = eh * 60 + em;
       if (tEnd === 0) tEnd = 24 * 60;
       if (tEnd <= tStart) tEnd += 24 * 60;
 
-      if (tStart <= tEvent && tEvent <= tEnd) {
+      // Untuk malam shift, event 00:00 perlu handle crossing midnight
+      let tEventAdj = tEvent;
+      if (eventShift === "malam" && tEvent < tStart) tEventAdj = tEvent + 24 * 60;
+
+      if (tStart <= tEventAdj && tEventAdj <= tEnd) {
         available.add(h.picData.trim().toLowerCase());
       }
     });
   });
+
   return available;
 }
+
 
 
 // ── ASSIGN PICS ───────────────────────────────
@@ -567,11 +580,16 @@ function renderSingle() {
 
 // ── STANDBY TAB ───────────────────────────────
 const STANDBY_BRANDS = [
-  { key: "AT Tiktok",        match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok"  },
-  { key: "Samsonite Tiktok", match: s => s.brand.toLowerCase().includes("samsonite")          && s.marketplace.toLowerCase() === "tiktok"  },
-  { key: "AT Shopee",        match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "Samsonite Shopee", match: s => s.brand.toLowerCase().includes("samsonite")          && s.marketplace.toLowerCase() === "shopee" },
-  { key: "ASICS",            match: s => s.brand.toLowerCase().includes("asics")                                                           },
+  { key: "AT Tiktok",        slotFormat: false,
+    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok" },
+  { key: "Samsonite Tiktok", slotFormat: false,
+    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "tiktok" },
+  { key: "AT Shopee",        slotFormat: false,
+    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "Samsonite Shopee", slotFormat: true,   // ← per host slot
+    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "shopee" },
+  { key: "ASICS",            slotFormat: false,
+    match: s => s.brand.toLowerCase().includes("asics") },
 ];
 
 function buildPicShiftData() {
@@ -593,6 +611,8 @@ function buildPicShiftData() {
   return shifts;
 }
 
+
+
 function buildStandbyData() {
   return STANDBY_BRANDS.map(b => {
     const matched = sessions.filter(b.match);
@@ -600,55 +620,54 @@ function buildStandbyData() {
     const seenKey = new Set();
 
     matched.forEach(s => {
-      if (b.isMarathon) {
-        // Per host session — ambil semua host dengan waktu dan operatornya
+      if (b.slotFormat) {
+        // ── PER HOST SLOT (Samsonite Shopee) ──
         s.hosts.forEach(h => {
-          const pic    = h.picData || "";
+          if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
           const shift  = getShift(endStr);
           if (shift === "malam") return;
 
-          const st  = (h.startTime || "").substring(0, 5).replace(":00", "");
-          const en  = (h.endTime   || "").substring(0, 5).replace(":00", "");
-          const key = `${st}-${en}-${pic}`;
+          const st  = (h.startTime || "").substring(0, 5);
+          const en  = (h.endTime   || "").substring(0, 5);
+          const key = `${st}-${en}-${h.picData}`;
           if (seenKey.has(key)) return;
           seenKey.add(key);
 
           slots.push({
-            type    : "slot",
-            label   : `${st}-${en}`,
-            pic,
-            shift,
-            sortKey : toMinJS(h.startTime)
+            type   : "slot",
+            label  : `${st.replace(":00","")}–${en.replace(":00","")}`,
+            pic    : h.picData.trim(),
+            sortKey: toMinJS(h.startTime),
           });
         });
       } else {
-        // Per shift (pagi/siang) — ambil first host per shift
+        // ── PAGI / SIANG (semua brand lain) ──
         s.hosts.forEach(h => {
-          const pic    = h.picData || "";
+          if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
           const shift  = getShift(endStr);
           if (shift === "malam") return;
 
-          const key = `${shift}-${pic}`;
+          const key = `${shift}-${h.picData}`;
           if (seenKey.has(key)) return;
           seenKey.add(key);
 
           slots.push({
-            type    : "shift",
-            label   : shift.toUpperCase(),
-            pic,
-            shift,
-            sortKey : shift === "pagi" ? 0 : 1
+            type   : "shift",
+            label  : shift.toUpperCase(),
+            pic    : h.picData.trim(),
+            sortKey: shift === "pagi" ? 0 : 1,
           });
         });
       }
     });
 
     slots.sort((a, b) => a.sortKey - b.sortKey);
-    return { key: b.key, slots };
+    return { key: b.key, slotFormat: b.slotFormat, slots };
   }).filter(b => b.slots.length > 0);
 }
+
 
 function renderStandbyBrands(standbyData) {
   let html = "";
@@ -983,18 +1002,25 @@ function sendNotification(title, body, tag, urgent = false) {
     badge : "/icon-192.png",
     vibrate: urgent ? [300, 100, 300, 100, 300] : [200, 100, 200],
     requireInteraction: false,
-    silent: false,
   };
 
-  // Pakai serviceWorker.ready (bukan controller) — reliable di installed PWA
-  if ("serviceWorker" in navigator) {
+  // Pakai swRegistration langsung (paling reliable untuk installed PWA)
+  if (swRegistration) {
+    swRegistration.showNotification(title, options)
+      .catch(() => fallbackNotif(title, options));
+  } else if ("serviceWorker" in navigator) {
     navigator.serviceWorker.ready
       .then(reg => reg.showNotification(title, options))
-      .catch(() => new Notification(title, options));
+      .catch(() => fallbackNotif(title, options));
   } else {
-    new Notification(title, options);
+    fallbackNotif(title, options);
   }
 }
+
+function fallbackNotif(title, options) {
+  try { new Notification(title, options); } catch(e) {}
+}
+
 
 
 // ── TEST REMINDER ─────────────────────────────
