@@ -153,17 +153,21 @@ async function broadcastNotif(title, body, urgent = false) {
       headers: {
         "Title"       : title,
         "Priority"    : urgent ? "urgent" : "high",
-        "Tags"        : urgent ? "rotating_light" : "bell",
+        "Tags"        : "bell",
         "Content-Type": "text/plain",
       },
       body,
     });
-    if (!res.ok) throw new Error(`ntfy ${res.status}`);
-    showBanner("🔔 Notif dikirim ke semua user!", "success");
+    const resText = await res.text();
+    console.log("ntfy response:", res.status, resText); // ← lihat di DevTools
+    if (!res.ok) throw new Error(`ntfy ${res.status}: ${resText}`);
+    showBanner("🔔 Notif dikirim!", "success");
   } catch(e) {
-    showBanner("⚠️ Broadcast gagal: " + e.message, "warning");
+    console.error("ntfy error:", e);
+    showBanner("⚠️ " + e.message, "warning");
   }
 }
+
 
 // ── KIRIM NOTIF LOKAL ─────────────────────────
 function sendNotification(title, body, tag, urgent = false) {
