@@ -171,12 +171,12 @@ function switchTab(tab){
   renderTab(tab);
 }
 
-function renderTab(tab) {
-  if (tab === "marathon")  renderMarathon();
-  if (tab === "timeline")  renderTimeline();
-  if (tab === "single")    renderSingle();
-  if (tab === "standby")   renderStandby();
-  if (tab === "klasemen")  loadKlasemen();
+function renderTab(tab){
+  if(tab==="marathon") renderMarathon();
+  if(tab==="timeline") renderTimeline();
+  if(tab==="single")   renderSingle();
+  if(tab==="standby")  renderStandby();
+  if(tab==="klasemen") loadKlasemen();
 }
 
 function formatPic(rawName){
@@ -320,6 +320,9 @@ function assignPics(starts,ends,validPics=null){
   sortFn(starts).forEach(s=>doAssign(s,s.picForEvent||"-"));
 }
 
+// ─────────────────────────────────────────────
+// RENDER MARATHON
+// ─────────────────────────────────────────────
 function renderMarathon(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
@@ -336,7 +339,7 @@ function renderMarathon(){
     card.className=`marathon-session-card ${isEnded?"ms-ended":""}`;
     card.innerHTML=`
       <div class="ms-header">
-        <div class="ms-brand">🏃 ${s.brand} ${isEnded?`<span class="ended-badge">✓ ENDED</span>`:""}</div>
+        <div class="ms-brand">🏃 ${s.brand}${isEnded?` <span style="font-size:0.65rem;background:#F1F5F9;color:#94A3B8;padding:1px 7px;border-radius:999px;font-weight:600;vertical-align:middle">✓ ENDED</span>`:""}</div>
         <div class="ms-meta">
           <span class="badge marketplace">${s.marketplace}</span>
           <span class="badge studio">${s.studio}</span>
@@ -354,12 +357,16 @@ function renderMarathon(){
       row.className=`host-row ${isCurrent?"host-current":""} ${isNext?"host-next":""} ${isPast?"host-past":""}`;
       row.innerHTML=`
         <div class="hr-num">${hi+1}</div>
-        <div class="hr-time"><span class="hr-start">▶ ${h.startTime}</span><span class="hr-arrow">→</span><span class="hr-end">⏹ ${h.endTime}</span></div>
+        <div class="hr-time">
+          <span class="hr-start">▶ ${h.startTime}</span>
+          <span class="hr-arrow">→</span>
+          <span class="hr-end">⏹ ${h.endTime}</span>
+        </div>
         <div class="hr-info">
           <div class="hr-name">${h.host}
             ${isCurrent?`<span class="live-badge">● LIVE</span>`:""}
             ${isNext?`<span class="next-badge">NEXT</span>`:""}
-            ${isEnded&&hi===s.hosts.length-1?`<span class="ended-host-badge">✓ selesai</span>`:""}
+            ${isEnded&&hi===s.hosts.length-1?`<span style="font-size:0.55rem;background:#F1F5F9;color:#94A3B8;padding:1px 5px;border-radius:999px;font-weight:600;margin-left:4px">✓ selesai</span>`:""}
           </div>
           <div class="hr-pic">🧑‍💼 PIC: ${h.picData||"-"}</div>
         </div>`;
@@ -368,6 +375,9 @@ function renderMarathon(){
   });
 }
 
+// ─────────────────────────────────────────────
+// RENDER TIMELINE
+// ─────────────────────────────────────────────
 function renderTimeline(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
@@ -403,22 +413,18 @@ function renderTimeline(){
   function makeBlock(ev,time,type){
     const items=type==="start"?ev.starts:ev.ends;
     if(!items.length)return null;
-
     const display=time==="23:59/00:00"?"23:59 / 00:00":time;
     const checkTime=time==="23:59/00:00"?"23:59":time;
     const eventMs=timeToMs(sessions[0]?.date,checkTime);
     const isPast=eventMs&&eventMs<now;
-
     const block=document.createElement("div");
     block.className=`time-block${isPast?" collapsed":""}`;
-
     const header=document.createElement("div");
     header.className=`time-header ${type==="start"?"start":"end"}-header`;
-
     if(isPast){
-      header.style.opacity="0.5";
+      header.style.opacity="0.55";
       header.style.cursor="pointer";
-      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span> ${type} ${display} <span style="margin-left:auto;font-size:0.65rem">▸ ${items.length}</span>`;
+      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"Start":"End"} ${display}<span style="margin-left:auto;font-size:0.65rem">▸ ${items.length}</span>`;
       header.onclick=()=>{
         const wasCollapsed=block.classList.contains("collapsed");
         block.classList.toggle("collapsed");
@@ -426,17 +432,14 @@ function renderTimeline(){
         cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
       };
     }else{
-      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span> ${type} ${display}`;
+      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"▶ Start":"⏹ End"} ${display}`;
     }
-
     const content=document.createElement("div");
     content.className="sessions-container";
     content.style.maxHeight=isPast?"0px":"none";
-
     items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
     block.appendChild(header);
     block.appendChild(content);
-
     if(!isPast&&!firstUpcoming)firstUpcoming=block;
     return block;
   }
@@ -464,7 +467,6 @@ function makeTimelineCard(s,num,mode,eventTime=null){
   const isLSC=picLabel==="LSC";
   const firstHost=s.hosts?.[0]?.host||"-";
   const isSingle=mode==="single";
-
   const card=document.createElement("div");
   card.className=`session-card ${isPast?"past":""} ${isSoon?"soon":""} ${s.isMarathon?"marathon-card":""}`;
   card.innerHTML=`
@@ -478,12 +480,15 @@ function makeTimelineCard(s,num,mode,eventTime=null){
         <span class="badge studio">${s.studio}</span>
       </div>
       <div class="session-host">👤 ${firstHost}</div>
-      ${isSingle?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
+      ${isSingle?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp;⏹ ${s.endTime||"-"}</div>`:""}
     </div>
     <div class="session-pic-right ${isLSC?"lsc":""}">${picLabel}</div>`;
   return card;
 }
 
+// ─────────────────────────────────────────────
+// RENDER SINGLE
+// ─────────────────────────────────────────────
 function renderSingle(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
@@ -494,22 +499,25 @@ function renderSingle(){
   copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"single")));
 }
 
-const STANDBY_BRANDS = [
-  { key: "AT Tiktok",        slotFormat: false, showBackup: true,
-    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok" },
-  { key: "Samsonite Tiktok", slotFormat: false, showBackup: true,
-    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "tiktok" },
-  { key: "AT Shopee",        slotFormat: false, showBackup: false,
-    match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "Samsonite Shopee", slotFormat: true,  showBackup: false,
-    match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "ASICS",            slotFormat: false, showBackup: false,
-    match: s => s.brand.toLowerCase().includes("asics") },
+// ─────────────────────────────────────────────
+// STANDBY DATA BUILDERS
+// ─────────────────────────────────────────────
+const STANDBY_BRANDS=[
+  {key:"AT Tiktok",       slotFormat:false,showBackup:true,
+   match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="tiktok"},
+  {key:"Samsonite Tiktok",slotFormat:false,showBackup:true,
+   match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="tiktok"},
+  {key:"AT Shopee",       slotFormat:false,showBackup:false,
+   match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="shopee"},
+  {key:"Samsonite Shopee",slotFormat:true, showBackup:false,
+   match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="shopee"},
+  {key:"ASICS",           slotFormat:false,showBackup:false,
+   match:s=>s.brand.toLowerCase().includes("asics")},
 ];
 
-const BACKUP_DEPRIORITY = {
-  pagi : new Set(["nadiem"]),
-  siang: new Set(["maulidan"]),
+const BACKUP_DEPRIORITY={
+  pagi :new Set(["nadiem"]),
+  siang:new Set(["maulidan"]),
 };
 
 function buildPicShiftData(){
@@ -528,174 +536,180 @@ function buildPicShiftData(){
   return shifts;
 }
 
-function buildStandbyData() {
-  const nonDedByShift = { pagi: {}, siang: {} };
-
-  sessions.forEach(s => {
-    s.hosts.forEach(h => {
-      if (!h.picData || h.picData === "-") return;
-      const key = h.picData.trim().toLowerCase();
-      if (DEDICATED_OPS.includes(key) || LSC_NAMES_SET.has(key)) return;
-      const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-      const shift  = getShift(endStr);
-      if (shift === "malam") return;
-
-      const cur = nonDedByShift[shift][key];
-      if (!cur) {
-        nonDedByShift[shift][key] = { name: h.picData.trim(), minStart: h.startTime, maxEnd: endStr };
-      } else {
-        if (toMinJS(h.startTime) < toMinJS(cur.minStart)) cur.minStart = h.startTime;
-        if (toMinJS(endStr)      > toMinJS(cur.maxEnd))   cur.maxEnd   = endStr;
+function buildStandbyData(){
+  const nonDedByShift={pagi:{},siang:{}};
+  sessions.forEach(s=>{
+    s.hosts.forEach(h=>{
+      if(!h.picData||h.picData==="-")return;
+      const key=h.picData.trim().toLowerCase();
+      if(DEDICATED_OPS.includes(key)||LSC_NAMES_SET.has(key))return;
+      const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+      const shift=getShift(endStr);
+      if(shift==="malam")return;
+      const cur=nonDedByShift[shift][key];
+      if(!cur){nonDedByShift[shift][key]={name:h.picData.trim(),minStart:h.startTime,maxEnd:endStr};}
+      else{
+        if(toMinJS(h.startTime)<toMinJS(cur.minStart))cur.minStart=h.startTime;
+        if(toMinJS(endStr)>toMinJS(cur.maxEnd))cur.maxEnd=endStr;
       }
     });
   });
 
-  function findBackup(shift, usedSet) {
-    const entries = Object.values(nonDedByShift[shift]);
-    for (const e of entries) {
-      if (usedSet.has(e.name.toLowerCase())) continue;
-      if (BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase())) continue;
+  function findBackup(shift,usedSet){
+    const entries=Object.values(nonDedByShift[shift]);
+    for(const e of entries){
+      if(usedSet.has(e.name.toLowerCase()))continue;
+      if(BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase()))continue;
       return e;
     }
-    for (const e of entries) {
-      if (usedSet.has(e.name.toLowerCase())) continue;
-      return e;
-    }
+    for(const e of entries){if(usedSet.has(e.name.toLowerCase()))continue;return e;}
     return null;
   }
 
-  return STANDBY_BRANDS.map(b => {
-    const matched = sessions.filter(b.match);
-    const slots   = [], seenKey = new Set();
-    const usedNonDed = { pagi: new Set(), siang: new Set() };
-
-    matched.forEach(s => {
-      if (b.slotFormat) {
-        s.hosts.forEach(h => {
-          const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-          const shift  = getShift(endStr);
-          if (shift === "malam") return;
-
-          const st = (h.startTime || "").substring(0,5);
-          const en = (h.endTime   || "").substring(0,5);
-
-          let picForSlot = null;
-          const picKey = (h.picData || "").trim().toLowerCase();
-
-          if (!h.picData || h.picData === "-" || DEDICATED_OPS.includes(picKey) || LSC_NAMES_SET.has(picKey)) {
-            const backup = findBackup(shift, usedNonDed[shift]);
-            if (!backup) return;
-            picForSlot = backup.name;
+  return STANDBY_BRANDS.map(b=>{
+    const matched=sessions.filter(b.match);
+    const slots=[],seenKey=new Set();
+    const usedNonDed={pagi:new Set(),siang:new Set()};
+    matched.forEach(s=>{
+      if(b.slotFormat){
+        s.hosts.forEach(h=>{
+          const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+          const shift=getShift(endStr);if(shift==="malam")return;
+          const st=(h.startTime||"").substring(0,5);
+          const en=(h.endTime||"").substring(0,5);
+          let picForSlot=null;
+          const picKey=(h.picData||"").trim().toLowerCase();
+          if(!h.picData||h.picData==="-"||DEDICATED_OPS.includes(picKey)||LSC_NAMES_SET.has(picKey)){
+            const backup=findBackup(shift,usedNonDed[shift]);
+            if(!backup)return;
+            picForSlot=backup.name;
             usedNonDed[shift].add(backup.name.toLowerCase());
-          } else {
-            picForSlot = h.picData.trim();
-          }
-
-          const slotKey = `${st}-${en}-${picForSlot.toLowerCase()}`;
-          if (seenKey.has(slotKey)) return; seenKey.add(slotKey);
-
-          slots.push({
-            type: "slot",
-            label: `${st.replace(":00","")}–${en.replace(":00","")}`,
-            pic: picForSlot, nonDedPic: null, nonDedTime: null,
-            sortKey: toMinJS(h.startTime)
-          });
+          }else{picForSlot=h.picData.trim();}
+          const slotKey=`${st}-${en}-${picForSlot.toLowerCase()}`;
+          if(seenKey.has(slotKey))return;seenKey.add(slotKey);
+          slots.push({type:"slot",label:`${st.replace(":00","")}–${en.replace(":00","")}`,
+            pic:picForSlot,nonDedPic:null,nonDedTime:null,sortKey:toMinJS(h.startTime)});
         });
-      } else {
-        s.hosts.forEach(h => {
-          if (!h.picData || h.picData === "-") return;
-          const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
-          const shift  = getShift(endStr);
-          if (shift === "malam") return;
-
-          const shiftKey = `${shift}-${h.picData.trim().toLowerCase()}`;
-          if (seenKey.has(shiftKey)) return; seenKey.add(shiftKey);
-
-          let nonDedPic = null, nonDedTime = null;
-          if (b.showBackup) {
-            const backup = findBackup(shift, usedNonDed[shift]);
-            if (backup) {
-              nonDedPic  = backup.name;
-              const st = backup.minStart.replace(":00","");
-              const en = backup.maxEnd.replace(":00","");
-              nonDedTime = `${st}–${en}`;
+      }else{
+        s.hosts.forEach(h=>{
+          if(!h.picData||h.picData==="-")return;
+          const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+          const shift=getShift(endStr);if(shift==="malam")return;
+          const shiftKey=`${shift}-${h.picData.trim().toLowerCase()}`;
+          if(seenKey.has(shiftKey))return;seenKey.add(shiftKey);
+          let nonDedPic=null,nonDedTime=null;
+          if(b.showBackup){
+            const backup=findBackup(shift,usedNonDed[shift]);
+            if(backup){
+              nonDedPic=backup.name;
+              const st=backup.minStart.replace(":00","");
+              const en=backup.maxEnd.replace(":00","");
+              nonDedTime=`${st}–${en}`;
               usedNonDed[shift].add(backup.name.toLowerCase());
             }
           }
-
-          slots.push({
-            type: "shift", label: shift.toUpperCase(),
-            pic: h.picData.trim(), nonDedPic, nonDedTime,
-            sortKey: shift === "pagi" ? 0 : 1
-          });
+          slots.push({type:"shift",label:shift.toUpperCase(),
+            pic:h.picData.trim(),nonDedPic,nonDedTime,sortKey:shift==="pagi"?0:1});
         });
       }
     });
-
-    slots.sort((a,b) => a.sortKey - b.sortKey);
-    return { key: b.key, slotFormat: b.slotFormat, slots };
-  }).filter(b => b.slots.length > 0);
+    slots.sort((a,b)=>a.sortKey-b.sortKey);
+    return{key:b.key,slotFormat:b.slotFormat,slots};
+  }).filter(b=>b.slots.length>0);
 }
 
+// ─────────────────────────────────────────────
+// RENDER STANDBY
+// ─────────────────────────────────────────────
 function renderStandby(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
   if(!sessions.length){container.innerHTML=`<div class="empty">📭 Data belum dimuat</div>`;return;}
   const dateStr=sessions[0]?.date||"";
   let dateLabel="";
-  try{dateLabel=new Date(dateStr+"T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase();}catch(e){}
-  const picShift=buildPicShiftData(),standbyList=buildStandbyData();
+  try{
+    dateLabel=new Date(dateStr+"T12:00:00+07:00")
+      .toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"})
+      .toUpperCase();
+  }catch(e){}
+
+  const picShift=buildPicShiftData();
+  const standbyList=buildStandbyData();
+
   let html=`<div class="standby-wrapper">`;
-  html+=`<div class="standby-section"><div class="standby-title">📅 REMINDER ${dateLabel}</div></div>`;
+
+  // ── Tanggal ──
+  html+=`<div class="standby-section">
+    <div class="standby-title">📅 REMINDER ${dateLabel}</div>
+  </div>`;
+
+  // ── PIC per shift ──
   ["pagi","siang"].forEach(shift=>{
     const data=picShift[shift];
     if(!data||!Object.keys(data).length)return;
-    html+=`<div class="standby-section"><div class="standby-label">👥 PIC SHIFT ${shift.toUpperCase()}</div>`;
+    html+=`<div class="standby-section">
+      <div class="standby-label">👥 PIC Shift ${shift.charAt(0).toUpperCase()+shift.slice(1)}</div>`;
     Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{
-      html+=`<div class="pic-row"><span class="pic-name">${d.name}</span><span class="pic-studios">${[...d.studios].sort((a,b)=>a-b).join(", ")}</span></div>`;
+      html+=`<div class="pic-row">
+        <span class="pic-name">${d.name}</span>
+        <span class="pic-studios">${[...d.studios].sort((a,b)=>a-b).join(", ")}</span>
+      </div>`;
     });
     html+=`</div>`;
   });
-  standbyList.forEach(b => {
-    html += `<div class="standby-brand-card">
-      <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
-    b.slots.forEach(slot => {
-      const picDisp = formatPic(slot.pic);
-      let backupStr = "";
-      if (slot.nonDedPic) {
-        backupStr = ` / ${formatPic(slot.nonDedPic)}`;
-        // ← warna muted lebih netral, bukan navy
-        if (slot.nonDedTime) backupStr += ` <span style="color:#52525b;font-size:0.65rem">(${slot.nonDedTime})</span>`;
+
+  // ── Standby brand ──
+  standbyList.forEach(b=>{
+    html+=`<div class="standby-brand-card">
+      <div class="standby-brand-title">📍 Standby ${b.key}</div>`;
+    b.slots.forEach(slot=>{
+      const picDisp=formatPic(slot.pic);
+      let backupStr="";
+      if(slot.nonDedPic){
+        backupStr=` <span style="color:#94A3B8;font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;
+        if(slot.nonDedTime) backupStr+=` <span style="color:#CBD5E1;font-size:0.65rem">(${slot.nonDedTime})</span>`;
       }
-      html += `<div class="standby-row">
+      html+=`<div class="standby-row">
         <span class="standby-time">${slot.label}</span>
         <span class="standby-pic">${picDisp}${backupStr}</span>
       </div>`;
     });
-    html += `</div>`;
+    html+=`</div>`;
   });
 
-  html+=`<div class="standby-section"><div class="standby-label">📋 PROSEDUR</div><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
+  // ── Prosedur ──
+  html+=`<div class="standby-section">
+    <div class="standby-label">📋 Prosedur</div>
+    <div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
 2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
-3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div></div>`;
-  html+=`<div class="standby-section"><div class="standby-label">🔗 LINKS</div>
+3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div>
+  </div>`;
+
+  // ── Links ──
+  html+=`<div class="standby-section">
+    <div class="standby-label">🔗 Links</div>
     <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
     <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
     <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
     <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
   </div>`;
-  html+=`<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button></div>`;
+
+  html+=`<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button>`;
+  html+=`</div>`;
   container.innerHTML=html;
 }
 
-// ── KLASEMEN ──────────────────────────────────
+// ─────────────────────────────────────────────
+// KLASEMEN
+// ─────────────────────────────────────────────
 async function loadKlasemen(){
-  if(activeTab !== "klasemen") return;
-
+  if(activeTab!=="klasemen")return;
   const container=document.getElementById("schedule-list");
-  // ← loading state pakai warna zinc
-  container.innerHTML=`<div style="text-align:center;padding:30px;color:#71717a">⏳ Memuat klasemen...</div>`;
-
+  container.innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:10px">
+      <div style="width:28px;height:28px;border:3px solid #E8EDFF;border-top-color:#4F6EF7;border-radius:50%;animation:spin 0.7s linear infinite"></div>
+      <span style="color:#94A3B8;font-size:0.8rem;font-weight:500">Memuat klasemen...</span>
+    </div>`;
   try{
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
@@ -716,10 +730,13 @@ async function loadKlasemen(){
 }
 
 async function forceRefreshKlasemen(){
-  if(activeTab !== "klasemen") return;
+  if(activeTab!=="klasemen")return;
   const container=document.getElementById("schedule-list");
-  container.innerHTML=`<div style="text-align:center;padding:30px;color:#71717a">⏳ Force refresh...</div>`;
-
+  container.innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:10px">
+      <div style="width:28px;height:28px;border:3px solid #E8EDFF;border-top-color:#4F6EF7;border-radius:50%;animation:spin 0.7s linear infinite"></div>
+      <span style="color:#94A3B8;font-size:0.8rem;font-weight:500">Force refresh...</span>
+    </div>`;
   try{
     const res=await fetch(API_URL+"?action=leaderboard&nocache=1&t="+Date.now());
     const data=JSON.parse(await res.text());
@@ -733,50 +750,45 @@ async function forceRefreshKlasemen(){
   }
 }
 
-function renderKlasemen(data) {
-  const container = document.getElementById("schedule-list");
-  if (!data.leaderboard) {
-    container.innerHTML = `<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
+function renderKlasemen(data){
+  const container=document.getElementById("schedule-list");
+  if(!data.leaderboard){
+    container.innerHTML=`<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
     return;
   }
 
-  const totalPendHariH = data.leaderboard.reduce((s,r) => s + r.pendingHariH, 0);
-  const totalPendH1    = data.leaderboard.reduce((s,r) => s + r.pendingH1,    0);
-  const totalRows      = data.leaderboard.reduce((s,r) => s + r.total,        0);
-  const totalHold      = data.leaderboard.reduce((s,r) => s + r.hold,         0);
+  const totalPendHariH=data.leaderboard.reduce((s,r)=>s+r.pendingHariH,0);
+  const totalPendH1   =data.leaderboard.reduce((s,r)=>s+r.pendingH1,0);
+  const totalRows     =data.leaderboard.reduce((s,r)=>s+r.total,0);
+  const totalHold     =data.leaderboard.reduce((s,r)=>s+r.hold,0);
 
-  let html = `<div style="padding:8px 12px 24px">`;
+  // ── helper style ──
+  const card=(bg,border,numColor,num,label)=>
+    `<div style="flex:1;background:${bg};border-radius:14px;padding:10px 6px;text-align:center;border:1px solid ${border}">
+       <div style="font-size:1.1rem;font-weight:800;color:${numColor}">${num}</div>
+       <div style="font-size:0.58rem;color:#94A3B8;margin-top:2px;font-weight:500">${label}</div>
+     </div>`;
 
-  // ── Header ──
-  html += `<div style="text-align:center;font-size:0.75rem;color:#71717a;margin-bottom:10px">
-    📊 Klasemen Pending Upload<br>
-    <span style="font-size:0.68rem;color:#52525b">${data.dateFrom||""} → ${data.dateTo||""}</span>
+  let html=`<div style="padding:8px 12px 24px">`;
+
+  // Header
+  html+=`<div style="text-align:center;margin-bottom:14px">
+    <div style="font-size:0.8rem;font-weight:700;color:#1E293B">📊 Klasemen Pending Upload</div>
+    <div style="font-size:0.68rem;color:#94A3B8;margin-top:2px">${data.dateFrom||""} → ${data.dateTo||""}</div>
   </div>`;
 
-  // ── Summary cards ── warna zinc, aksen semantik tetap
-  html += `<div style="display:flex;gap:5px;margin-bottom:12px">
-    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
-      <div style="font-size:1rem;font-weight:800;color:#f87171">${totalPendHariH}</div>
-      <div style="font-size:0.55rem;color:#71717a">⏳ Hari H</div>
-    </div>
-    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
-      <div style="font-size:1rem;font-weight:800;color:#fb923c">${totalPendH1}</div>
-      <div style="font-size:0.55rem;color:#71717a">📋 H+1</div>
-    </div>
-    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
-      <div style="font-size:1rem;font-weight:800;color:#818cf8">${totalRows}</div>
-      <div style="font-size:0.55rem;color:#71717a">📂 Total</div>
-    </div>
-    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
-      <div style="font-size:1rem;font-weight:800;color:#a1a1aa">${totalHold}</div>
-      <div style="font-size:0.55rem;color:#71717a">⏸ Hold</div>
-    </div>
+  // Summary
+  html+=`<div style="display:flex;gap:8px;margin-bottom:14px">
+    ${card("#FEF2F2","#FECACA","#DC2626",totalPendHariH,"⏳ Hari H")}
+    ${card("#FFFBEB","#FDE68A","#D97706",totalPendH1,"📋 H+1")}
+    ${card("#EEF2FF","#C7D2FE","#4F6EF7",totalRows,"📂 Total")}
+    ${card("#F1F5F9","#E2E8F0","#64748B",totalHold,"⏸ Hold")}
   </div>`;
 
-  // ── Leaderboard table ──
-  html += `<div style="background:#27272a;border-radius:10px;overflow:hidden;margin-bottom:12px;border:1px solid #3f3f46">
-    <div style="padding:6px 10px;background:#18181b;font-size:0.62rem;font-weight:700;color:#52525b;display:flex;gap:4px">
-      <span style="width:24px">#</span>
+  // Leaderboard table
+  html+=`<div style="background:#fff;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid #E8EDFF;box-shadow:0 2px 10px rgba(79,110,247,0.06)">
+    <div style="padding:8px 12px;background:#F0F4FF;font-size:0.62rem;font-weight:700;color:#94A3B8;display:flex;gap:4px;letter-spacing:0.3px">
+      <span style="width:26px">#</span>
       <span style="flex:1">PIC</span>
       <span style="width:48px;text-align:center">H+1</span>
       <span style="width:48px;text-align:center">Hari H</span>
@@ -784,103 +796,107 @@ function renderKlasemen(data) {
       <span style="width:36px;text-align:center">Hold</span>
     </div>`;
 
-  data.leaderboard.forEach((r, idx) => {
-    const pts   = r.pendingPoints;
-    const medal = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    // Warna status tetap semantik (merah = buruk, hijau = baik)
-    const color = pts===0?"#34d399":pts<=5?"#818cf8":pts<=15?"#fb923c":"#f87171";
-
-    html += `<div style="padding:6px 10px;border-top:1px solid #18181b;display:flex;align-items:center;gap:4px">
-      <span style="width:24px;font-size:0.75rem">${medal}</span>
+  data.leaderboard.forEach((r,idx)=>{
+    const pts=r.pendingPoints;
+    const medal=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
+    const statusColor=pts===0?"#10B981":pts<=5?"#4F6EF7":pts<=15?"#D97706":"#DC2626";
+    const statusText=pts>0?`${pts} pts pending`:"✅ Bersih";
+    html+=`<div style="padding:8px 12px;border-top:1px solid #F1F5F9;display:flex;align-items:center;gap:4px">
+      <span style="width:26px;font-size:0.78rem">${medal}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:0.8rem;font-weight:600;color:#e4e4e7">${formatPic(r.pic)}</div>
-        <div style="font-size:0.58rem;color:${color}">${pts > 0 ? pts+" pts pending" : "✅ No pending data"}</div>
+        <div style="font-size:0.82rem;font-weight:700;color:#1E293B">${formatPic(r.pic)}</div>
+        <div style="font-size:0.6rem;color:${statusColor};font-weight:500;margin-top:1px">${statusText}</div>
       </div>
-      <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#fb923c">${r.pendingH1}</span>
-      <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f87171">${r.pendingHariH}</span>
-      <span style="width:40px;text-align:center;font-size:0.75rem;color:#71717a">${r.total}</span>
-      <span style="width:36px;text-align:center;font-size:0.75rem;color:#a1a1aa">${r.hold}</span>
+      <span style="width:48px;text-align:center;font-size:0.85rem;font-weight:700;color:#D97706">${r.pendingH1}</span>
+      <span style="width:48px;text-align:center;font-size:0.85rem;font-weight:700;color:#DC2626">${r.pendingHariH}</span>
+      <span style="width:40px;text-align:center;font-size:0.75rem;color:#64748B">${r.total}</span>
+      <span style="width:36px;text-align:center;font-size:0.75rem;color:#94A3B8">${r.hold}</span>
     </div>`;
   });
-  html += `</div>`;
+  html+=`</div>`;
 
-  // ── Copy buttons per PIC ──
-  html += `<div style="font-size:0.72rem;font-weight:700;color:#c084fc;margin-bottom:6px">
-    📋 Copy ID Line Pending per PIC
-  </div>
-  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
+  // Copy buttons
+  html+=`<div style="font-size:0.72rem;font-weight:700;color:#7C3AED;margin-bottom:8px">📋 Copy ID Line Pending per PIC</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
 
-  data.leaderboard.forEach(r => {
-    const hasPending = r.pendingRows?.length > 0;
-    const idLines    = (r.pendingRows||[]).map(p => p.idLine).filter(Boolean);
-    const picLabel   = formatPic(r.pic);
-    const pts        = r.pendingPoints;
-
-    if (hasPending) {
-      html += `<button
-        onclick="copyIdLines('${r.pic}', ${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
-        style="padding:6px 10px;border:none;border-radius:8px;background:#1e1b4b;color:#c7d2fe;font-size:0.72rem;font-weight:600;cursor:pointer;border:1px solid #312e81">
-        ${picLabel} <span style="color:#fb923c">(${pts})</span>
+  data.leaderboard.forEach(r=>{
+    const hasPending=r.pendingRows?.length>0;
+    const idLines=(r.pendingRows||[]).map(p=>p.idLine).filter(Boolean);
+    const picLabel=formatPic(r.pic);
+    const pts=r.pendingPoints;
+    if(hasPending){
+      html+=`<button
+        onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
+        style="padding:6px 12px;border:1px solid #C7D2FE;border-radius:10px;background:#EEF2FF;
+               color:#4F6EF7;font-size:0.72rem;font-weight:600;cursor:pointer">
+        ${picLabel} <span style="color:#D97706;font-weight:700">(${pts})</span>
       </button>`;
-    } else {
-      html += `<button
-        disabled
-        style="padding:6px 10px;border:none;border-radius:8px;background:#27272a;color:#3f3f46;font-size:0.72rem;font-weight:600;cursor:not-allowed;border:1px solid #3f3f46">
+    }else{
+      html+=`<button disabled
+        style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:10px;background:#F8FAFC;
+               color:#CBD5E1;font-size:0.72rem;font-weight:600;cursor:not-allowed">
         ${picLabel} ✅
       </button>`;
     }
   });
-  html += `</div>`;
+  html+=`</div>`;
 
-  // ── Detail pending rows per PIC ──
-  const withPending = data.leaderboard.filter(r => r.pendingRows?.length > 0);
-  if (withPending.length > 0) {
-    withPending.forEach(r => {
-      html += `<div style="margin-bottom:10px">
-        <div style="font-size:0.7rem;font-weight:700;color:#c084fc;margin-bottom:4px">
+  // Detail pending rows
+  const withPending=data.leaderboard.filter(r=>r.pendingRows?.length>0);
+  if(withPending.length>0){
+    withPending.forEach(r=>{
+      html+=`<div style="margin-bottom:12px">
+        <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;margin-bottom:5px">
           ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
         </div>`;
-      r.pendingRows.forEach(p => {
-        const tags = [];
-        if (p.hariH) tags.push(`<span style="color:#f87171;font-size:0.58rem">Hari H</span>`);
-        if (p.h1)    tags.push(`<span style="color:#fb923c;font-size:0.58rem">H+1</span>`);
-        html += `<div style="background:#27272a;border-radius:6px;padding:5px 8px;margin-bottom:2px;display:flex;align-items:center;gap:6px;border:1px solid #3f3f46">
+      r.pendingRows.forEach(p=>{
+        const tags=[];
+        if(p.hariH) tags.push(`<span style="background:#FEF2F2;color:#DC2626;font-size:0.58rem;padding:2px 7px;border-radius:999px;font-weight:600">Hari H</span>`);
+        if(p.h1)    tags.push(`<span style="background:#FFFBEB;color:#D97706;font-size:0.58rem;padding:2px 7px;border-radius:999px;font-weight:600">H+1</span>`);
+        html+=`<div style="background:#fff;border-radius:10px;padding:8px 10px;margin-bottom:4px;
+                            display:flex;align-items:center;gap:8px;
+                            border:1px solid #E8EDFF;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
           <div style="flex:1;min-width:0">
-            <div style="font-size:0.75rem;font-weight:600;color:#e4e4e7">${p.brand}</div>
-            <div style="font-size:0.62rem;color:#71717a">${p.date} · ${p.startTime} · ${p.studio}</div>
+            <div style="font-size:0.78rem;font-weight:600;color:#1E293B">${p.brand}</div>
+            <div style="font-size:0.64rem;color:#94A3B8;margin-top:2px">${p.date} · ${p.startTime} · ${p.studio}</div>
           </div>
-          <div style="display:flex;gap:3px">${tags.join(" ")}</div>
-          <div style="font-size:0.6rem;color:#52525b;font-family:monospace">${p.idLine}</div>
+          <div style="display:flex;gap:3px;align-items:center">${tags.join(" ")}</div>
+          <div style="font-size:0.6rem;color:#CBD5E1;font-family:monospace;flex-shrink:0">${p.idLine}</div>
         </div>`;
       });
-      html += `</div>`;
+      html+=`</div>`;
     });
   }
 
-  // ── Refresh button ──
-  html += `<button onclick="forceRefreshKlasemen()"
-    style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;
-           background:#27272a;color:#818cf8;font-size:0.78rem;cursor:pointer;
-           border:1px solid #3f3f46">
+  // Refresh button
+  html+=`<button onclick="forceRefreshKlasemen()"
+    style="width:100%;margin-top:8px;padding:11px;border:1px solid #C7D2FE;border-radius:12px;
+           background:#EEF2FF;color:#4F6EF7;font-size:0.78rem;font-weight:600;cursor:pointer">
     🔄 Refresh (Clear Cache)
   </button>`;
 
-  html += `</div>`;
-  container.innerHTML = html;
+  html+=`</div>`;
+  container.innerHTML=html;
 }
 
-function copyIdLines(picName, idLines) {
-  if (!idLines || idLines.length === 0) return;
-  const text = idLines.join("\n");
-  navigator.clipboard.writeText(text)
-    .then(() => showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`, "success"))
-    .catch(() => showBanner("❌ Gagal copy", "error"));
+function copyIdLines(picName,idLines){
+  if(!idLines||idLines.length===0)return;
+  navigator.clipboard.writeText(idLines.join("\n"))
+    .then(()=>showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`,"success"))
+    .catch(()=>showBanner("❌ Gagal copy","error"));
 }
 
+// ─────────────────────────────────────────────
+// COPY STANDBY TEXT
+// ─────────────────────────────────────────────
 function copyStandbyText(){
   const dateStr=sessions[0]?.date||"";
   let dateLabel="";
-  try{dateLabel=new Date(dateStr+"T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase();}catch(e){}
+  try{
+    dateLabel=new Date(dateStr+"T12:00:00+07:00")
+      .toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"})
+      .toUpperCase();
+  }catch(e){}
   const picShift=buildPicShiftData(),standbyList=buildStandbyData();
   let text=`REMINDER ${dateLabel}\n\n`;
   ["pagi","siang"].forEach(shift=>{
@@ -898,16 +914,21 @@ function copyStandbyText(){
   });
   text+=`1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT\n2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG\n3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST\n\n`;
   text+=`Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6VcZ7\n\nLINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\nBACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\nLINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
-  navigator.clipboard.writeText(text).then(()=>showBanner("✅ Teks di-copy!","success")).catch(()=>showBanner("❌ Gagal copy","error"));
+  navigator.clipboard.writeText(text)
+    .then(()=>showBanner("✅ Teks di-copy!","success"))
+    .catch(()=>showBanner("❌ Gagal copy","error"));
 }
 
+// ─────────────────────────────────────────────
+// NOTIF PANEL
+// ─────────────────────────────────────────────
 function showNotifPanel(){
   const panel=document.getElementById("notif-panel");
   if(panel.style.display!=="none"){panel.style.display="none";return;}
   const now=Date.now(),list=document.getElementById("notif-time-list");
   list.innerHTML="";
 
-  const startTimes=new Set(), endTimes=new Set();
+  const startTimes=new Set(),endTimes=new Set();
   sessions.forEach(s=>{
     if(s.startTime&&s.startTime!=="-")startTimes.add(s.startTime);
     if(s.endTime&&s.endTime!=="-")endTimes.add(s.endTime);
@@ -921,9 +942,16 @@ function showNotifPanel(){
     const diffMin=Math.round(diff/60000);
     const btn=document.createElement("button");
     btn.className="notif-time-btn";
-    // ← warna lebih tenang: indigo-950 untuk start, dark red untuk end (tetap semantik)
-    btn.style.background = type==="start" ? "#1e1b4b" : "#450a0a";
-    btn.style.color       = type==="start" ? "#c7d2fe" : "#fca5a5";
+    // light mode: soft pastel per type
+    if(type==="start"){
+      btn.style.background="#EEF2FF";
+      btn.style.color="#4F6EF7";
+      btn.style.border="1px solid #C7D2FE";
+    }else{
+      btn.style.background="#FEF2F2";
+      btn.style.color="#DC2626";
+      btn.style.border="1px solid #FECACA";
+    }
     btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
     btn.onclick=()=>sendManualNotifFor(time,type);
     list.appendChild(btn);
@@ -931,68 +959,58 @@ function showNotifPanel(){
 
   [...startTimes].sort().forEach(t=>makeBtn(t,"start"));
   [...endTimes].sort().forEach(t=>makeBtn(t,"end"));
-
   panel.style.display="block";
 }
 
 function closeNotifPanel(){document.getElementById("notif-panel").style.display="none";}
 
-function sendManualNotifFor(time, type = "start") {
-  const group = sessions.filter(s =>
-    type === "start" ? s.startTime === time : s.endTime === time
-  );
-  if (!group.length) { showBanner("Tidak ada sesi di jam ini", "warning"); return; }
-
-  const lines = buildNotifLines(group, type, time);
-  broadcastNotif(
-    `${type === "start" ? "▶ START" : "⏹ END"} ${time}`,
-    lines.join("\n"),
-    false
-  );
+function sendManualNotifFor(time,type="start"){
+  const group=sessions.filter(s=>type==="start"?s.startTime===time:s.endTime===time);
+  if(!group.length){showBanner("Tidak ada sesi di jam ini","warning");return;}
+  const lines=buildNotifLines(group,type,time);
+  broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${time}`,lines.join("\n"),false);
   closeNotifPanel();
 }
 
-function sendManualNotifAll() {
-  const now = Date.now();
-  const upStart = {}, upEnd = {};
-
-  sessions.forEach(s => {
-    const add = (map, time) => {
-      const ms = timeToMs(s.date, time);
-      if (!ms) return;
-      const diff = ms - now;
-      if (diff < -5 * 60 * 1000 || diff > 2 * 60 * 60 * 1000) return;
-      if (!map[time]) map[time] = [];
+function sendManualNotifAll(){
+  const now=Date.now();
+  const upStart={},upEnd={};
+  sessions.forEach(s=>{
+    const add=(map,time)=>{
+      const ms=timeToMs(s.date,time);if(!ms)return;
+      const diff=ms-now;
+      if(diff<-5*60*1000||diff>2*60*60*1000)return;
+      if(!map[time])map[time]=[];
       map[time].push(s);
     };
-    if (s.startTime && s.startTime !== "-") add(upStart, s.startTime);
-    if (s.endTime   && s.endTime   !== "-") add(upEnd,   s.endTime);
+    if(s.startTime&&s.startTime!=="-")add(upStart,s.startTime);
+    if(s.endTime&&s.endTime!=="-")add(upEnd,s.endTime);
   });
 
-  const entries = [
-    ...Object.entries(upStart).map(([t,g]) => ({t, g, type:"start"})),
-    ...Object.entries(upEnd).map(([t,g])   => ({t, g, type:"end"})),
-  ].sort((a,b) => toMinJS(a.t) - toMinJS(b.t));
+  const entries=[
+    ...Object.entries(upStart).map(([t,g])=>({t,g,type:"start"})),
+    ...Object.entries(upEnd).map(([t,g])=>({t,g,type:"end"})),
+  ].sort((a,b)=>toMinJS(a.t)-toMinJS(b.t));
 
-  if (!entries.length) { showBanner("Tidak ada sesi upcoming (2 jam ke depan)", "warning"); return; }
+  if(!entries.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
 
-  entries.forEach(({t,g,type}, idx) => {
-    setTimeout(() => {
-      const lines = buildNotifLines(g, type, t);
-      broadcastNotif(
-        `${type === "start" ? "▶ START" : "⏹ END"} ${t}`,
-        lines.join("\n"),
-        false
-      );
-    }, idx * 2000);
+  entries.forEach(({t,g,type},idx)=>{
+    setTimeout(()=>{
+      const lines=buildNotifLines(g,type,t);
+      broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${t}`,lines.join("\n"),false);
+    },idx*2000);
   });
 
   closeNotifPanel();
-  showBanner(`🔔 ${entries.length} notif dikirim (start+end)!`, "success");
+  showBanner(`🔔 ${entries.length} notif dikirim (start+end)!`,"success");
 }
 
+// ─────────────────────────────────────────────
+// NOTIFICATIONS & SCHEDULING
+// ─────────────────────────────────────────────
 function updateStats(){
-  const m=sessions.filter(s=>s.isMarathon).length,sg=sessions.filter(s=>!s.isMarathon).length;
+  const m=sessions.filter(s=>s.isMarathon).length;
+  const sg=sessions.filter(s=>!s.isMarathon).length;
   document.getElementById("stat-total").textContent=sessions.length;
   document.getElementById("stat-marathon").textContent=m;
   document.getElementById("stat-single").textContent=sg;
@@ -1001,7 +1019,6 @@ function updateStats(){
 function scheduleAllNotifications(list){
   const now=Date.now();let count=0;
   const startGroups={},endGroups={};
-
   list.forEach(s=>{
     if(s.startTime&&s.startTime!=="-"){
       if(!startGroups[s.startTime])startGroups[s.startTime]=[];
@@ -1014,66 +1031,71 @@ function scheduleAllNotifications(list){
   });
 
   Object.entries(startGroups).forEach(([time,group])=>{
-    const startMs=timeToMs(group[0].date,time);
-    if(!startMs)return;
+    const startMs=timeToMs(group[0].date,time);if(!startMs)return;
     [{min:60,prefix:"🔔 SETUP",urgent:false},
      {min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
-     {min:5, prefix:"🚨 5 MENIT LAGI", urgent:true}]
+     {min:5, prefix:"🚨 5 MENIT LAGI",urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=startMs-min*60*1000;
-      if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));count++;}
+      if(t>now){
+        scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));
+        count++;
+      }
     });
   });
 
   Object.entries(endGroups).forEach(([time,group])=>{
-    const effectiveTime = time==="23:59/00:00" ? "23:59" : time;
+    const effectiveTime=time==="23:59/00:00"?"23:59":time;
     let endMs=timeToMs(group[0].date,effectiveTime);
     const sMs=timeToMs(group[0].date,group[0].startTime);
     if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000;
     if(!endMs)return;
-
     [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
-     {min:5, prefix:"🚨 5 MENIT LAGI", urgent:true}]
+     {min:5, prefix:"🚨 5 MENIT LAGI",urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=endMs-min*60*1000;
-      if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));count++;}
+      if(t>now){
+        scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));
+        count++;
+      }
     });
   });
 
   document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal hari ini`;
 }
 
-function buildNotifLines(group, type, eventTime) {
-  const copies = group.map(s => ({
+function buildNotifLines(group,type,eventTime){
+  const copies=group.map(s=>({
     ...s,
-    picForEvent: type === "start"
-      ? (s.hosts?.[0]?.picData || "-")
-      : (s.hosts?.[s.hosts.length-1]?.picData || "-")
+    picForEvent:type==="start"
+      ?(s.hosts?.[0]?.picData||"-")
+      :(s.hosts?.[s.hosts.length-1]?.picData||"-")
   }));
-
-  const validPics = eventTime ? getAvailableOps(sessions, eventTime) : null;
-  if (type === "start") assignPics(copies, [], validPics);
-  else                  assignPics([], copies, validPics);
-
-  return copies.map((s, i) => {
-    const h    = type === "start" ? s.hosts?.[0] : s.hosts?.[s.hosts.length-1];
-    const host = h?.host || "-";
-    const pic  = s.assignedPic || "LSC";
-    return type === "start"
-      ? `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
-      : `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
+  const validPics=eventTime?getAvailableOps(sessions,eventTime):null;
+  if(type==="start")assignPics(copies,[],validPics);
+  else              assignPics([],copies,validPics);
+  return copies.map((s,i)=>{
+    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
+    const host=h?.host||"-";
+    const pic=s.assignedPic||"LSC";
+    return type==="start"
+      ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
+      :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
   });
 }
 
 function cancelAllScheduled(){scheduledTasks.forEach(id=>clearTimeout(id));scheduledTasks=[];}
 
-function fireGroupNotif(title, group, type, urgent = false) {
-  const timeMatch = /(\d{2}:\d{2})/.exec(title);
-  const eventTime = timeMatch ? timeMatch[1] : null;
-  const lines = buildNotifLines(group, type, eventTime);
-  sendNotification(title, lines.join("\n"), `grp-${type}-${title}-${Date.now()}`, urgent);
+function fireGroupNotif(title,group,type,urgent=false){
+  const timeMatch=/(\d{2}:\d{2})/.exec(title);
+  const eventTime=timeMatch?timeMatch[1]:null;
+  const lines=buildNotifLines(group,type,eventTime);
+  sendNotification(title,lines.join("\n"),`grp-${type}-${title}-${Date.now()}`,urgent);
 }
 
+// ─────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────
 function getCurrentHostIdx(session){
   const now=Date.now();
   for(let i=0;i<session.hosts.length;i++){
@@ -1083,10 +1105,15 @@ function getCurrentHostIdx(session){
     if(!startMs||!endMs)continue;
     if(endMs<=startMs)endMs+=24*60*60*1000;
     if(now>=startMs&&now<endMs)return i;
-  }return -1;
+  }
+  return -1;
 }
 
-function toMinJS(t){if(!t||t==="-")return 9999;const[h,m]=t.split(":").map(Number);return h*60+m;}
+function toMinJS(t){
+  if(!t||t==="-")return 9999;
+  const[h,m]=t.split(":").map(Number);
+  return h*60+m;
+}
 
 function timeToMs(dateStr,timeStr){
   try{
@@ -1097,22 +1124,36 @@ function timeToMs(dateStr,timeStr){
 }
 
 function updateClock(){
-  const now=new Date(),el=document.getElementById("clock"),de=document.getElementById("date-display");
+  const now=new Date();
+  const el=document.getElementById("clock");
+  const de=document.getElementById("date-display");
   if(el)el.textContent=now.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",second:"2-digit",timeZone:"Asia/Jakarta"});
   if(de)de.textContent=now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"});
 }
 
-function showLoading(show){document.getElementById("loading").style.display=show?"flex":"none";}
+function showLoading(show){
+  document.getElementById("loading").style.display=show?"flex":"none";
+}
 
 function showBanner(msg,type="info"){
   const el=document.getElementById("banner");
-  el.textContent=msg;el.className="banner "+type;el.style.display="block";
+  el.textContent=msg;
+  el.className="banner "+type;
+  el.style.display="block";
   setTimeout(()=>el.style.display="none",4000);
 }
 
 async function debugNotif(){
-  const lines=[`URL: ${location.href}`,`Permission: ${Notification.permission}`,`SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,`ntfy: ${ntfySource?.readyState===1?"connected":"disconnected"}`];
+  const lines=[
+    `URL: ${location.href}`,
+    `Permission: ${Notification.permission}`,
+    `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
+    `ntfy: ${ntfySource?.readyState===1?"connected":"disconnected"}`
+  ];
   alert(lines.join("\n"));
-  if(Notification.permission!=="granted"){const r=await Notification.requestPermission();if(r!=="granted")return;}
+  if(Notification.permission!=="granted"){
+    const r=await Notification.requestPermission();
+    if(r!=="granted")return;
+  }
   sendNotification("🔔 Debug Test","Notif berhasil dari "+location.hostname,"debug-"+Date.now());
 }
