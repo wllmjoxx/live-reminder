@@ -164,9 +164,11 @@ async function loadSchedule(){
   showLoading(false);
 }
 
+// ─── TAB SWITCH — pakai .nav-link (bukan .tab-btn) ───────────────────────────
 function switchTab(tab){
   activeTab=tab;
-  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+  // HTML baru pakai class nav-link
+  document.querySelectorAll(".nav-link").forEach(b=>b.classList.remove("active"));
   document.getElementById("tab-"+tab).classList.add("active");
   renderTab(tab);
 }
@@ -327,34 +329,59 @@ function renderMarathon(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
   const list=sessions.filter(s=>s.isMarathon);
-  if(!list.length){container.innerHTML=`<div class="empty">📭 Tidak ada sesi marathon</div>`;return;}
+  if(!list.length){
+    container.innerHTML=`
+      <div class="empty">
+        <span class="empty-icon">📭</span>
+        Tidak ada sesi marathon hari ini
+      </div>`;
+    return;
+  }
   const now=Date.now();
+
   list.forEach(s=>{
     const curIdx=getCurrentHostIdx(s);
     let endMs=timeToMs(s.date,s.endTime);
     const startMs=timeToMs(s.date,s.startTime);
     if(endMs&&startMs&&endMs<=startMs)endMs+=24*60*60*1000;
     const isEnded=endMs?now>endMs:false;
+
     const card=document.createElement("div");
-    card.className=`marathon-session-card ${isEnded?"ms-ended":""}`;
+    // ← Bootstrap card class, tambah ms-ended jika selesai
+    card.className=`marathon-session-card${isEnded?" ms-ended":""}`;
+
+    // ── card-header gaya Bootstrap (ms-card-header) ──
     card.innerHTML=`
-      <div class="ms-header">
-        <div class="ms-brand">🏃 ${s.brand}${isEnded?` <span style="font-size:0.65rem;background:#F1F5F9;color:#94A3B8;padding:1px 7px;border-radius:999px;font-weight:600;vertical-align:middle">✓ ENDED</span>`:""}</div>
+      <div class="ms-card-header">
+        <div class="ms-brand">
+          🏃 ${s.brand}
+          ${isEnded
+            ? `<span class="badge"
+                style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);
+                       font-size:0.55rem;vertical-align:middle;margin-left:6px">
+                ✓ ENDED
+               </span>`
+            : ""}
+        </div>
         <div class="ms-meta">
           <span class="badge marketplace">${s.marketplace}</span>
           <span class="badge studio">${s.studio}</span>
           <span class="badge idline">📋 ${s.idLine||s.skpId||"-"}</span>
         </div>
-        <div class="ms-time">▶ ${s.startTime} · ⏹ ${s.endTime} · ${s.hosts.length} host</div>
+        <div class="ms-time">▶ ${s.startTime} &nbsp;·&nbsp; ⏹ ${s.endTime} &nbsp;·&nbsp; ${s.hosts.length} host</div>
       </div>
-      <div class="ms-hosts" id="msh-${s.idLine||s.skpId}"></div>`;
+      <div class="ms-card-body" id="msh-${s.idLine||s.skpId}"></div>`;
+
     container.appendChild(card);
+
     const hc=card.querySelector(`#msh-${s.idLine||s.skpId}`);
     s.hosts.forEach((h,hi)=>{
-      const isCurrent=!isEnded&&hi===curIdx,isNext=!isEnded&&hi===curIdx+1;
-      const isPast=isEnded||(curIdx>=0&&hi<curIdx);
+      const isCurrent=!isEnded&&hi===curIdx;
+      const isNext   =!isEnded&&hi===curIdx+1;
+      const isPast   =isEnded||(curIdx>=0&&hi<curIdx);
+
       const row=document.createElement("div");
-      row.className=`host-row ${isCurrent?"host-current":""} ${isNext?"host-next":""} ${isPast?"host-past":""}`;
+      row.className=`host-row${isCurrent?" host-current":""}${isNext?" host-next":""}${isPast?" host-past":""}`;
       row.innerHTML=`
         <div class="hr-num">${hi+1}</div>
         <div class="hr-time">
@@ -363,10 +390,14 @@ function renderMarathon(){
           <span class="hr-end">⏹ ${h.endTime}</span>
         </div>
         <div class="hr-info">
-          <div class="hr-name">${h.host}
+          <div class="hr-name">
+            ${h.host}
             ${isCurrent?`<span class="live-badge">● LIVE</span>`:""}
-            ${isNext?`<span class="next-badge">NEXT</span>`:""}
-            ${isEnded&&hi===s.hosts.length-1?`<span style="font-size:0.55rem;background:#F1F5F9;color:#94A3B8;padding:1px 5px;border-radius:999px;font-weight:600;margin-left:4px">✓ selesai</span>`:""}
+            ${isNext   ?`<span class="next-badge">NEXT</span>`:""}
+            ${isEnded&&hi===s.hosts.length-1
+              ?`<span class="badge" style="background:var(--bs-secondary-subtle);
+                  color:var(--bs-secondary);font-size:0.55rem;margin-left:4px">✓ selesai</span>`
+              :""}
           </div>
           <div class="hr-pic">🧑‍💼 PIC: ${h.picData||"-"}</div>
         </div>`;
@@ -381,12 +412,15 @@ function renderMarathon(){
 function renderTimeline(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
-  if(!sessions.length){container.innerHTML=`<div class="empty">📭 Tidak ada jadwal</div>`;return;}
+  if(!sessions.length){
+    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada jadwal</div>`;
+    return;
+  }
 
   const events={};
   sessions.forEach(s=>{
     const firstPic=s.hosts?.[0]?.picData||"-";
-    const lastPic=s.hosts?.[s.hosts.length-1]?.picData||"-";
+    const lastPic =s.hosts?.[s.hosts.length-1]?.picData||"-";
     if(s.startTime&&s.startTime!=="-"){
       if(!events[s.startTime])events[s.startTime]={starts:[],ends:[]};
       events[s.startTime].starts.push({...s,picForEvent:firstPic});
@@ -413,18 +447,23 @@ function renderTimeline(){
   function makeBlock(ev,time,type){
     const items=type==="start"?ev.starts:ev.ends;
     if(!items.length)return null;
-    const display=time==="23:59/00:00"?"23:59 / 00:00":time;
+    const display  =time==="23:59/00:00"?"23:59 / 00:00":time;
     const checkTime=time==="23:59/00:00"?"23:59":time;
-    const eventMs=timeToMs(sessions[0]?.date,checkTime);
-    const isPast=eventMs&&eventMs<now;
+    const eventMs  =timeToMs(sessions[0]?.date,checkTime);
+    const isPast   =eventMs&&eventMs<now;
+
     const block=document.createElement("div");
     block.className=`time-block${isPast?" collapsed":""}`;
+
     const header=document.createElement("div");
     header.className=`time-header ${type==="start"?"start":"end"}-header`;
+
     if(isPast){
       header.style.opacity="0.55";
-      header.style.cursor="pointer";
-      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"Start":"End"} ${display}<span style="margin-left:auto;font-size:0.65rem">▸ ${items.length}</span>`;
+      header.innerHTML=`
+        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
+        ${type==="start"?"Start":"End"} ${display}
+        <span class="count-badge">▸ ${items.length}</span>`;
       header.onclick=()=>{
         const wasCollapsed=block.classList.contains("collapsed");
         block.classList.toggle("collapsed");
@@ -432,11 +471,16 @@ function renderTimeline(){
         cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
       };
     }else{
-      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"▶ Start":"⏹ End"} ${display}`;
+      header.innerHTML=`
+        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
+        ${type==="start"?"▶ Start":"⏹ End"} ${display}
+        <span class="toggle-icon">▾</span>`;
     }
+
     const content=document.createElement("div");
     content.className="sessions-container";
     content.style.maxHeight=isPast?"0px":"none";
+
     items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
     block.appendChild(header);
     block.appendChild(content);
@@ -458,31 +502,35 @@ function renderTimeline(){
 }
 
 function makeTimelineCard(s,num,mode,eventTime=null){
-  const now=Date.now();
+  const now      =Date.now();
   const checkTime=eventTime||s.startTime;
-  const eventMs=checkTime==="23:59/00:00"?null:timeToMs(s.date,checkTime);
-  const isPast=eventMs&&eventMs<now;
-  const isSoon=eventMs&&(eventMs-now)<15*60*1000&&!isPast;
-  const picLabel=s.assignedPic||"LSC";
-  const isLSC=picLabel==="LSC";
+  const eventMs  =checkTime==="23:59/00:00"?null:timeToMs(s.date,checkTime);
+  const isPast   =eventMs&&eventMs<now;
+  const isSoon   =eventMs&&(eventMs-now)<15*60*1000&&!isPast;
+  const picLabel =s.assignedPic||"LSC";
+  const isLSC    =picLabel==="LSC";
   const firstHost=s.hosts?.[0]?.host||"-";
-  const isSingle=mode==="single";
+  const isSingle =mode==="single";
+
   const card=document.createElement("div");
-  card.className=`session-card ${isPast?"past":""} ${isSoon?"soon":""} ${s.isMarathon?"marathon-card":""}`;
+  card.className=`session-card${isPast?" past":""}${isSoon?" soon":""}${s.isMarathon?" marathon-card":""}`;
   card.innerHTML=`
     <div class="session-num">${num}</div>
     <div class="session-info">
-      <div class="session-brand">${s.brand}
-        ${s.isMarathon?`<span class="type-badge marathon-badge">🏃</span>`:`<span class="type-badge single-badge">⚡</span>`}
+      <div class="session-brand">
+        ${s.brand}
+        ${s.isMarathon
+          ?`<span class="type-badge marathon-badge">🏃 Marathon</span>`
+          :`<span class="type-badge single-badge">⚡ Single</span>`}
       </div>
       <div class="session-meta">
         <span class="badge marketplace">${s.marketplace}</span>
         <span class="badge studio">${s.studio}</span>
       </div>
       <div class="session-host">👤 ${firstHost}</div>
-      ${isSingle?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp;⏹ ${s.endTime||"-"}</div>`:""}
+      ${isSingle?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
     </div>
-    <div class="session-pic-right ${isLSC?"lsc":""}">${picLabel}</div>`;
+    <div class="session-pic-right${isLSC?" lsc":""}">${picLabel}</div>`;
   return card;
 }
 
@@ -493,7 +541,10 @@ function renderSingle(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
   const list=sessions.filter(s=>!s.isMarathon);
-  if(!list.length){container.innerHTML=`<div class="empty">📭 Tidak ada sesi single</div>`;return;}
+  if(!list.length){
+    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi single</div>`;
+    return;
+  }
   const copies=list.map(s=>Object.assign({},s));
   assignPics(copies,[]);
   copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"single")));
@@ -544,8 +595,7 @@ function buildStandbyData(){
       const key=h.picData.trim().toLowerCase();
       if(DEDICATED_OPS.includes(key)||LSC_NAMES_SET.has(key))return;
       const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
-      const shift=getShift(endStr);
-      if(shift==="malam")return;
+      const shift=getShift(endStr);if(shift==="malam")return;
       const cur=nonDedByShift[shift][key];
       if(!cur){nonDedByShift[shift][key]={name:h.picData.trim(),minStart:h.startTime,maxEnd:endStr};}
       else{
@@ -619,12 +669,15 @@ function buildStandbyData(){
 }
 
 // ─────────────────────────────────────────────
-// RENDER STANDBY
+// RENDER STANDBY — Bootstrap card/list-group
 // ─────────────────────────────────────────────
 function renderStandby(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
-  if(!sessions.length){container.innerHTML=`<div class="empty">📭 Data belum dimuat</div>`;return;}
+  if(!sessions.length){
+    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Data belum dimuat</div>`;
+    return;
+  }
   const dateStr=sessions[0]?.date||"";
   let dateLabel="";
   try{
@@ -633,68 +686,83 @@ function renderStandby(){
       .toUpperCase();
   }catch(e){}
 
-  const picShift=buildPicShiftData();
+  const picShift   =buildPicShiftData();
   const standbyList=buildStandbyData();
 
   let html=`<div class="standby-wrapper">`;
 
-  // ── Tanggal ──
-  html+=`<div class="standby-section">
-    <div class="standby-title">📅 REMINDER ${dateLabel}</div>
-  </div>`;
+  // ── Tanggal — Bootstrap card dengan gradient header ──
+  html+=`
+    <div class="date-banner">
+      <div class="date-title">📅 REMINDER HARIAN</div>
+      <div class="date-value">${dateLabel}</div>
+    </div>`;
 
-  // ── PIC per shift ──
+  // ── PIC per shift — Bootstrap card + list-group ──
   ["pagi","siang"].forEach(shift=>{
     const data=picShift[shift];
     if(!data||!Object.keys(data).length)return;
-    html+=`<div class="standby-section">
-      <div class="standby-label">👥 PIC Shift ${shift.charAt(0).toUpperCase()+shift.slice(1)}</div>`;
+    const isShiftPagi=shift==="pagi";
+    html+=`
+      <div class="card">
+        <div class="card-header ${isShiftPagi?"header-primary":"header-warning"}">
+          👥 PIC Shift ${shift.charAt(0).toUpperCase()+shift.slice(1)}
+        </div>
+        <div class="list-group">`;
     Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{
-      html+=`<div class="pic-row">
-        <span class="pic-name">${d.name}</span>
-        <span class="pic-studios">${[...d.studios].sort((a,b)=>a-b).join(", ")}</span>
-      </div>`;
+      html+=`
+          <div class="list-group-item">
+            <span class="item-name">${d.name}</span>
+            <span class="item-right">Studio ${[...d.studios].sort((a,b)=>a-b).join(", ")}</span>
+          </div>`;
     });
-    html+=`</div>`;
+    html+=`</div></div>`;
   });
 
-  // ── Standby brand ──
+  // ── Standby brand — Bootstrap card ──
   standbyList.forEach(b=>{
-    html+=`<div class="standby-brand-card">
-      <div class="standby-brand-title">📍 Standby ${b.key}</div>`;
+    html+=`
+      <div class="card">
+        <div class="card-header header-warning">📍 Standby ${b.key}</div>`;
     b.slots.forEach(slot=>{
       const picDisp=formatPic(slot.pic);
       let backupStr="";
       if(slot.nonDedPic){
-        backupStr=` <span style="color:#94A3B8;font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;
-        if(slot.nonDedTime) backupStr+=` <span style="color:#CBD5E1;font-size:0.65rem">(${slot.nonDedTime})</span>`;
+        backupStr=` <span style="color:var(--bs-muted);font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;
+        if(slot.nonDedTime) backupStr+=` <span style="color:#adb5bd;font-size:0.62rem">(${slot.nonDedTime})</span>`;
       }
-      html+=`<div class="standby-row">
-        <span class="standby-time">${slot.label}</span>
-        <span class="standby-pic">${picDisp}${backupStr}</span>
-      </div>`;
+      html+=`
+        <div class="standby-row-item">
+          <span class="standby-time">${slot.label}</span>
+          <span class="standby-pic">${picDisp}${backupStr}</span>
+        </div>`;
     });
     html+=`</div>`;
   });
 
-  // ── Prosedur ──
-  html+=`<div class="standby-section">
-    <div class="standby-label">📋 Prosedur</div>
-    <div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
+  // ── Prosedur — Bootstrap card ──
+  html+=`
+    <div class="card">
+      <div class="card-header">📋 Prosedur</div>
+      <div class="card-body">
+        <div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
 2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
 3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div>
-  </div>`;
+      </div>
+    </div>`;
 
-  // ── Links ──
-  html+=`<div class="standby-section">
-    <div class="standby-label">🔗 Links</div>
-    <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
-    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
-    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
-    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
-  </div>`;
+  // ── Links — Bootstrap card + list-group style ──
+  html+=`
+    <div class="card">
+      <div class="card-header header-primary">🔗 Links</div>
+      <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
+      <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
+      <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
+      <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
+    </div>`;
 
-  html+=`<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button>`;
+  // ── Copy button ──
+  html+=`<button class="btn-copy-standby" onclick="copyStandbyText()">📋 Copy Teks Reminder</button>`;
   html+=`</div>`;
   container.innerHTML=html;
 }
@@ -702,14 +770,19 @@ function renderStandby(){
 // ─────────────────────────────────────────────
 // KLASEMEN
 // ─────────────────────────────────────────────
+function _bsLoadingHTML(msg){
+  return `
+    <div style="display:flex;flex-direction:column;align-items:center;
+                justify-content:center;padding:56px 20px;gap:12px">
+      <div class="spinner-border"></div>
+      <span style="color:var(--bs-muted);font-size:0.82rem;font-weight:500">${msg}</span>
+    </div>`;
+}
+
 async function loadKlasemen(){
   if(activeTab!=="klasemen")return;
   const container=document.getElementById("schedule-list");
-  container.innerHTML=`
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:10px">
-      <div style="width:28px;height:28px;border:3px solid #E8EDFF;border-top-color:#4F6EF7;border-radius:50%;animation:spin 0.7s linear infinite"></div>
-      <span style="color:#94A3B8;font-size:0.8rem;font-weight:500">Memuat klasemen...</span>
-    </div>`;
+  container.innerHTML=_bsLoadingHTML("Memuat klasemen...");
   try{
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
@@ -718,25 +791,22 @@ async function loadKlasemen(){
     const data=JSON.parse(await res.text());
     if(!data.success)throw new Error(data.error||"Unknown error");
     if(!data.leaderboard){
-      if(activeTab==="klasemen")container.innerHTML=`<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
+      if(activeTab==="klasemen")
+        container.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
       return;
     }
     if(activeTab!=="klasemen")return;
     renderKlasemen(data);
   }catch(err){
     if(activeTab!=="klasemen")return;
-    container.innerHTML=`<div class="empty">❌ ${err.name==="AbortError"?"Timeout, coba refresh":err.message}</div>`;
+    container.innerHTML=`<div class="empty"><span class="empty-icon">❌</span>${err.name==="AbortError"?"Timeout, coba refresh":err.message}</div>`;
   }
 }
 
 async function forceRefreshKlasemen(){
   if(activeTab!=="klasemen")return;
   const container=document.getElementById("schedule-list");
-  container.innerHTML=`
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 20px;gap:10px">
-      <div style="width:28px;height:28px;border:3px solid #E8EDFF;border-top-color:#4F6EF7;border-radius:50%;animation:spin 0.7s linear infinite"></div>
-      <span style="color:#94A3B8;font-size:0.8rem;font-weight:500">Force refresh...</span>
-    </div>`;
+  container.innerHTML=_bsLoadingHTML("Force refresh...");
   try{
     const res=await fetch(API_URL+"?action=leaderboard&nocache=1&t="+Date.now());
     const data=JSON.parse(await res.text());
@@ -746,14 +816,14 @@ async function forceRefreshKlasemen(){
     showBanner("✅ Klasemen diperbarui!","success");
   }catch(err){
     if(activeTab!=="klasemen")return;
-    container.innerHTML=`<div class="empty">❌ ${err.message}</div>`;
+    container.innerHTML=`<div class="empty"><span class="empty-icon">❌</span>${err.message}</div>`;
   }
 }
 
 function renderKlasemen(data){
   const container=document.getElementById("schedule-list");
   if(!data.leaderboard){
-    container.innerHTML=`<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
+    container.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
     return;
   }
 
@@ -762,118 +832,143 @@ function renderKlasemen(data){
   const totalRows     =data.leaderboard.reduce((s,r)=>s+r.total,0);
   const totalHold     =data.leaderboard.reduce((s,r)=>s+r.hold,0);
 
-  // ── helper style ──
-  const card=(bg,border,numColor,num,label)=>
-    `<div style="flex:1;background:${bg};border-radius:14px;padding:10px 6px;text-align:center;border:1px solid ${border}">
-       <div style="font-size:1.1rem;font-weight:800;color:${numColor}">${num}</div>
-       <div style="font-size:0.58rem;color:#94A3B8;margin-top:2px;font-weight:500">${label}</div>
+  // helper — Bootstrap-style summary mini-card
+  const summaryCard=(bg,border,numColor,num,label)=>
+    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
+                 padding:10px 6px;text-align:center;position:relative;overflow:hidden">
+       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
+       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;
+                   text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
 
-  let html=`<div style="padding:8px 12px 24px">`;
+  let html=`<div style="padding:8px 10px 24px">`;
 
-  // Header
-  html+=`<div style="text-align:center;margin-bottom:14px">
-    <div style="font-size:0.8rem;font-weight:700;color:#1E293B">📊 Klasemen Pending Upload</div>
-    <div style="font-size:0.68rem;color:#94A3B8;margin-top:2px">${data.dateFrom||""} → ${data.dateTo||""}</div>
-  </div>`;
-
-  // Summary
-  html+=`<div style="display:flex;gap:8px;margin-bottom:14px">
-    ${card("#FEF2F2","#FECACA","#DC2626",totalPendHariH,"⏳ Hari H")}
-    ${card("#FFFBEB","#FDE68A","#D97706",totalPendH1,"📋 H+1")}
-    ${card("#EEF2FF","#C7D2FE","#4F6EF7",totalRows,"📂 Total")}
-    ${card("#F1F5F9","#E2E8F0","#64748B",totalHold,"⏸ Hold")}
-  </div>`;
-
-  // Leaderboard table
-  html+=`<div style="background:#fff;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid #E8EDFF;box-shadow:0 2px 10px rgba(79,110,247,0.06)">
-    <div style="padding:8px 12px;background:#F0F4FF;font-size:0.62rem;font-weight:700;color:#94A3B8;display:flex;gap:4px;letter-spacing:0.3px">
-      <span style="width:26px">#</span>
-      <span style="flex:1">PIC</span>
-      <span style="width:48px;text-align:center">H+1</span>
-      <span style="width:48px;text-align:center">Hari H</span>
-      <span style="width:40px;text-align:center">Total</span>
-      <span style="width:36px;text-align:center">Hold</span>
+  // ── Header ──
+  html+=`
+    <div style="text-align:center;margin-bottom:12px">
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Upload</div>
+      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">
+        ${data.dateFrom||""} → ${data.dateTo||""}
+      </div>
     </div>`;
+
+  // ── Summary — 4 Bootstrap-style stat cards ──
+  html+=`<div style="display:flex;gap:7px;margin-bottom:14px">
+    ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPendHariH,"⏳ Hari H")}
+    ${summaryCard("var(--bs-warning-subtle)","#ffe69c","#856404",totalPendH1,"📋 H+1")}
+    ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalRows,"📂 Total")}
+    ${summaryCard("var(--bs-secondary-subtle)","var(--bs-border)","var(--bs-secondary)",totalHold,"⏸ Hold")}
+  </div>`;
+
+  // ── Leaderboard — Bootstrap table style ──
+  html+=`
+    <div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;
+                margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
+      <div style="padding:7px 12px;background:var(--bs-light);border-bottom:1px solid var(--bs-border);
+                  font-size:0.6rem;font-weight:700;color:var(--bs-muted);display:flex;gap:4px;
+                  text-transform:uppercase;letter-spacing:0.5px">
+        <span style="width:26px">#</span>
+        <span style="flex:1">PIC</span>
+        <span style="width:44px;text-align:center">H+1</span>
+        <span style="width:44px;text-align:center">Hari H</span>
+        <span style="width:38px;text-align:center">Total</span>
+        <span style="width:34px;text-align:center">Hold</span>
+      </div>`;
 
   data.leaderboard.forEach((r,idx)=>{
-    const pts=r.pendingPoints;
+    const pts  =r.pendingPoints;
     const medal=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    const statusColor=pts===0?"#10B981":pts<=5?"#4F6EF7":pts<=15?"#D97706":"#DC2626";
-    const statusText=pts>0?`${pts} pts pending`:"✅ Bersih";
-    html+=`<div style="padding:8px 12px;border-top:1px solid #F1F5F9;display:flex;align-items:center;gap:4px">
-      <span style="width:26px;font-size:0.78rem">${medal}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:0.82rem;font-weight:700;color:#1E293B">${formatPic(r.pic)}</div>
-        <div style="font-size:0.6rem;color:${statusColor};font-weight:500;margin-top:1px">${statusText}</div>
-      </div>
-      <span style="width:48px;text-align:center;font-size:0.85rem;font-weight:700;color:#D97706">${r.pendingH1}</span>
-      <span style="width:48px;text-align:center;font-size:0.85rem;font-weight:700;color:#DC2626">${r.pendingHariH}</span>
-      <span style="width:40px;text-align:center;font-size:0.75rem;color:#64748B">${r.total}</span>
-      <span style="width:36px;text-align:center;font-size:0.75rem;color:#94A3B8">${r.hold}</span>
-    </div>`;
+    const sColor=pts===0?"var(--bs-success)":pts<=5?"var(--bs-primary)":pts<=15?"#856404":"var(--bs-danger)";
+    const sTxt  =pts>0?`${pts} pts pending`:"✅ Bersih";
+    const rowBg =idx%2===1?"var(--bs-light)":"var(--bs-white)";
+
+    html+=`
+      <div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);
+                  display:flex;align-items:center;gap:4px;background:${rowBg}">
+        <span style="width:26px;font-size:0.8rem">${medal}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div>
+          <div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div>
+        </div>
+        <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:#856404">${r.pendingH1}</span>
+        <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:var(--bs-danger)">${r.pendingHariH}</span>
+        <span style="width:38px;text-align:center;font-size:0.75rem;color:var(--bs-muted)">${r.total}</span>
+        <span style="width:34px;text-align:center;font-size:0.75rem;color:var(--bs-secondary)">${r.hold}</span>
+      </div>`;
   });
   html+=`</div>`;
 
-  // Copy buttons
-  html+=`<div style="font-size:0.72rem;font-weight:700;color:#7C3AED;margin-bottom:8px">📋 Copy ID Line Pending per PIC</div>
-  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">`;
+  // ── Copy buttons per PIC ──
+  html+=`
+    <div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);
+                text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+      📋 Copy ID Line Pending per PIC
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
 
   data.leaderboard.forEach(r=>{
     const hasPending=r.pendingRows?.length>0;
-    const idLines=(r.pendingRows||[]).map(p=>p.idLine).filter(Boolean);
-    const picLabel=formatPic(r.pic);
-    const pts=r.pendingPoints;
+    const idLines   =(r.pendingRows||[]).map(p=>p.idLine).filter(Boolean);
+    const pts       =r.pendingPoints;
     if(hasPending){
-      html+=`<button
-        onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
-        style="padding:6px 12px;border:1px solid #C7D2FE;border-radius:10px;background:#EEF2FF;
-               color:#4F6EF7;font-size:0.72rem;font-weight:600;cursor:pointer">
-        ${picLabel} <span style="color:#D97706;font-weight:700">(${pts})</span>
-      </button>`;
+      html+=`
+        <button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
+          style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
+                 background:var(--bs-primary-subtle);color:var(--bs-primary-text);
+                 font-size:0.7rem;font-weight:600;cursor:pointer">
+          ${formatPic(r.pic)}
+          <span style="color:#856404;font-weight:700">(${pts})</span>
+        </button>`;
     }else{
-      html+=`<button disabled
-        style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:10px;background:#F8FAFC;
-               color:#CBD5E1;font-size:0.72rem;font-weight:600;cursor:not-allowed">
-        ${picLabel} ✅
-      </button>`;
+      html+=`
+        <button disabled
+          style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);
+                 background:var(--bs-light);color:#adb5bd;
+                 font-size:0.7rem;font-weight:600;cursor:not-allowed">
+          ${formatPic(r.pic)} ✅
+        </button>`;
     }
   });
   html+=`</div>`;
 
-  // Detail pending rows
+  // ── Detail pending rows per PIC ──
   const withPending=data.leaderboard.filter(r=>r.pendingRows?.length>0);
-  if(withPending.length>0){
+  if(withPending.length){
     withPending.forEach(r=>{
-      html+=`<div style="margin-bottom:12px">
-        <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;margin-bottom:5px">
-          ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
-        </div>`;
+      html+=`
+        <div style="margin-bottom:12px">
+          <div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);
+                      text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">
+            ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
+          </div>`;
       r.pendingRows.forEach(p=>{
         const tags=[];
-        if(p.hariH) tags.push(`<span style="background:#FEF2F2;color:#DC2626;font-size:0.58rem;padding:2px 7px;border-radius:999px;font-weight:600">Hari H</span>`);
-        if(p.h1)    tags.push(`<span style="background:#FFFBEB;color:#D97706;font-size:0.58rem;padding:2px 7px;border-radius:999px;font-weight:600">H+1</span>`);
-        html+=`<div style="background:#fff;border-radius:10px;padding:8px 10px;margin-bottom:4px;
-                            display:flex;align-items:center;gap:8px;
-                            border:1px solid #E8EDFF;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:0.78rem;font-weight:600;color:#1E293B">${p.brand}</div>
-            <div style="font-size:0.64rem;color:#94A3B8;margin-top:2px">${p.date} · ${p.startTime} · ${p.studio}</div>
-          </div>
-          <div style="display:flex;gap:3px;align-items:center">${tags.join(" ")}</div>
-          <div style="font-size:0.6rem;color:#CBD5E1;font-family:monospace;flex-shrink:0">${p.idLine}</div>
-        </div>`;
+        if(p.hariH) tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);
+                                font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
+        if(p.h1)    tags.push(`<span style="background:var(--bs-warning-subtle);color:var(--bs-warning-text);
+                                font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">H+1</span>`);
+        html+=`
+          <div style="background:var(--bs-white);border-radius:var(--bs-radius);padding:7px 10px;
+                      margin-bottom:3px;display:flex;align-items:center;gap:8px;
+                      border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+              <div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">${p.date} · ${p.startTime} · ${p.studio}</div>
+            </div>
+            <div style="display:flex;gap:3px">${tags.join("")}</div>
+            <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">${p.idLine}</div>
+          </div>`;
       });
       html+=`</div>`;
     });
   }
 
-  // Refresh button
-  html+=`<button onclick="forceRefreshKlasemen()"
-    style="width:100%;margin-top:8px;padding:11px;border:1px solid #C7D2FE;border-radius:12px;
-           background:#EEF2FF;color:#4F6EF7;font-size:0.78rem;font-weight:600;cursor:pointer">
-    🔄 Refresh (Clear Cache)
-  </button>`;
+  // ── Refresh button — Bootstrap outline-primary ──
+  html+=`
+    <button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block"
+      style="margin-top:6px;padding:10px">
+      🔄 Refresh (Clear Cache)
+    </button>`;
 
   html+=`</div>`;
   container.innerHTML=html;
@@ -942,15 +1037,15 @@ function showNotifPanel(){
     const diffMin=Math.round(diff/60000);
     const btn=document.createElement("button");
     btn.className="notif-time-btn";
-    // light mode: soft pastel per type
+    // Bootstrap success/danger subtle style
     if(type==="start"){
-      btn.style.background="#EEF2FF";
-      btn.style.color="#4F6EF7";
-      btn.style.border="1px solid #C7D2FE";
+      btn.style.background="var(--bs-success-subtle)";
+      btn.style.color     ="var(--bs-success-text)";
+      btn.style.border    ="1px solid #a3cfbb";
     }else{
-      btn.style.background="#FEF2F2";
-      btn.style.color="#DC2626";
-      btn.style.border="1px solid #FECACA";
+      btn.style.background="var(--bs-danger-subtle)";
+      btn.style.color     ="var(--bs-danger-text)";
+      btn.style.border    ="1px solid #f1aeb5";
     }
     btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
     btn.onclick=()=>sendManualNotifFor(time,type);
@@ -980,11 +1075,10 @@ function sendManualNotifAll(){
       const ms=timeToMs(s.date,time);if(!ms)return;
       const diff=ms-now;
       if(diff<-5*60*1000||diff>2*60*60*1000)return;
-      if(!map[time])map[time]=[];
-      map[time].push(s);
+      if(!map[time])map[time]=[];map[time].push(s);
     };
     if(s.startTime&&s.startTime!=="-")add(upStart,s.startTime);
-    if(s.endTime&&s.endTime!=="-")add(upEnd,s.endTime);
+    if(s.endTime  &&s.endTime  !=="-")add(upEnd,  s.endTime);
   });
 
   const entries=[
@@ -993,27 +1087,25 @@ function sendManualNotifAll(){
   ].sort((a,b)=>toMinJS(a.t)-toMinJS(b.t));
 
   if(!entries.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
-
   entries.forEach(({t,g,type},idx)=>{
     setTimeout(()=>{
       const lines=buildNotifLines(g,type,t);
       broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${t}`,lines.join("\n"),false);
     },idx*2000);
   });
-
   closeNotifPanel();
   showBanner(`🔔 ${entries.length} notif dikirim (start+end)!`,"success");
 }
 
 // ─────────────────────────────────────────────
-// NOTIFICATIONS & SCHEDULING
+// STATS & SCHEDULING
 // ─────────────────────────────────────────────
 function updateStats(){
-  const m=sessions.filter(s=>s.isMarathon).length;
+  const m =sessions.filter(s=>s.isMarathon).length;
   const sg=sessions.filter(s=>!s.isMarathon).length;
-  document.getElementById("stat-total").textContent=sessions.length;
+  document.getElementById("stat-total").textContent   =sessions.length;
   document.getElementById("stat-marathon").textContent=m;
-  document.getElementById("stat-single").textContent=sg;
+  document.getElementById("stat-single").textContent  =sg;
 }
 
 function scheduleAllNotifications(list){
@@ -1037,10 +1129,7 @@ function scheduleAllNotifications(list){
      {min:5, prefix:"🚨 5 MENIT LAGI",urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=startMs-min*60*1000;
-      if(t>now){
-        scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));
-        count++;
-      }
+      if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));count++;}
     });
   });
 
@@ -1054,14 +1143,11 @@ function scheduleAllNotifications(list){
      {min:5, prefix:"🚨 5 MENIT LAGI",urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=endMs-min*60*1000;
-      if(t>now){
-        scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));
-        count++;
-      }
+      if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));count++;}
     });
   });
 
-  document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal hari ini`;
+  document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal`;
 }
 
 function buildNotifLines(group,type,eventTime){
@@ -1075,9 +1161,9 @@ function buildNotifLines(group,type,eventTime){
   if(type==="start")assignPics(copies,[],validPics);
   else              assignPics([],copies,validPics);
   return copies.map((s,i)=>{
-    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
+    const h   =type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
     const host=h?.host||"-";
-    const pic=s.assignedPic||"LSC";
+    const pic =s.assignedPic||"LSC";
     return type==="start"
       ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
       :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
@@ -1135,10 +1221,12 @@ function showLoading(show){
   document.getElementById("loading").style.display=show?"flex":"none";
 }
 
+// ── showBanner — mapping ke Bootstrap alert classes ──
 function showBanner(msg,type="info"){
   const el=document.getElementById("banner");
   el.textContent=msg;
-  el.className="banner "+type;
+  const map={success:"alert alert-success",error:"alert alert-danger",warning:"alert alert-warning"};
+  el.className=map[type]||"alert alert-primary";
   el.style.display="block";
   setTimeout(()=>el.style.display="none",4000);
 }
