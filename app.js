@@ -1,7 +1,7 @@
 const API_URL    = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
 const NTFY_TOPIC = "castlive-ops-2026-xk9";
 const ICON_URL   = new URL("./icon-192.png", location.href).href;
-const GOOGLE_CLIENT_ID = "PASTE_CLIENT_ID_KAMU.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com";
 const PRESENCE_TOPIC   = "castlive-presence-2026";
 
 let currentUserEmail = localStorage.getItem("userEmail") || null;
