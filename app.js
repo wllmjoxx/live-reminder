@@ -721,17 +721,48 @@ function renderStandby(){
 }
 
 // ── KLASEMEN ──────────────────────────────────
-async function loadKlasemen() {
-  const container = document.getElementById("schedule-list");
-  container.innerHTML = `<div style="text-align:center;padding:30px;color:#64748b">⏳ Memuat klasemen...</div>`;
+async function loadKlasemen(){
+  if(activeTab !== "klasemen") return;
 
-  try {
-    const res  = await fetch(API_URL + "?action=leaderboard&t=" + Date.now());
-    const data = JSON.parse(await res.text());
-    if (!data.success) throw new Error(data.error);
+  const container=document.getElementById("schedule-list");
+  container.innerHTML=`<div style="text-align:center;padding:30px;color:#64748b">⏳ Memuat klasemen...</div>`;
+
+  try{
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),20000);
+    const res=await fetch(API_URL+"?action=leaderboard&t="+Date.now(),{signal:controller.signal});
+    clearTimeout(timeout);
+    const data=JSON.parse(await res.text());
+    if(!data.success)throw new Error(data.error||"Unknown error");
+    if(!data.leaderboard){
+      if(activeTab==="klasemen")container.innerHTML=`<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
+      return;
+    }
+    // ← Cek lagi sebelum render, kalau user sudah pindah tab jangan render
+    if(activeTab!=="klasemen")return;
     renderKlasemen(data);
-  } catch(err) {
-    container.innerHTML = `<div class="empty">❌ ${err.message}</div>`;
+  }catch(err){
+    if(activeTab!=="klasemen")return;
+    container.innerHTML=`<div class="empty">❌ ${err.name==="AbortError"?"Timeout, coba refresh":err.message}</div>`;
+  }
+}
+
+async function forceRefreshKlasemen(){
+  // Panggil dengan nocache=1 untuk clear cache Apps Script
+  if(activeTab !== "klasemen") return;
+  const container=document.getElementById("schedule-list");
+  container.innerHTML=`<div style="text-align:center;padding:30px;color:#64748b">⏳ Force refresh...</div>`;
+
+  try{
+    const res=await fetch(API_URL+"?action=leaderboard&nocache=1&t="+Date.now());
+    const data=JSON.parse(await res.text());
+    if(!data.success)throw new Error(data.error);
+    if(activeTab!=="klasemen")return;
+    renderKlasemen(data);
+    showBanner("✅ Klasemen diperbarui!","success");
+  }catch(err){
+    if(activeTab!=="klasemen")return;
+    container.innerHTML=`<div class="empty">❌ ${err.message}</div>`;
   }
 }
 
@@ -857,8 +888,8 @@ function renderKlasemen(data) {
       html += `</div>`;
     });
   }
-
-  html += `<button onclick="loadKlasemen()" style="width:100%;margin-top:8px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh</button>`;
+  // Di renderKlasemen, ganti tombol refresh:
+  html += `<button onclick="forceRefreshKlasemen()" style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh (Clear Cache)</button>`;
   html += `</div>`;
   container.innerHTML = html;
 }
