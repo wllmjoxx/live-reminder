@@ -164,7 +164,6 @@ async function loadSchedule(){
   showLoading(false);
 }
 
-
 function switchTab(tab){
   activeTab=tab;
   document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
@@ -177,9 +176,8 @@ function renderTab(tab) {
   if (tab === "timeline")  renderTimeline();
   if (tab === "single")    renderSingle();
   if (tab === "standby")   renderStandby();
-  if (tab === "klasemen")  loadKlasemen(); // ← tambah
+  if (tab === "klasemen")  loadKlasemen();
 }
-
 
 function formatPic(rawName){
   if(!rawName||rawName==="-"||rawName==="")return"LSC";
@@ -284,30 +282,25 @@ function assignPics(starts,ends,validPics=null){
       const idle=findIdle();if(idle){assignKey(idle,s);return;}
       s.assignedPic="LSC";return;
     }
-    // ── STUDIO BIASA: data PIC (harus sesuai shift) ──
-if(!isCoord(rawPic)){
-  const key=rawPic.trim().toLowerCase();
-  if(picCount[key]===undefined)picCount[key]=0;
-
-  // Hanya pakai data PIC jika sesuai shift
-  if(isInShift(key)){
-    if(picCount[key]===0){assignKey(key,s);return;}
-    if(picCount[key]===1){
-      const better=findBetter(n,key);
-      if(better){assignKey(better,s);return;}
-      assignKey(key,s);return;
+    if(!isCoord(rawPic)){
+      const key=rawPic.trim().toLowerCase();
+      if(picCount[key]===undefined)picCount[key]=0;
+      if(isInShift(key)){
+        if(picCount[key]===0){assignKey(key,s);return;}
+        if(picCount[key]===1){
+          const better=findBetter(n,key);
+          if(better){assignKey(better,s);return;}
+          assignKey(key,s);return;
+        }
+      }
     }
-  }
-  // Data PIC beda shift / max → fall through ke fallback
-}
-const idle=findIdle();
-if(idle){assignKey(idle,s);return;}
-for(const[k,c]of Object.entries(picCount)){
-  if(!isInShift(k)||DEDICATED_OPS.includes(k))continue;
-  if(c<MAX_STUDIO_PER_PIC){assignKey(k,s);return;}
-}
-s.assignedPic="LSC";
-
+    const idle=findIdle();
+    if(idle){assignKey(idle,s);return;}
+    for(const[k,c]of Object.entries(picCount)){
+      if(!isInShift(k)||DEDICATED_OPS.includes(k))continue;
+      if(c<MAX_STUDIO_PER_PIC){assignKey(k,s);return;}
+    }
+    s.assignedPic="LSC";
   };
 
   [...starts,...ends].forEach(s=>reg(s.picForEvent||"-"));
@@ -444,7 +437,6 @@ function renderTimeline(){
     block.appendChild(header);
     block.appendChild(content);
 
-    // Track first upcoming block untuk auto-scroll
     if(!isPast&&!firstUpcoming)firstUpcoming=block;
     return block;
   }
@@ -457,14 +449,10 @@ function renderTimeline(){
     if(eb)container.appendChild(eb);
   });
 
-  // Auto-scroll ke jam terdekat yang belum lewat
   if(firstUpcoming){
     setTimeout(()=>firstUpcoming.scrollIntoView({behavior:"smooth",block:"start"}),150);
   }
 }
-
-
-
 
 function makeTimelineCard(s,num,mode,eventTime=null){
   const now=Date.now();
@@ -475,7 +463,7 @@ function makeTimelineCard(s,num,mode,eventTime=null){
   const picLabel=s.assignedPic||"LSC";
   const isLSC=picLabel==="LSC";
   const firstHost=s.hosts?.[0]?.host||"-";
-  const isSingle=mode==="single"; // ← tampilkan jam di single tab
+  const isSingle=mode==="single";
 
   const card=document.createElement("div");
   card.className=`session-card ${isPast?"past":""} ${isSoon?"soon":""} ${s.isMarathon?"marathon-card":""}`;
@@ -496,8 +484,6 @@ function makeTimelineCard(s,num,mode,eventTime=null){
   return card;
 }
 
-
-
 function renderSingle(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
@@ -509,24 +495,22 @@ function renderSingle(){
 }
 
 const STANDBY_BRANDS = [
-  { key: "AT Tiktok",        slotFormat: false, showBackup: true,  // ← backup non-ded
+  { key: "AT Tiktok",        slotFormat: false, showBackup: true,
     match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "tiktok" },
-  { key: "Samsonite Tiktok", slotFormat: false, showBackup: true,  // ← backup non-ded
+  { key: "Samsonite Tiktok", slotFormat: false, showBackup: true,
     match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "tiktok" },
-  { key: "AT Shopee",        slotFormat: false, showBackup: false, // ← dedicated only
+  { key: "AT Shopee",        slotFormat: false, showBackup: false,
     match: s => s.brand.toLowerCase().includes("american tourister") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "Samsonite Shopee", slotFormat: true,  showBackup: false, // ← non-ded per slot
+  { key: "Samsonite Shopee", slotFormat: true,  showBackup: false,
     match: s => s.brand.toLowerCase().includes("samsonite") && s.marketplace.toLowerCase() === "shopee" },
-  { key: "ASICS",            slotFormat: false, showBackup: false, // ← dedicated only
+  { key: "ASICS",            slotFormat: false, showBackup: false,
     match: s => s.brand.toLowerCase().includes("asics") },
 ];
 
-// Operator yang deprioritaskan sebagai backup (last resort)
 const BACKUP_DEPRIORITY = {
   pagi : new Set(["nadiem"]),
   siang: new Set(["maulidan"]),
 };
-
 
 function buildPicShiftData(){
   const shifts={pagi:{},siang:{}};
@@ -544,12 +528,8 @@ function buildPicShiftData(){
   return shifts;
 }
 
-
-
 function buildStandbyData() {
-  // Track operator per shift dengan waktu kerja mereka
   const nonDedByShift = { pagi: {}, siang: {} };
-  // key → { name, minStart, maxEnd }
 
   sessions.forEach(s => {
     s.hosts.forEach(h => {
@@ -570,16 +550,13 @@ function buildStandbyData() {
     });
   });
 
-  // Cari backup entry (dengan waktu)
   function findBackup(shift, usedSet) {
     const entries = Object.values(nonDedByShift[shift]);
-    // 1. Non-deprioritized first
     for (const e of entries) {
       if (usedSet.has(e.name.toLowerCase())) continue;
       if (BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase())) continue;
       return e;
     }
-    // 2. Last resort
     for (const e of entries) {
       if (usedSet.has(e.name.toLowerCase())) continue;
       return e;
@@ -594,7 +571,6 @@ function buildStandbyData() {
 
     matched.forEach(s => {
       if (b.slotFormat) {
-        // ── Samsonite Shopee: NON-DEDICATED per host slot ──
         s.hosts.forEach(h => {
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
           const shift  = getShift(endStr);
@@ -607,7 +583,6 @@ function buildStandbyData() {
           const picKey = (h.picData || "").trim().toLowerCase();
 
           if (!h.picData || h.picData === "-" || DEDICATED_OPS.includes(picKey) || LSC_NAMES_SET.has(picKey)) {
-            // Dedicated/kosong → cari non-ded dari pool (tidak bentrok)
             const backup = findBackup(shift, usedNonDed[shift]);
             if (!backup) return;
             picForSlot = backup.name;
@@ -626,9 +601,7 @@ function buildStandbyData() {
             sortKey: toMinJS(h.startTime)
           });
         });
-
       } else {
-        // ── Brand lain: dedicated (+ backup ber-waktu jika showBackup) ──
         s.hosts.forEach(h => {
           if (!h.picData || h.picData === "-") return;
           const endStr = (h.endTime && h.endTime !== "-") ? h.endTime : h.startTime;
@@ -643,7 +616,6 @@ function buildStandbyData() {
             const backup = findBackup(shift, usedNonDed[shift]);
             if (backup) {
               nonDedPic  = backup.name;
-              // Format jam: "09–13"
               const st = backup.minStart.replace(":00","");
               const en = backup.maxEnd.replace(":00","");
               nonDedTime = `${st}–${en}`;
@@ -665,10 +637,6 @@ function buildStandbyData() {
   }).filter(b => b.slots.length > 0);
 }
 
-
-
-
-
 function renderStandby(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
@@ -689,23 +657,23 @@ function renderStandby(){
     html+=`</div>`;
   });
   standbyList.forEach(b => {
-  html += `<div class="standby-brand-card">
-    <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
-  b.slots.forEach(slot => {
-    const picDisp = formatPic(slot.pic);
-    let backupStr = "";
-    if (slot.nonDedPic) {
-      backupStr = ` / ${formatPic(slot.nonDedPic)}`;
-      if (slot.nonDedTime) backupStr += ` <span style="color:#475569;font-size:0.65rem">(${slot.nonDedTime})</span>`;
-    }
-    html += `<div class="standby-row">
-      <span class="standby-time">${slot.label}</span>
-      <span class="standby-pic">${picDisp}${backupStr}</span>
-    </div>`;
+    html += `<div class="standby-brand-card">
+      <div class="standby-brand-title">📍 STANDBY ${b.key.toUpperCase()}</div>`;
+    b.slots.forEach(slot => {
+      const picDisp = formatPic(slot.pic);
+      let backupStr = "";
+      if (slot.nonDedPic) {
+        backupStr = ` / ${formatPic(slot.nonDedPic)}`;
+        // ← warna muted lebih netral, bukan navy
+        if (slot.nonDedTime) backupStr += ` <span style="color:#52525b;font-size:0.65rem">(${slot.nonDedTime})</span>`;
+      }
+      html += `<div class="standby-row">
+        <span class="standby-time">${slot.label}</span>
+        <span class="standby-pic">${picDisp}${backupStr}</span>
+      </div>`;
+    });
+    html += `</div>`;
   });
-  html += `</div>`;
-});
-
 
   html+=`<div class="standby-section"><div class="standby-label">📋 PROSEDUR</div><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
 2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
@@ -725,7 +693,8 @@ async function loadKlasemen(){
   if(activeTab !== "klasemen") return;
 
   const container=document.getElementById("schedule-list");
-  container.innerHTML=`<div style="text-align:center;padding:30px;color:#64748b">⏳ Memuat klasemen...</div>`;
+  // ← loading state pakai warna zinc
+  container.innerHTML=`<div style="text-align:center;padding:30px;color:#71717a">⏳ Memuat klasemen...</div>`;
 
   try{
     const controller=new AbortController();
@@ -738,7 +707,6 @@ async function loadKlasemen(){
       if(activeTab==="klasemen")container.innerHTML=`<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
       return;
     }
-    // ← Cek lagi sebelum render, kalau user sudah pindah tab jangan render
     if(activeTab!=="klasemen")return;
     renderKlasemen(data);
   }catch(err){
@@ -748,10 +716,9 @@ async function loadKlasemen(){
 }
 
 async function forceRefreshKlasemen(){
-  // Panggil dengan nocache=1 untuk clear cache Apps Script
   if(activeTab !== "klasemen") return;
   const container=document.getElementById("schedule-list");
-  container.innerHTML=`<div style="text-align:center;padding:30px;color:#64748b">⏳ Force refresh...</div>`;
+  container.innerHTML=`<div style="text-align:center;padding:30px;color:#71717a">⏳ Force refresh...</div>`;
 
   try{
     const res=await fetch(API_URL+"?action=leaderboard&nocache=1&t="+Date.now());
@@ -780,35 +747,35 @@ function renderKlasemen(data) {
 
   let html = `<div style="padding:8px 12px 24px">`;
 
-  // Header
-  html += `<div style="text-align:center;font-size:0.75rem;color:#64748b;margin-bottom:10px">
+  // ── Header ──
+  html += `<div style="text-align:center;font-size:0.75rem;color:#71717a;margin-bottom:10px">
     📊 Klasemen Pending Upload<br>
-    <span style="font-size:0.68rem;color:#475569">${data.dateFrom||""} → ${data.dateTo||""}</span>
+    <span style="font-size:0.68rem;color:#52525b">${data.dateFrom||""} → ${data.dateTo||""}</span>
   </div>`;
 
-  // Summary
+  // ── Summary cards ── warna zinc, aksen semantik tetap
   html += `<div style="display:flex;gap:5px;margin-bottom:12px">
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
+    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
       <div style="font-size:1rem;font-weight:800;color:#f87171">${totalPendHariH}</div>
-      <div style="font-size:0.55rem;color:#64748b">⏳ Hari H</div>
+      <div style="font-size:0.55rem;color:#71717a">⏳ Hari H</div>
     </div>
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
-      <div style="font-size:1rem;font-weight:800;color:#f59e0b">${totalPendH1}</div>
-      <div style="font-size:0.55rem;color:#64748b">📋 H+1</div>
+    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
+      <div style="font-size:1rem;font-weight:800;color:#fb923c">${totalPendH1}</div>
+      <div style="font-size:0.55rem;color:#71717a">📋 H+1</div>
     </div>
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
-      <div style="font-size:1rem;font-weight:800;color:#60a5fa">${totalRows}</div>
-      <div style="font-size:0.55rem;color:#64748b">📂 Total</div>
+    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
+      <div style="font-size:1rem;font-weight:800;color:#818cf8">${totalRows}</div>
+      <div style="font-size:0.55rem;color:#71717a">📂 Total</div>
     </div>
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
-      <div style="font-size:1rem;font-weight:800;color:#94a3b8">${totalHold}</div>
-      <div style="font-size:0.55rem;color:#64748b">⏸ Hold</div>
+    <div style="flex:1;background:#27272a;border-radius:8px;padding:6px;text-align:center;border:1px solid #3f3f46">
+      <div style="font-size:1rem;font-weight:800;color:#a1a1aa">${totalHold}</div>
+      <div style="font-size:0.55rem;color:#71717a">⏸ Hold</div>
     </div>
   </div>`;
 
-  // Leaderboard table
-  html += `<div style="background:#1e293b;border-radius:10px;overflow:hidden;margin-bottom:12px">
-    <div style="padding:6px 10px;background:#0f172a;font-size:0.62rem;font-weight:700;color:#475569;display:flex;gap:4px">
+  // ── Leaderboard table ──
+  html += `<div style="background:#27272a;border-radius:10px;overflow:hidden;margin-bottom:12px;border:1px solid #3f3f46">
+    <div style="padding:6px 10px;background:#18181b;font-size:0.62rem;font-weight:700;color:#52525b;display:flex;gap:4px">
       <span style="width:24px">#</span>
       <span style="flex:1">PIC</span>
       <span style="width:48px;text-align:center">H+1</span>
@@ -820,24 +787,25 @@ function renderKlasemen(data) {
   data.leaderboard.forEach((r, idx) => {
     const pts   = r.pendingPoints;
     const medal = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    const color = pts===0?"#34d399":pts<=5?"#60a5fa":pts<=15?"#f59e0b":"#f87171";
+    // Warna status tetap semantik (merah = buruk, hijau = baik)
+    const color = pts===0?"#34d399":pts<=5?"#818cf8":pts<=15?"#fb923c":"#f87171";
 
-    html += `<div style="padding:6px 10px;border-top:1px solid #0f172a;display:flex;align-items:center;gap:4px">
+    html += `<div style="padding:6px 10px;border-top:1px solid #18181b;display:flex;align-items:center;gap:4px">
       <span style="width:24px;font-size:0.75rem">${medal}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:0.8rem;font-weight:600">${formatPic(r.pic)}</div>
+        <div style="font-size:0.8rem;font-weight:600;color:#e4e4e7">${formatPic(r.pic)}</div>
         <div style="font-size:0.58rem;color:${color}">${pts > 0 ? pts+" pts pending" : "✅ No pending data"}</div>
       </div>
-      <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f59e0b">${r.pendingH1}</span>
+      <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#fb923c">${r.pendingH1}</span>
       <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f87171">${r.pendingHariH}</span>
-      <span style="width:40px;text-align:center;font-size:0.75rem;color:#64748b">${r.total}</span>
-      <span style="width:36px;text-align:center;font-size:0.75rem;color:#94a3b8">${r.hold}</span>
+      <span style="width:40px;text-align:center;font-size:0.75rem;color:#71717a">${r.total}</span>
+      <span style="width:36px;text-align:center;font-size:0.75rem;color:#a1a1aa">${r.hold}</span>
     </div>`;
   });
   html += `</div>`;
 
-  // Copy buttons per PIC
-  html += `<div style="font-size:0.72rem;font-weight:700;color:#a78bfa;margin-bottom:6px">
+  // ── Copy buttons per PIC ──
+  html += `<div style="font-size:0.72rem;font-weight:700;color:#c084fc;margin-bottom:6px">
     📋 Copy ID Line Pending per PIC
   </div>
   <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
@@ -851,45 +819,52 @@ function renderKlasemen(data) {
     if (hasPending) {
       html += `<button
         onclick="copyIdLines('${r.pic}', ${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
-        style="padding:6px 10px;border:none;border-radius:8px;background:#312e81;color:#c7d2fe;font-size:0.72rem;font-weight:600;cursor:pointer">
-        ${picLabel} <span style="color:#f59e0b">(${pts})</span>
+        style="padding:6px 10px;border:none;border-radius:8px;background:#1e1b4b;color:#c7d2fe;font-size:0.72rem;font-weight:600;cursor:pointer;border:1px solid #312e81">
+        ${picLabel} <span style="color:#fb923c">(${pts})</span>
       </button>`;
     } else {
       html += `<button
         disabled
-        style="padding:6px 10px;border:none;border-radius:8px;background:#1e293b;color:#334155;font-size:0.72rem;font-weight:600;cursor:not-allowed">
+        style="padding:6px 10px;border:none;border-radius:8px;background:#27272a;color:#3f3f46;font-size:0.72rem;font-weight:600;cursor:not-allowed;border:1px solid #3f3f46">
         ${picLabel} ✅
       </button>`;
     }
   });
   html += `</div>`;
 
-  // Detail pending rows per PIC
+  // ── Detail pending rows per PIC ──
   const withPending = data.leaderboard.filter(r => r.pendingRows?.length > 0);
   if (withPending.length > 0) {
     withPending.forEach(r => {
       html += `<div style="margin-bottom:10px">
-        <div style="font-size:0.7rem;font-weight:700;color:#a78bfa;margin-bottom:4px">
+        <div style="font-size:0.7rem;font-weight:700;color:#c084fc;margin-bottom:4px">
           ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
         </div>`;
       r.pendingRows.forEach(p => {
         const tags = [];
         if (p.hariH) tags.push(`<span style="color:#f87171;font-size:0.58rem">Hari H</span>`);
-        if (p.h1)    tags.push(`<span style="color:#f59e0b;font-size:0.58rem">H+1</span>`);
-        html += `<div style="background:#1e293b;border-radius:6px;padding:5px 8px;margin-bottom:2px;display:flex;align-items:center;gap:6px">
+        if (p.h1)    tags.push(`<span style="color:#fb923c;font-size:0.58rem">H+1</span>`);
+        html += `<div style="background:#27272a;border-radius:6px;padding:5px 8px;margin-bottom:2px;display:flex;align-items:center;gap:6px;border:1px solid #3f3f46">
           <div style="flex:1;min-width:0">
-            <div style="font-size:0.75rem;font-weight:600">${p.brand}</div>
-            <div style="font-size:0.62rem;color:#64748b">${p.date} · ${p.startTime} · ${p.studio}</div>
+            <div style="font-size:0.75rem;font-weight:600;color:#e4e4e7">${p.brand}</div>
+            <div style="font-size:0.62rem;color:#71717a">${p.date} · ${p.startTime} · ${p.studio}</div>
           </div>
           <div style="display:flex;gap:3px">${tags.join(" ")}</div>
-          <div style="font-size:0.6rem;color:#475569;font-family:monospace">${p.idLine}</div>
+          <div style="font-size:0.6rem;color:#52525b;font-family:monospace">${p.idLine}</div>
         </div>`;
       });
       html += `</div>`;
     });
   }
-  // Di renderKlasemen, ganti tombol refresh:
-  html += `<button onclick="forceRefreshKlasemen()" style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh (Clear Cache)</button>`;
+
+  // ── Refresh button ──
+  html += `<button onclick="forceRefreshKlasemen()"
+    style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;
+           background:#27272a;color:#818cf8;font-size:0.78rem;cursor:pointer;
+           border:1px solid #3f3f46">
+    🔄 Refresh (Clear Cache)
+  </button>`;
+
   html += `</div>`;
   container.innerHTML = html;
 }
@@ -901,10 +876,6 @@ function copyIdLines(picName, idLines) {
     .then(() => showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`, "success"))
     .catch(() => showBanner("❌ Gagal copy", "error"));
 }
-
-
-
-
 
 function copyStandbyText(){
   const dateStr=sessions[0]?.date||"";
@@ -950,7 +921,9 @@ function showNotifPanel(){
     const diffMin=Math.round(diff/60000);
     const btn=document.createElement("button");
     btn.className="notif-time-btn";
-    btn.style.background=type==="start"?"#1e3a5f":"#2d0d0d";
+    // ← warna lebih tenang: indigo-950 untuk start, dark red untuk end (tetap semantik)
+    btn.style.background = type==="start" ? "#1e1b4b" : "#450a0a";
+    btn.style.color       = type==="start" ? "#c7d2fe" : "#fca5a5";
     btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
     btn.onclick=()=>sendManualNotifFor(time,type);
     list.appendChild(btn);
@@ -964,7 +937,6 @@ function showNotifPanel(){
 
 function closeNotifPanel(){document.getElementById("notif-panel").style.display="none";}
 
-// Manual notif per jam
 function sendManualNotifFor(time, type = "start") {
   const group = sessions.filter(s =>
     type === "start" ? s.startTime === time : s.endTime === time
@@ -980,7 +952,6 @@ function sendManualNotifFor(time, type = "start") {
   closeNotifPanel();
 }
 
-// Manual notif semua upcoming
 function sendManualNotifAll() {
   const now = Date.now();
   const upStart = {}, upEnd = {};
@@ -1020,7 +991,6 @@ function sendManualNotifAll() {
   showBanner(`🔔 ${entries.length} notif dikirim (start+end)!`, "success");
 }
 
-
 function updateStats(){
   const m=sessions.filter(s=>s.isMarathon).length,sg=sessions.filter(s=>!s.isMarathon).length;
   document.getElementById("stat-total").textContent=sessions.length;
@@ -1043,7 +1013,6 @@ function scheduleAllNotifications(list){
     }
   });
 
-  // START: H-60, H-10, H-5
   Object.entries(startGroups).forEach(([time,group])=>{
     const startMs=timeToMs(group[0].date,time);
     if(!startMs)return;
@@ -1056,13 +1025,11 @@ function scheduleAllNotifications(list){
     });
   });
 
-  // END: H-10, H-5
   Object.entries(endGroups).forEach(([time,group])=>{
-    // Handle "23:59/00:00" special case
     const effectiveTime = time==="23:59/00:00" ? "23:59" : time;
     let endMs=timeToMs(group[0].date,effectiveTime);
     const sMs=timeToMs(group[0].date,group[0].startTime);
-    if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000; // crossing midnight
+    if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000;
     if(!endMs)return;
 
     [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
@@ -1076,9 +1043,7 @@ function scheduleAllNotifications(list){
   document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal hari ini`;
 }
 
-// Helper: build notif lines dengan PIC yang sudah di-assign (sama seperti tab)
 function buildNotifLines(group, type, eventTime) {
-  // Buat copy dan jalankan assignPics seperti di tab
   const copies = group.map(s => ({
     ...s,
     picForEvent: type === "start"
@@ -1093,20 +1058,18 @@ function buildNotifLines(group, type, eventTime) {
   return copies.map((s, i) => {
     const h    = type === "start" ? s.hosts?.[0] : s.hosts?.[s.hosts.length-1];
     const host = h?.host || "-";
-    const pic  = s.assignedPic || "LSC"; // pakai hasil assignPics
+    const pic  = s.assignedPic || "LSC";
     return type === "start"
       ? `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
       : `${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
   });
 }
+
 function cancelAllScheduled(){scheduledTasks.forEach(id=>clearTimeout(id));scheduledTasks=[];}
 
-// Auto notif (H-60, H-10, H-5)
 function fireGroupNotif(title, group, type, urgent = false) {
-  // Extract jam dari title (e.g. "START 17:00" → "17:00")
   const timeMatch = /(\d{2}:\d{2})/.exec(title);
   const eventTime = timeMatch ? timeMatch[1] : null;
-
   const lines = buildNotifLines(group, type, eventTime);
   sendNotification(title, lines.join("\n"), `grp-${type}-${title}-${Date.now()}`, urgent);
 }
