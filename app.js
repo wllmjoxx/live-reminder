@@ -1,6 +1,95 @@
 const API_URL    = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
 const NTFY_TOPIC = "castlive-ops-2026-xk9";
 const ICON_URL   = new URL("./icon-192.png", location.href).href;
+const GOOGLE_CLIENT_ID = "343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com";
+const PRESENCE_TOPIC   = "castlive-presence-2026"; // topic terpisah untuk presence
+let currentUserEmail = localStorage.getItem("userEmail") || null;
+let onlineUsers      = {}; // email → lastSeen timestamp
+
+// ── GOOGLE SIGN IN ────────────────────────────
+function initGoogleSignIn() {
+  if (!window.google) return;
+  google.accounts.id.initialize({
+    client_id : GOOGLE_CLIENT_ID,
+    callback  : handleGoogleSignIn,
+    auto_select: true,
+  });
+  // Kalau belum login, tampilkan prompt
+  if (!currentUserEmail) {
+    google.accounts.id.prompt();
+  }
+}
+
+function handleGoogleSignIn(response) {
+  // Decode JWT dari Google
+  const payload = JSON.parse(atob(response.credential.split(".")[1]));
+  currentUserEmail = payload.email;
+  localStorage.setItem("userEmail", currentUserEmail);
+  broadcastPresence();
+  updateOnlineDisplay();
+}
+
+// ── PRESENCE SYSTEM ───────────────────────────
+function broadcastPresence() {
+  if (!currentUserEmail) return;
+  const msg = JSON.stringify({
+    type : "presence",
+    email: currentUserEmail,
+    ts   : Date.now()
+  });
+  fetch(`https://ntfy.sh/${PRESENCE_TOPIC}`, {
+    method: "POST",
+    body  : msg,
+  }).catch(() => {});
+}
+
+function listenPresence() {
+  const src = new EventSource(`https://ntfy.sh/${PRESENCE_TOPIC}/sse`);
+  src.addEventListener("message", e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.event !== "message") return;
+      const body = JSON.parse(d.message || d.body || "{}");
+      if (body.type === "presence" && body.email) {
+        onlineUsers[body.email] = body.ts;
+        updateOnlineDisplay();
+      }
+    } catch(err) {}
+  });
+  src.onerror = () => setTimeout(listenPresence, 5000);
+}
+
+function updateOnlineDisplay() {
+  // Anggap online jika terlihat dalam 5 menit terakhir
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  const active = Object.entries(onlineUsers)
+    .filter(([, ts]) => ts > cutoff)
+    .map(([email]) => email.split("@")[0]); // ambil nama sebelum @
+
+  const el = document.getElementById("online-users");
+  if (!el) return;
+
+  if (active.length === 0) {
+    el.textContent = "👤 Tidak ada yang online";
+  } else {
+    el.innerHTML = `🟢 ${active.length} online: <span style="color:#60a5fa">${active.join(", ")}</span>`;
+  }
+}
+
+// Heartbeat setiap 3 menit
+function startPresenceHeartbeat() {
+  broadcastPresence();
+  setInterval(broadcastPresence, 3 * 60 * 1000);
+  // Bersihkan user yang sudah lama tidak aktif
+  setInterval(() => {
+    const cutoff = Date.now() - 6 * 60 * 1000;
+    Object.keys(onlineUsers).forEach(email => {
+      if (onlineUsers[email] < cutoff) delete onlineUsers[email];
+    });
+    updateOnlineDisplay();
+  }, 60 * 1000);
+}
+
 
 const PIC_MENTIONS = {
   "jonathan":"@jonathan","tyo":"@Tyo","hamzah":"@Hamzah","hanif":"@Hanif",
@@ -55,18 +144,40 @@ function getDedicatedGroup(n){
 let sessions=[],scheduledTasks=[],swRegistration=null,activeTab="marathon",ntfySource=null;
 const seenNtfyIds=new Set();
 
-window.addEventListener("DOMContentLoaded",async()=>{
-  updateClock();setInterval(updateClock,1000);
+window.addEventListener("DOMContentLoaded", async () => {
+  updateClock();
+  setInterval(updateClock, 1000);
   await registerSW();
   await requestNotifPermission();
   connectNtfy();
+  listenPresence();      // ← tambah: listen presence
   await loadSchedule();
-  setInterval(loadSchedule,5*120*1000);
-  document.addEventListener("visibilitychange",()=>{
-    if(document.visibilityState==="visible"){connectNtfy();loadSchedule();}
+  setInterval(loadSchedule, 5 * 120 * 1000);
+
+  // Init Google Sign In setelah library loaded
+  window.addEventListener("load", () => {
+    initGoogleSignIn();
+    if (currentUserEmail) {
+      // Kalau sudah pernah login, langsung broadcast
+      startPresenceHeartbeat();
+    }
   });
-  window.addEventListener("pageshow",e=>{if(e.persisted){connectNtfy();loadSchedule();}});
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      connectNtfy();
+      broadcastPresence(); // ← kasih tahu masih online
+      loadSchedule();
+    }
+  });
+  window.addEventListener("pageshow", e => {
+    if (e.persisted) { connectNtfy(); broadcastPresence(); loadSchedule(); }
+  });
+
+  // Kalau sudah ada email di cache, langsung start heartbeat
+  if (currentUserEmail) startPresenceHeartbeat();
 });
+
 
 async function registerSW(){
   if("serviceWorker"in navigator){
