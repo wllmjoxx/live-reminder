@@ -727,17 +727,24 @@ async function loadKlasemen() {
 
 function renderKlasemen(data) {
   const container = document.getElementById("schedule-list");
-  const totalPending = data.leaderboard.reduce((s,r) => s+r.pending, 0);
-  const totalDone    = data.leaderboard.reduce((s,r) => s+r.done,    0);
-  const totalHold    = data.leaderboard.reduce((s,r) => s+r.hold,    0);
-  const totalAll     = data.leaderboard.reduce((s,r) => s+r.total,   0);
+
+  // Safety check
+  if (!data.leaderboard) {
+    container.innerHTML = `<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
+    return;
+  }
+
+  const totalPending = data.leaderboard.reduce((s,r) => s + (r.pending||0), 0);
+  const totalDone    = data.leaderboard.reduce((s,r) => s + (r.done||0),    0);
+  const totalHold    = data.leaderboard.reduce((s,r) => s + (r.hold||0),    0);
+  const totalAll     = data.leaderboard.reduce((s,r) => s + (r.total||0),   0);
 
   let html = `<div style="padding:8px 12px 24px">`;
 
   // Header
   html += `<div style="text-align:center;font-size:0.75rem;color:#64748b;margin-bottom:10px">
     📊 Klasemen Upload Vision<br>
-    <span style="color:#475569;font-size:0.68rem">${data.dateFrom} → ${data.dateTo}</span>
+    <span style="color:#475569;font-size:0.68rem">${data.dateFrom||""} → ${data.dateTo||""}</span>
   </div>`;
 
   // Summary
@@ -765,15 +772,17 @@ function renderKlasemen(data) {
     <div style="padding:7px 10px;background:#0f172a;font-size:0.65rem;font-weight:700;color:#475569;display:flex;gap:6px">
       <span style="width:26px">#</span>
       <span style="flex:1">PIC</span>
-      <span style="width:52px;text-align:center">Pending</span>
+      <span style="width:54px;text-align:center">Pending</span>
       <span style="width:42px;text-align:center">Done</span>
       <span style="width:36px;text-align:center">Hold</span>
     </div>`;
 
   data.leaderboard.forEach((r, idx) => {
-    const pct   = r.total > 0 ? Math.round((r.pending/r.total)*100) : 0;
-    const medal = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    const color = pct===0 ? "#34d399" : pct<=30 ? "#60a5fa" : pct<=70 ? "#f59e0b" : "#f87171";
+    const pending = r.pending || 0;
+    const total   = r.total   || 0;
+    const pct     = total > 0 ? Math.round((pending/total)*100) : 0;
+    const medal   = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
+    const color   = pct===0?"#34d399":pct<=30?"#60a5fa":pct<=70?"#f59e0b":"#f87171";
 
     html += `<div style="padding:7px 10px;border-top:1px solid #0f172a;display:flex;align-items:center;gap:6px">
       <span style="width:26px;font-size:0.78rem">${medal}</span>
@@ -783,19 +792,18 @@ function renderKlasemen(data) {
           <div style="flex:1;height:3px;background:#0f172a;border-radius:2px">
             <div style="height:3px;background:${color};border-radius:2px;width:${pct}%"></div>
           </div>
-          <span style="font-size:0.58rem;color:#475569">${pct}%</span>
+          <span style="font-size:0.58rem;color:#475569">${pct}% pending</span>
         </div>
       </div>
-      <span style="width:52px;text-align:center;font-size:0.9rem;font-weight:800;color:${color}">${r.pending}</span>
-      <span style="width:42px;text-align:center;font-size:0.75rem;color:#34d399">${r.done}</span>
-      <span style="width:36px;text-align:center;font-size:0.75rem;color:#64748b">${r.hold}</span>
+      <span style="width:54px;text-align:center;font-size:0.9rem;font-weight:800;color:${color}">${pending}</span>
+      <span style="width:42px;text-align:center;font-size:0.75rem;color:#34d399">${r.done||0}</span>
+      <span style="width:36px;text-align:center;font-size:0.75rem;color:#64748b">${r.hold||0}</span>
     </div>`;
   });
   html += `</div>`;
 
-  // Pending list
+  // Pending list grouped by date
   if (data.pending?.length > 0) {
-    // Group by date
     const byDate = {};
     data.pending.forEach(r => {
       if (!byDate[r.date]) byDate[r.date] = [];
@@ -830,8 +838,10 @@ function renderKlasemen(data) {
 
   html += `<button onclick="loadKlasemen()" style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh</button>`;
   html += `</div>`;
+
   container.innerHTML = html;
 }
+
 
 
 
