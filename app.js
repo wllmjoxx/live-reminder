@@ -727,120 +727,140 @@ async function loadKlasemen() {
 
 function renderKlasemen(data) {
   const container = document.getElementById("schedule-list");
-
-  // Safety check
   if (!data.leaderboard) {
     container.innerHTML = `<div class="empty">⚠️ Deploy Apps Script versi baru dulu</div>`;
     return;
   }
 
-  const totalPending = data.leaderboard.reduce((s,r) => s + (r.pending||0), 0);
-  const totalDone    = data.leaderboard.reduce((s,r) => s + (r.done||0),    0);
-  const totalHold    = data.leaderboard.reduce((s,r) => s + (r.hold||0),    0);
-  const totalAll     = data.leaderboard.reduce((s,r) => s + (r.total||0),   0);
+  const totalPendHariH = data.leaderboard.reduce((s,r) => s + r.pendingHariH, 0);
+  const totalPendH1    = data.leaderboard.reduce((s,r) => s + r.pendingH1,    0);
+  const totalRows      = data.leaderboard.reduce((s,r) => s + r.total,        0);
+  const totalHold      = data.leaderboard.reduce((s,r) => s + r.hold,         0);
 
   let html = `<div style="padding:8px 12px 24px">`;
 
   // Header
   html += `<div style="text-align:center;font-size:0.75rem;color:#64748b;margin-bottom:10px">
-    📊 Klasemen Upload Vision<br>
-    <span style="color:#475569;font-size:0.68rem">${data.dateFrom||""} → ${data.dateTo||""}</span>
+    📊 Klasemen Pending Upload<br>
+    <span style="font-size:0.68rem;color:#475569">${data.dateFrom||""} → ${data.dateTo||""}</span>
   </div>`;
 
   // Summary
-  html += `<div style="display:flex;gap:6px;margin-bottom:12px">
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
-      <div style="font-size:1.1rem;font-weight:800;color:#f87171">${totalPending}</div>
-      <div style="font-size:0.58rem;color:#64748b">⏳ Pending</div>
+  html += `<div style="display:flex;gap:5px;margin-bottom:12px">
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
+      <div style="font-size:1rem;font-weight:800;color:#f87171">${totalPendHariH}</div>
+      <div style="font-size:0.55rem;color:#64748b">⏳ Hari H</div>
     </div>
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
-      <div style="font-size:1.1rem;font-weight:800;color:#34d399">${totalDone}</div>
-      <div style="font-size:0.58rem;color:#64748b">✅ Done</div>
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
+      <div style="font-size:1rem;font-weight:800;color:#f59e0b">${totalPendH1}</div>
+      <div style="font-size:0.55rem;color:#64748b">📋 H+1</div>
     </div>
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
-      <div style="font-size:1.1rem;font-weight:800;color:#94a3b8">${totalHold}</div>
-      <div style="font-size:0.58rem;color:#64748b">⏸ Hold</div>
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
+      <div style="font-size:1rem;font-weight:800;color:#60a5fa">${totalRows}</div>
+      <div style="font-size:0.55rem;color:#64748b">📂 Total</div>
     </div>
-    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
-      <div style="font-size:1.1rem;font-weight:800;color:#60a5fa">${totalAll}</div>
-      <div style="font-size:0.58rem;color:#64748b">📋 Total</div>
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:6px;text-align:center">
+      <div style="font-size:1rem;font-weight:800;color:#94a3b8">${totalHold}</div>
+      <div style="font-size:0.55rem;color:#64748b">⏸ Hold</div>
     </div>
   </div>`;
 
-  // Leaderboard
+  // Leaderboard table
   html += `<div style="background:#1e293b;border-radius:10px;overflow:hidden;margin-bottom:12px">
-    <div style="padding:7px 10px;background:#0f172a;font-size:0.65rem;font-weight:700;color:#475569;display:flex;gap:6px">
-      <span style="width:26px">#</span>
+    <div style="padding:6px 10px;background:#0f172a;font-size:0.62rem;font-weight:700;color:#475569;display:flex;gap:4px">
+      <span style="width:24px">#</span>
       <span style="flex:1">PIC</span>
-      <span style="width:54px;text-align:center">Pending</span>
-      <span style="width:42px;text-align:center">Done</span>
+      <span style="width:48px;text-align:center">H+1</span>
+      <span style="width:48px;text-align:center">Hari H</span>
+      <span style="width:40px;text-align:center">Total</span>
       <span style="width:36px;text-align:center">Hold</span>
     </div>`;
 
   data.leaderboard.forEach((r, idx) => {
-    const pending = r.pending || 0;
-    const total   = r.total   || 0;
-    const pct     = total > 0 ? Math.round((pending/total)*100) : 0;
-    const medal   = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    const color   = pct===0?"#34d399":pct<=30?"#60a5fa":pct<=70?"#f59e0b":"#f87171";
+    const pts   = r.pendingPoints;
+    const medal = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
+    const color = pts===0?"#34d399":pts<=5?"#60a5fa":pts<=15?"#f59e0b":"#f87171";
 
-    html += `<div style="padding:7px 10px;border-top:1px solid #0f172a;display:flex;align-items:center;gap:6px">
-      <span style="width:26px;font-size:0.78rem">${medal}</span>
+    html += `<div style="padding:6px 10px;border-top:1px solid #0f172a;display:flex;align-items:center;gap:4px">
+      <span style="width:24px;font-size:0.75rem">${medal}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:0.82rem;font-weight:600">${formatPic(r.pic)}</div>
-        <div style="display:flex;align-items:center;gap:4px;margin-top:3px">
-          <div style="flex:1;height:3px;background:#0f172a;border-radius:2px">
-            <div style="height:3px;background:${color};border-radius:2px;width:${pct}%"></div>
-          </div>
-          <span style="font-size:0.58rem;color:#475569">${pct}% pending</span>
-        </div>
+        <div style="font-size:0.8rem;font-weight:600">${formatPic(r.pic)}</div>
+        <div style="font-size:0.58rem;color:${color}">${pts > 0 ? pts+" pts pending" : "✅ bersih"}</div>
       </div>
-      <span style="width:54px;text-align:center;font-size:0.9rem;font-weight:800;color:${color}">${pending}</span>
-      <span style="width:42px;text-align:center;font-size:0.75rem;color:#34d399">${r.done||0}</span>
-      <span style="width:36px;text-align:center;font-size:0.75rem;color:#64748b">${r.hold||0}</span>
+      <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f59e0b">${r.pendingH1}</span>
+      <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f87171">${r.pendingHariH}</span>
+      <span style="width:40px;text-align:center;font-size:0.75rem;color:#64748b">${r.total}</span>
+      <span style="width:36px;text-align:center;font-size:0.75rem;color:#94a3b8">${r.hold}</span>
     </div>`;
   });
   html += `</div>`;
 
-  // Pending list grouped by date
-  if (data.pending?.length > 0) {
-    const byDate = {};
-    data.pending.forEach(r => {
-      if (!byDate[r.date]) byDate[r.date] = [];
-      byDate[r.date].push(r);
-    });
+  // Copy buttons per PIC
+  html += `<div style="font-size:0.72rem;font-weight:700;color:#a78bfa;margin-bottom:6px">
+    📋 Copy ID Line Pending per PIC
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`;
 
-    html += `<div style="font-size:0.72rem;font-weight:700;color:#f87171;margin-bottom:6px">
-      ⏳ PENDING UPLOAD (${data.pending.length} sesi)
-    </div>`;
+  data.leaderboard.forEach(r => {
+    const hasPending = r.pendingRows?.length > 0;
+    const idLines    = (r.pendingRows||[]).map(p => p.idLine).filter(Boolean);
+    const picLabel   = formatPic(r.pic);
+    const pts        = r.pendingPoints;
 
-    Object.entries(byDate).sort().forEach(([date, rows]) => {
-      html += `<div style="font-size:0.68rem;color:#f59e0b;margin:6px 0 3px;font-weight:600">📅 ${date} (${rows.length})</div>`;
-      rows.forEach(r => {
-        const kColor = r.kelengkapan==="Metrics Lengkap"?"#34d399":"#f87171";
-        html += `<div style="background:#1e293b;border-radius:7px;padding:6px 9px;margin-bottom:3px;display:flex;align-items:center;gap:6px">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:0.78rem;font-weight:600">${r.brand}</div>
-            <div style="font-size:0.63rem;color:#64748b">${r.startTime} · ${r.studio}${r.host?" · "+r.host:""}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:0.7rem;font-weight:600;color:#a78bfa">${formatPic(r.pic)}</div>
-            <div style="font-size:0.58rem;color:${kColor}">${r.kelengkapan||"Belum Lengkap"}</div>
-          </div>
-        </div>`;
-      });
-    });
-  } else {
-    html += `<div style="text-align:center;padding:20px;color:#34d399;font-size:0.85rem">
-      ✅ Semua data H-10 s/d H-1 sudah DONE/HOLD!
-    </div>`;
-  }
-
-  html += `<button onclick="loadKlasemen()" style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh</button>`;
+    if (hasPending) {
+      html += `<button
+        onclick="copyIdLines('${r.pic}', ${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
+        style="padding:6px 10px;border:none;border-radius:8px;background:#312e81;color:#c7d2fe;font-size:0.72rem;font-weight:600;cursor:pointer">
+        ${picLabel} <span style="color:#f59e0b">(${pts})</span>
+      </button>`;
+    } else {
+      html += `<button
+        disabled
+        style="padding:6px 10px;border:none;border-radius:8px;background:#1e293b;color:#334155;font-size:0.72rem;font-weight:600;cursor:not-allowed">
+        ${picLabel} ✅
+      </button>`;
+    }
+  });
   html += `</div>`;
 
+  // Detail pending rows per PIC
+  const withPending = data.leaderboard.filter(r => r.pendingRows?.length > 0);
+  if (withPending.length > 0) {
+    withPending.forEach(r => {
+      html += `<div style="margin-bottom:10px">
+        <div style="font-size:0.7rem;font-weight:700;color:#a78bfa;margin-bottom:4px">
+          ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
+        </div>`;
+      r.pendingRows.forEach(p => {
+        const tags = [];
+        if (p.hariH) tags.push(`<span style="color:#f87171;font-size:0.58rem">Hari H</span>`);
+        if (p.h1)    tags.push(`<span style="color:#f59e0b;font-size:0.58rem">H+1</span>`);
+        html += `<div style="background:#1e293b;border-radius:6px;padding:5px 8px;margin-bottom:2px;display:flex;align-items:center;gap:6px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.75rem;font-weight:600">${p.brand}</div>
+            <div style="font-size:0.62rem;color:#64748b">${p.date} · ${p.startTime} · ${p.studio}</div>
+          </div>
+          <div style="display:flex;gap:3px">${tags.join(" ")}</div>
+          <div style="font-size:0.6rem;color:#475569;font-family:monospace">${p.idLine}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    });
+  }
+
+  html += `<button onclick="loadKlasemen()" style="width:100%;margin-top:8px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh</button>`;
+  html += `</div>`;
   container.innerHTML = html;
 }
+
+function copyIdLines(picName, idLines) {
+  if (!idLines || idLines.length === 0) return;
+  const text = idLines.join("\n");
+  navigator.clipboard.writeText(text)
+    .then(() => showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`, "success"))
+    .catch(() => showBanner("❌ Gagal copy", "error"));
+}
+
 
 
 
