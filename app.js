@@ -826,7 +826,7 @@ function renderKlasemen(data) {
       <span style="width:24px;font-size:0.75rem">${medal}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:0.8rem;font-weight:600">${formatPic(r.pic)}</div>
-        <div style="font-size:0.58rem;color:${color}">${pts > 0 ? pts+" pts pending" : "✅ bersih"}</div>
+        <div style="font-size:0.58rem;color:${color}">${pts > 0 ? pts+" pts pending" : "✅ No pending data"}</div>
       </div>
       <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f59e0b">${r.pendingH1}</span>
       <span style="width:48px;text-align:center;font-size:0.82rem;font-weight:700;color:#f87171">${r.pendingHariH}</span>
