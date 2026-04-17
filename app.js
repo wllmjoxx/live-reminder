@@ -144,16 +144,26 @@ async function loadSchedule(){
   }
   showLoading(true);
   try{
-    const res=await fetch(API_URL+"?t="+Date.now());
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),15000);
+    const res=await fetch(API_URL+"?t="+Date.now(),{signal:controller.signal});
+    clearTimeout(timeout);
     const data=JSON.parse(await res.text());
     if(!data.success)throw new Error(data.error);
     localStorage.setItem("lastSchedule",JSON.stringify(data));
     sessions=data.sessions.map(s=>{s.isMarathon=s.hosts.length>1;return s;});
     renderTab(activeTab);cancelAllScheduled();scheduleAllNotifications(sessions);updateStats();
     showBanner(`✅ ${data.date} — ${sessions.length} sesi`,"success");
-  }catch(err){showBanner("❌ Gagal load: "+err.message,"error");}
+  }catch(err){
+    if(err.name==="AbortError"){
+      showBanner("⚠️ Timeout — pakai data cache","warning");
+    }else{
+      showBanner("❌ Gagal load: "+err.message,"error");
+    }
+  }
   showLoading(false);
 }
+
 
 function switchTab(tab){
   activeTab=tab;
