@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Live Reminder</title>
   <link rel="manifest" href="manifest.json"/>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" async></script>
+
   <style>
     /* ── BOOTSTRAP-INSPIRED VARIABLES ── */
     :root {
@@ -449,16 +450,25 @@
   <!-- NAVBAR -->
   <nav class="navbar">
     
-    <div class="navbar-brand">🎬 Live Schedule Reminder</div>
-    <!-- User name input (muncul kalau belum set) -->
-<div id="user-login-wrapper" style="display:none;padding:4px 12px 6px;display:flex;gap:6px">
-  <input id="user-name-input" type="text" placeholder="Nama kamu (misal: Jonathan)"
-    style="flex:1;padding:6px 10px;border:none;border-radius:8px;background:#1e293b;color:#e2e8f0;font-size:0.78rem"/>
-  <button onclick="setUserName()"
-    style="padding:6px 12px;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-size:0.78rem;cursor:pointer">
-    ✓ Set
-  </button>
+    <!-- Google Sign In -->
+<div id="user-login-wrapper" style="padding:4px 12px 6px;display:none;justify-content:center">
+  <!-- Pakai HTML attribute approach - lebih reliable -->
+  <div id="g_id_onload"
+    data-client_id="PASTE_CLIENT_ID_KAMU"
+    data-callback="handleGoogleSignIn"
+    data-auto_prompt="false"
+    data-itp_support="true">
+  </div>
+  <div class="g_id_signin"
+    data-type="standard"
+    data-theme="filled_blue"
+    data-text="sign_in_with"
+    data-size="large"
+    data-logo_alignment="left"
+    data-width="280">
+  </div>
 </div>
+
 
     <div class="navbar-clock">
       <div id="clock">--:--:--</div>

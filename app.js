@@ -1,80 +1,44 @@
 const API_URL    = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
 const NTFY_TOPIC = "castlive-ops-2026-xk9";
 const ICON_URL   = new URL("./icon-192.png", location.href).href;
-const GOOGLE_CLIENT_ID = "343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com";
-const PRESENCE_TOPIC   = "castlive-presence-2026"; // topic terpisah untuk presence
+const GOOGLE_CLIENT_ID = "PASTE_CLIENT_ID_KAMU.apps.googleusercontent.com";
+const PRESENCE_TOPIC   = "castlive-presence-2026";
+
 let currentUserEmail = localStorage.getItem("userEmail") || null;
-let onlineUsers      = {}; // email → lastSeen timestamp
+let onlineUsers      = {};
 
-// ── GOOGLE SIGN IN ────────────────────────────
-function initGoogleSignIn() {
-  if (!window.google?.accounts?.id) {
-    // Library belum load, coba lagi 1 detik
-    setTimeout(initGoogleSignIn, 1000);
-    return;
-  }
-
-  google.accounts.id.initialize({
-    client_id : GOOGLE_CLIENT_ID,
-    callback  : handleGoogleSignIn,
-    auto_select: false,
-  });
-
+function initUserIdentity() {
   if (!currentUserEmail) {
-    // Tampilkan wrapper + render button
-    document.getElementById("google-signin-wrapper").style.display = "block";
-    google.accounts.id.renderButton(
-      document.getElementById("google-signin-btn"),
-      {
-        theme: "filled_blue",
-        size : "large",
-        text : "signin_with",
-        width: "100%",
-      }
-    );
+    // Tampilkan tombol Google
+    const wrapper = document.getElementById("user-login-wrapper");
+    if (wrapper) wrapper.style.display = "flex";
   } else {
-    // Sudah login
+    updateOnlineDisplay();
+    startPresenceHeartbeat();
+  }
+}
+
+function handleGoogleSignIn(response) {
+  try {
+    const payload = JSON.parse(atob(response.credential.split(".")[1]));
+    currentUserEmail = payload.email;
+    localStorage.setItem("userEmail", currentUserEmail);
+
+    document.getElementById("user-login-wrapper").style.display = "none";
+    broadcastPresence();
     startPresenceHeartbeat();
     updateOnlineDisplay();
+    showBanner(`✅ Login: ${currentUserEmail}`, "success");
+  } catch(e) {
+    showBanner("❌ Gagal login Google", "error");
   }
 }
 
-function handleGoogleSignIn(response) {
-  const payload = JSON.parse(atob(response.credential.split(".")[1]));
-  currentUserEmail = payload.email;
-  localStorage.setItem("userEmail", currentUserEmail);
-
-  // Sembunyikan tombol login
-  const wrapper = document.getElementById("google-signin-wrapper");
-  if (wrapper) wrapper.style.display = "none";
-
-  broadcastPresence();
-  startPresenceHeartbeat();
-  updateOnlineDisplay();
-  showBanner(`✅ Login sebagai ${currentUserEmail}`, "success");
-}
-
-
-function handleGoogleSignIn(response) {
-  // Decode JWT dari Google
-  const payload = JSON.parse(atob(response.credential.split(".")[1]));
-  currentUserEmail = payload.email;
-  localStorage.setItem("userEmail", currentUserEmail);
-  broadcastPresence();
-  updateOnlineDisplay();
-}
-
-// ── PRESENCE SYSTEM ───────────────────────────
 function broadcastPresence() {
   if (!currentUserEmail) return;
-  const msg = JSON.stringify({
-    type : "presence",
-    email: currentUserEmail,
-    ts   : Date.now()
-  });
   fetch(`https://ntfy.sh/${PRESENCE_TOPIC}`, {
     method: "POST",
-    body  : msg,
+    body  : JSON.stringify({ type:"presence", email: currentUserEmail, ts: Date.now() }),
   }).catch(() => {});
 }
 
@@ -95,35 +59,28 @@ function listenPresence() {
 }
 
 function updateOnlineDisplay() {
-  // Anggap online jika terlihat dalam 5 menit terakhir
   const cutoff = Date.now() - 5 * 60 * 1000;
   const active = Object.entries(onlineUsers)
     .filter(([, ts]) => ts > cutoff)
-    .map(([email]) => email.split("@")[0]); // ambil nama sebelum @
+    .map(([email]) => email.split("@")[0]);
 
   const el = document.getElementById("online-users");
   if (!el) return;
-
-  if (active.length === 0) {
-    el.textContent = "👤 Tidak ada yang online";
-  } else {
-    el.innerHTML = `🟢 ${active.length} online: <span style="color:#60a5fa">${active.join(", ")}</span>`;
-  }
+  el.innerHTML = active.length
+    ? `🟢 ${active.length} online: <span style="color:#60a5fa">${active.join(", ")}</span>`
+    : `👤 Hanya kamu`;
 }
 
-// Heartbeat setiap 3 menit
 function startPresenceHeartbeat() {
   broadcastPresence();
   setInterval(broadcastPresence, 3 * 60 * 1000);
-  // Bersihkan user yang sudah lama tidak aktif
   setInterval(() => {
     const cutoff = Date.now() - 6 * 60 * 1000;
-    Object.keys(onlineUsers).forEach(email => {
-      if (onlineUsers[email] < cutoff) delete onlineUsers[email];
-    });
+    Object.keys(onlineUsers).forEach(n => { if (onlineUsers[n] < cutoff) delete onlineUsers[n]; });
     updateOnlineDisplay();
   }, 60 * 1000);
 }
+
 
 
 const PIC_MENTIONS = {
