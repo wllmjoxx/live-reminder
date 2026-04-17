@@ -161,12 +161,15 @@ function switchTab(tab){
   document.getElementById("tab-"+tab).classList.add("active");
   renderTab(tab);
 }
-function renderTab(tab){
-  if(tab==="marathon")renderMarathon();
-  if(tab==="timeline")renderTimeline();
-  if(tab==="single")renderSingle();
-  if(tab==="standby")renderStandby();
+
+function renderTab(tab) {
+  if (tab === "marathon")  renderMarathon();
+  if (tab === "timeline")  renderTimeline();
+  if (tab === "single")    renderSingle();
+  if (tab === "standby")   renderStandby();
+  if (tab === "klasemen")  loadKlasemen(); // ← tambah
 }
+
 
 function formatPic(rawName){
   if(!rawName||rawName==="-"||rawName==="")return"LSC";
@@ -706,6 +709,139 @@ function renderStandby(){
   html+=`<button class="standby-copy" onclick="copyStandbyText()">📋 Copy Teks Reminder</button></div>`;
   container.innerHTML=html;
 }
+
+// ── KLASEMEN ──────────────────────────────────
+async function loadKlasemen() {
+  const container = document.getElementById("schedule-list");
+  container.innerHTML = `<div style="text-align:center;padding:30px;color:#64748b">⏳ Memuat klasemen...</div>`;
+
+  try {
+    const res  = await fetch(API_URL + "?action=leaderboard&t=" + Date.now());
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error);
+    renderKlasemen(data);
+  } catch(err) {
+    container.innerHTML = `<div class="empty">❌ ${err.message}</div>`;
+  }
+}
+
+function renderKlasemen(data) {
+  const container = document.getElementById("schedule-list");
+  const totalLengkap = data.leaderboard.reduce((s,r) => s+r.lengkap, 0);
+  const totalBelum   = data.leaderboard.reduce((s,r) => s+r.belum,   0);
+  const totalH1      = data.hPlus1?.length  || 0;
+  const totalHH      = data.hariH?.length   || 0;
+
+  let html = `<div style="padding:8px 12px 24px">`;
+
+  // Header
+  html += `<div style="text-align:center;font-size:0.78rem;color:#64748b;margin-bottom:10px">
+    📊 Klasemen Pengisian Data — ${data.date}
+  </div>`;
+
+  // Summary cards
+  html += `<div style="display:flex;gap:6px;margin-bottom:12px">
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:1.1rem;font-weight:800;color:#34d399">${totalLengkap}</div>
+      <div style="font-size:0.58rem;color:#64748b">✅ Lengkap</div>
+    </div>
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:1.1rem;font-weight:800;color:#f87171">${totalBelum}</div>
+      <div style="font-size:0.58rem;color:#64748b">❌ Belum</div>
+    </div>
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:1.1rem;font-weight:800;color:#60a5fa">${totalHH}</div>
+      <div style="font-size:0.58rem;color:#64748b">📅 Hari H</div>
+    </div>
+    <div style="flex:1;background:#1e293b;border-radius:8px;padding:7px;text-align:center">
+      <div style="font-size:1.1rem;font-weight:800;color:#f59e0b">${totalH1}</div>
+      <div style="font-size:0.58rem;color:#64748b">📋 H+1</div>
+    </div>
+  </div>`;
+
+  // Leaderboard
+  html += `<div style="background:#1e293b;border-radius:10px;overflow:hidden;margin-bottom:12px">
+    <div style="padding:7px 10px;background:#0f172a;font-size:0.68rem;font-weight:700;color:#475569;display:flex;gap:6px">
+      <span style="width:26px">#</span>
+      <span style="flex:1">PIC</span>
+      <span style="width:52px;text-align:center">Lengkap</span>
+      <span style="width:40px;text-align:center">Total</span>
+      <span style="width:36px;text-align:center">H+1</span>
+    </div>`;
+
+  data.leaderboard.forEach((r, idx) => {
+    const pct    = r.total > 0 ? Math.round((r.lengkap/r.total)*100) : 0;
+    const medal  = idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
+    const color  = pct>=80?"#34d399":pct>=50?"#f59e0b":"#f87171";
+
+    html += `<div style="padding:7px 10px;border-top:1px solid #0f172a;display:flex;align-items:center;gap:6px">
+      <span style="width:26px;font-size:0.78rem">${medal}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.82rem;font-weight:600">${formatPic(r.pic)}</div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:3px">
+          <div style="flex:1;height:3px;background:#0f172a;border-radius:2px">
+            <div style="height:3px;background:${color};border-radius:2px;width:${pct}%"></div>
+          </div>
+          <span style="font-size:0.58rem;color:#475569">${pct}%</span>
+        </div>
+      </div>
+      <span style="width:52px;text-align:center;font-size:0.88rem;font-weight:800;color:${color}">${r.lengkap}</span>
+      <span style="width:40px;text-align:center;font-size:0.75rem;color:#64748b">${r.total}</span>
+      <span style="width:36px;text-align:center;font-size:0.75rem;color:#f59e0b">${r.h1||0}</span>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Data H+1
+  if (totalH1 > 0) {
+    html += `<div style="margin-bottom:10px">
+      <div style="font-size:0.72rem;font-weight:700;color:#f59e0b;margin-bottom:5px">
+        ⚠️ DATA H+1 (${totalH1}) — New Followers & Product Clicks kosong
+      </div>`;
+    data.hPlus1.forEach(r => {
+      const sc = r.isLengkap ? "#34d399" : "#f87171";
+      html += `<div style="background:#1a1200;border:1px solid #78350f;border-radius:7px;padding:6px 9px;margin-bottom:3px;display:flex;align-items:center;gap:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.78rem;font-weight:600">${r.brand}</div>
+          <div style="font-size:0.65rem;color:#64748b">${r.startTime} · ${r.studio}${r.host?" · "+r.host:""}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:0.7rem;font-weight:600;color:#a78bfa">${formatPic(r.pic)}</div>
+          <div style="font-size:0.58rem;color:${sc}">${r.kelengkapan||"Belum"}</div>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Data Hari H yang belum lengkap
+  const incomplete = (data.hariH||[]).filter(r => !r.isLengkap);
+  if (incomplete.length > 0) {
+    html += `<div>
+      <div style="font-size:0.72rem;font-weight:700;color:#f87171;margin-bottom:5px">
+        ❌ HARI H BELUM LENGKAP (${incomplete.length})
+      </div>`;
+    incomplete.forEach(r => {
+      html += `<div style="background:#1e293b;border-radius:7px;padding:6px 9px;margin-bottom:3px;display:flex;align-items:center;gap:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.78rem;font-weight:600">${r.brand}</div>
+          <div style="font-size:0.65rem;color:#64748b">${r.startTime} · ${r.studio}${r.host?" · "+r.host:""}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:0.7rem;font-weight:600;color:#a78bfa">${formatPic(r.pic)}</div>
+          <div style="font-size:0.58rem;color:#f87171">Belum Lengkap</div>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<button onclick="loadKlasemen()" style="width:100%;margin-top:10px;padding:8px;border:none;border-radius:8px;background:#1e3a5f;color:#93c5fd;font-size:0.78rem;cursor:pointer">🔄 Refresh Klasemen</button>`;
+  html += `</div>`;
+
+  container.innerHTML = html;
+}
+
 
 function copyStandbyText(){
   const dateStr=sessions[0]?.date||"";
