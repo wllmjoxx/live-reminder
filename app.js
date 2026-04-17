@@ -8,17 +8,52 @@ let onlineUsers      = {}; // email → lastSeen timestamp
 
 // ── GOOGLE SIGN IN ────────────────────────────
 function initGoogleSignIn() {
-  if (!window.google) return;
+  if (!window.google?.accounts?.id) {
+    // Library belum load, coba lagi 1 detik
+    setTimeout(initGoogleSignIn, 1000);
+    return;
+  }
+
   google.accounts.id.initialize({
     client_id : GOOGLE_CLIENT_ID,
     callback  : handleGoogleSignIn,
-    auto_select: true,
+    auto_select: false,
   });
-  // Kalau belum login, tampilkan prompt
+
   if (!currentUserEmail) {
-    google.accounts.id.prompt();
+    // Tampilkan wrapper + render button
+    document.getElementById("google-signin-wrapper").style.display = "block";
+    google.accounts.id.renderButton(
+      document.getElementById("google-signin-btn"),
+      {
+        theme: "filled_blue",
+        size : "large",
+        text : "signin_with",
+        width: "100%",
+      }
+    );
+  } else {
+    // Sudah login
+    startPresenceHeartbeat();
+    updateOnlineDisplay();
   }
 }
+
+function handleGoogleSignIn(response) {
+  const payload = JSON.parse(atob(response.credential.split(".")[1]));
+  currentUserEmail = payload.email;
+  localStorage.setItem("userEmail", currentUserEmail);
+
+  // Sembunyikan tombol login
+  const wrapper = document.getElementById("google-signin-wrapper");
+  if (wrapper) wrapper.style.display = "none";
+
+  broadcastPresence();
+  startPresenceHeartbeat();
+  updateOnlineDisplay();
+  showBanner(`✅ Login sebagai ${currentUserEmail}`, "success");
+}
+
 
 function handleGoogleSignIn(response) {
   // Decode JWT dari Google
