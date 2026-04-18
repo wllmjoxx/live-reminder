@@ -1173,12 +1173,37 @@ function renderHariH(data, formResponses = []){
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
-  // Helper: cari form responses yang cocok dengan session ini
-  function findFormMatches(p) {
-    return formResponses.filter(r =>
-      r.brand.toLowerCase().includes(p.brand.toLowerCase().substring(0,6)) ||
-      p.brand.toLowerCase().includes(r.brand.toLowerCase().substring(0,6))
-    );
+  // ── Match 1 form response ke 1 host dalam 1 sesi ──
+  function sessionMatch(formResp, p, hostName) {
+    // 1. Host (fuzzy nama depan)
+    const fHost = formResp.host.toLowerCase().trim();
+    const sHost = hostName.toLowerCase().trim();
+    const hostOk = fHost === sHost
+      || fHost.includes(sHost.split(" ")[0])
+      || sHost.includes(fHost.split(" ")[0]);
+    if (!hostOk) return false;
+
+    // 2. Brand (fuzzy)
+    const fBrand = formResp.brand.toLowerCase().trim();
+    const sBrand = p.brand.toLowerCase().trim();
+    const brandOk = fBrand.includes(sBrand.substring(0, 5))
+      || sBrand.includes(fBrand.substring(0, 5));
+    if (!brandOk) return false;
+
+    // 3. Marketplace (fuzzy)
+    if (formResp.marketplace && p.mp) {
+      const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0, 4))
+        || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0, 4));
+      if (!mpOk) return false;
+    }
+
+    // 4. Start time (toleransi ±60 menit)
+    if (formResp.startLive && p.startTime) {
+      const diff = Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime));
+      if (diff > 60) return false;
+    }
+
+    return true;
   }
 
   const summaryCard = (bg, border, numColor, num, label) =>
@@ -1244,13 +1269,14 @@ function renderHariH(data, formResponses = []){
                       border-radius:var(--bs-radius-lg);margin-bottom:8px;
                       overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
+            <!-- PIC header — default TUTUP -->
             <div onclick="togglePicDropdown('${safeKey}')"
               style="padding:8px 10px;background:var(--bs-light);
                      display:flex;align-items:center;justify-content:space-between;
                      cursor:pointer;user-select:none">
               <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark);
                           display:flex;align-items:center;gap:6px">
-                <span id="pic-icon-${safeKey}">▾</span>
+                <span id="pic-icon-${safeKey}">▸</span>
                 ${formatPic(picData.pic)}
                 <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger)">
                   ${rows.length} sesi
@@ -1264,54 +1290,78 @@ function renderHariH(data, formResponses = []){
               </button>
             </div>
 
+            <!-- Dropdown — default max-height:0 (tutup) -->
             <div id="pic-content-${safeKey}"
-              style="overflow:hidden;transition:max-height 0.25s ease;max-height:2000px">`;
+              style="overflow:hidden;transition:max-height 0.25s ease;max-height:0px">`;
 
         rows.forEach(p => {
           const timeRange = (p.endTime && p.endTime !== '-')
             ? `${p.startTime} → ${p.endTime}` : p.startTime;
 
-          // Cek form responses yang cocok
-          const matches = findFormMatches(p);
-          let formHtml  = '';
+          // Badge marathon / single
+          const typeBadge = p.isMarathon
+            ? `<span style="background:var(--bs-warning-subtle);color:#856404;
+                            border:1px solid #ffe69c;font-size:0.55rem;
+                            padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
+                 🏃 Marathon
+               </span>`
+            : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);
+                            border:1px solid #a3cfbb;font-size:0.55rem;
+                            padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
+                 ⚡ Single
+               </span>`;
 
-          if (matches.length > 0) {
-            // Ada yang submit
-            formHtml += `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">`;
-            matches.forEach((r, ri) => {
-              const links = r.screenshot.split(',').map(l => l.trim()).filter(Boolean);
-              formHtml += `
-                <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
-                            border-radius:var(--bs-radius);padding:3px 7px;
-                            font-size:0.6rem;color:var(--bs-success-text);font-weight:600;
-                            display:flex;align-items:center;gap:4px">
-                  ✅ ${r.host}`;
-              if (links.length > 0) {
+          // ── Status upload per host ──
+          const hosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
+          let formHtml = '';
+
+          if (hosts.length === 0) {
+            formHtml = `<div style="margin-top:4px;font-size:0.6rem;color:#adb5bd;font-style:italic">
+              ⚠️ Tidak ada data host
+            </div>`;
+          } else {
+            formHtml = `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">`;
+            hosts.forEach(hostName => {
+              const match = formResponses.find(r => sessionMatch(r, p, hostName));
+              if (match) {
+                // ✅ Sudah upload
+                const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+                formHtml += `
+                  <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
+                              border-radius:var(--bs-radius);padding:3px 8px;
+                              font-size:0.62rem;color:var(--bs-success-text);font-weight:600;
+                              display:flex;align-items:center;gap:5px">
+                    ✅ ${hostName}`;
                 links.forEach((lnk, li) => {
                   if (lnk) formHtml += `
                     <a href="${lnk}" target="_blank"
-                      style="margin-left:3px;color:var(--bs-primary);font-size:0.58rem;
+                      style="color:var(--bs-primary);font-size:0.6rem;
                              text-decoration:underline;font-weight:700">
-                      📎${li > 0 ? li+1 : ''}
+                      📎${links.length > 1 ? li+1 : ''}
                     </a>`;
                 });
+                formHtml += `</div>`;
+              } else {
+                // ⏳ Belum upload
+                formHtml += `
+                  <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
+                              border-radius:var(--bs-radius);padding:3px 8px;
+                              font-size:0.62rem;color:var(--bs-danger-text);font-weight:600">
+                    ⏳ ${hostName}
+                  </div>`;
               }
-              formHtml += `</div>`;
             });
             formHtml += `</div>`;
-          } else {
-            // Belum ada yang submit
-            formHtml = `
-              <div style="margin-top:4px;font-size:0.6rem;color:#adb5bd;font-style:italic">
-                ⏳ Belum ada host yang upload form
-              </div>`;
           }
 
           html += `
             <div style="padding:8px 10px;border-bottom:1px solid var(--bs-border-subtle)">
               <div style="display:flex;align-items:flex-start;gap:8px">
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+                  <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark);
+                              display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                    ${p.brand} ${typeBadge}
+                  </div>
                   <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">
                     🕐 ${timeRange}
                   </div>
@@ -1320,14 +1370,15 @@ function renderHariH(data, formResponses = []){
                   </div>
                   ${formHtml}
                 </div>
-                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;margin-top:2px">
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;
+                            flex-shrink:0;margin-top:2px">
                   ${p.idLine}
                 </div>
               </div>
             </div>`;
         });
 
-        html += `</div></div>`;
+        html += `</div></div>`; // end dropdown + card
       });
 
       html += `<div style="margin-bottom:12px"></div>`;
@@ -1343,6 +1394,7 @@ function renderHariH(data, formResponses = []){
   html += `</div>`;
   container.innerHTML = html;
 }
+
 
 
 // ── Toggle dropdown per PIC ──
