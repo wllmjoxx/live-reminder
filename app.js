@@ -1173,11 +1173,11 @@ function renderHariH(data, formResponses = []){
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
-  // ── Match 1 form response ke 1 host (cukup 1 kata cocok) ──
+  // ── Match form response ke host ──
   function sessionMatch(formResp, p, hostName) {
+    // Host: cukup 1 kata cocok (min 3 char)
     const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
     const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
-
     const anyWordMatch = wordsForm.some(wf => {
       if (wf.length < 3) return false;
       return wordsSched.some(ws => {
@@ -1188,40 +1188,40 @@ function renderHariH(data, formResponses = []){
     });
     if (!anyWordMatch) return false;
 
+    // Brand
     const fBrand = formResp.brand.toLowerCase().trim();
     const sBrand = p.brand.toLowerCase().trim();
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
 
+    // Marketplace
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
 
+    // Start time — toleransi ±180 menit (handle marathon multi-slot)
     if (formResp.startLive && p.startTime) {
-      if (Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime)) > 60) return false;
+      if (Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime)) > 180) return false;
     }
 
     return true;
   }
 
-  // ── Cari kandidat berdasarkan sesi (brand + mp + waktu), tanpa filter host ──
+  // ── Kandidat berdasarkan sesi (brand + mp + waktu), tanpa filter host ──
   function findSessionCandidates(p) {
     return formResponses.filter(r => {
       const fBrand = r.brand.toLowerCase().trim();
       const sBrand = p.brand.toLowerCase().trim();
       if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
-
       if (r.marketplace && p.mp) {
         const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
           || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
         if (!mpOk) return false;
       }
-
       if (r.startLive && p.startTime) {
-        if (Math.abs(toMinJS(r.startLive) - toMinJS(p.startTime)) > 60) return false;
+        if (Math.abs(toMinJS(r.startLive) - toMinJS(p.startTime)) > 180) return false;
       }
-
       return true;
     });
   }
@@ -1317,18 +1317,29 @@ function renderHariH(data, formResponses = []){
             ? `${p.startTime} → ${p.endTime}` : p.startTime;
 
           const typeBadge = p.isMarathon
-            ? `<span style="background:var(--bs-warning-subtle);color:#856404;
-                            border:1px solid #ffe69c;font-size:0.55rem;
-                            padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
-                 🏃 Marathon
-               </span>`
-            : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);
-                            border:1px solid #a3cfbb;font-size:0.55rem;
-                            padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
-                 ⚡ Single
-               </span>`;
+            ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;
+                            font-size:0.55rem;padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
+                 🏃 Marathon</span>`
+            : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;
+                            font-size:0.55rem;padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
+                 ⚡ Single</span>`;
 
           const hosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
+
+          // Pisahkan host: matched vs unmatched
+          const matchedHosts   = [];
+          const unmatchedHosts = [];
+
+          hosts.forEach((hostName, hIdx) => {
+            const match = formResponses.find(r => sessionMatch(r, p, hostName));
+            if (match) {
+              matchedHosts.push({ hostName, match });
+            } else {
+              unmatchedHosts.push({ hostName, hIdx });
+            }
+          });
+
+          // Bangun formHtml — row per unmatched host saja
           let formHtml = '';
 
           if (hosts.length === 0) {
@@ -1336,91 +1347,92 @@ function renderHariH(data, formResponses = []){
               ⚠️ Tidak ada data host
             </div>`;
           } else {
-            formHtml = `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">`;
+            // Summary host yang sudah upload
+            if (matchedHosts.length > 0) {
+              const matchedNames = matchedHosts.map(m => {
+                const links = m.match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+                const linkHtml = links.map((lnk, li) => lnk
+                  ? `<a href="${lnk}" target="_blank"
+                       style="color:var(--bs-primary);font-size:0.58rem;text-decoration:underline;font-weight:700">
+                       📎${links.length > 1 ? li+1 : ''}
+                     </a>` : '').join('');
+                return `<span style="display:inline-flex;align-items:center;gap:3px">
+                  ✅ ${m.hostName} ${linkHtml}
+                </span>`;
+              }).join(' · ');
+              formHtml += `
+                <div style="margin-top:4px;font-size:0.6rem;color:var(--bs-success-text);
+                            font-weight:600;display:flex;flex-wrap:wrap;gap:4px">
+                  ${matchedNames}
+                </div>`;
+            }
 
-            hosts.forEach((hostName, hIdx) => {
-              const match   = formResponses.find(r => sessionMatch(r, p, hostName));
-              const candId  = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g, '_');
+            // Row per unmatched host
+            if (unmatchedHosts.length > 0) {
+              formHtml += `<div style="margin-top:5px;display:flex;flex-direction:column;gap:4px">`;
 
-              if (match) {
-                // ✅ Match langsung
-                const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
-                formHtml += `
-                  <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
-                              border-radius:var(--bs-radius);padding:3px 8px;
-                              font-size:0.62rem;color:var(--bs-success-text);font-weight:600;
-                              display:flex;align-items:center;gap:5px">
-                    ✅ ${hostName}`;
-                links.forEach((lnk, li) => {
-                  if (lnk) formHtml += `
-                    <a href="${lnk}" target="_blank"
-                      style="color:var(--bs-primary);font-size:0.6rem;
-                             text-decoration:underline;font-weight:700">
-                      📎${links.length > 1 ? li+1 : ''}
-                    </a>`;
-                });
-                formHtml += `</div>`;
-
-              } else {
-                // Tidak match — cari kandidat dari form
+              unmatchedHosts.forEach(({ hostName, hIdx }) => {
+                const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
                 const candidates = findSessionCandidates(p);
 
                 if (candidates.length > 0) {
-                  // ❓ Ada kandidat — tampilkan opsi
+                  // ❓ Ada kandidat
                   formHtml += `
                     <div style="background:#fff8e1;border:1px solid #ffe69c;
-                                border-radius:var(--bs-radius);padding:3px 8px;
-                                font-size:0.62rem;color:#856404;font-weight:600">
-                      <div style="display:flex;align-items:center;gap:5px;cursor:pointer"
+                                border-radius:var(--bs-radius);padding:5px 8px;font-size:0.62rem;color:#856404">
+                      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer"
                         onclick="toggleCandidates('${candId}')">
-                        ❓ ${hostName}
-                        <span style="background:#856404;color:white;font-size:0.55rem;
-                                     padding:1px 5px;border-radius:var(--bs-radius-pill)">
-                          ${candidates.length} kandidat
+                        <span style="font-weight:600">❓ ${hostName}</span>
+                        <span style="display:flex;align-items:center;gap:4px">
+                          <span style="background:#856404;color:white;font-size:0.55rem;
+                                       padding:1px 6px;border-radius:var(--bs-radius-pill)">
+                            ${candidates.length} kandidat
+                          </span>
+                          <span id="cand-icon-${candId}">▸</span>
                         </span>
-                        <span id="cand-icon-${candId}">▸</span>
                       </div>
-
                       <div id="cand-${candId}"
-                        style="display:none;margin-top:5px;border-top:1px solid #ffe69c;padding-top:5px">`;
+                        style="display:none;margin-top:6px;border-top:1px solid #ffe69c;padding-top:5px;
+                               display:none;flex-direction:column;gap:4px">`;
 
                   candidates.forEach(c => {
                     const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
                     formHtml += `
-                        <div style="display:flex;align-items:center;gap:6px;
-                                    padding:3px 0;border-bottom:1px solid #fff3cd">
+                        <div style="display:flex;align-items:center;gap:6px;padding:3px 0;
+                                    border-bottom:1px solid #fff3cd">
                           <div style="flex:1;min-width:0">
                             <div style="font-weight:700">${c.host}</div>
-                            <div style="font-size:0.58rem;font-weight:400;color:#a0832a">
-                              ${c.startLive}${c.endLive ? ' → '+c.endLive : ''} · ${c.typeLive || '-'}
+                            <div style="font-size:0.58rem;color:#a0832a;font-weight:400">
+                              ${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}
                             </div>
-                          </div>`;
+                          </div>
+                          <div style="display:flex;gap:4px;flex-shrink:0">`;
                     links.forEach((lnk, li) => {
                       if (lnk) formHtml += `
-                          <a href="${lnk}" target="_blank"
-                            style="color:var(--bs-primary);font-size:0.62rem;
-                                   text-decoration:underline;font-weight:700;flex-shrink:0">
-                            📎${links.length > 1 ? li+1 : ''}
-                          </a>`;
+                            <a href="${lnk}" target="_blank"
+                              style="color:var(--bs-primary);font-size:0.65rem;
+                                     text-decoration:underline;font-weight:700">
+                              📎${links.length > 1 ? li+1 : ''}
+                            </a>`;
                     });
-                    formHtml += `</div>`;
+                    formHtml += `</div></div>`;
                   });
 
                   formHtml += `</div></div>`;
 
                 } else {
-                  // ⏳ Tidak ada kandidat sama sekali
+                  // ⏳ Tidak ada kandidat
                   formHtml += `
                     <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
-                                border-radius:var(--bs-radius);padding:3px 8px;
+                                border-radius:var(--bs-radius);padding:5px 8px;
                                 font-size:0.62rem;color:var(--bs-danger-text);font-weight:600">
                       ⏳ ${hostName}
                     </div>`;
                 }
-              }
-            });
+              });
 
-            formHtml += `</div>`;
+              formHtml += `</div>`;
+            }
           }
 
           html += `
@@ -1431,16 +1443,11 @@ function renderHariH(data, formResponses = []){
                               display:flex;align-items:center;gap:5px;flex-wrap:wrap">
                     ${p.brand} ${typeBadge}
                   </div>
-                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">
-                    🕐 ${timeRange}
-                  </div>
-                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">
-                    📍 ${p.studio} · ${p.mp}
-                  </div>
+                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">🕐 ${timeRange}</div>
+                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">📍 ${p.studio} · ${p.mp}</div>
                   ${formHtml}
                 </div>
-                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;
-                            flex-shrink:0;margin-top:2px">
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;margin-top:2px">
                   ${p.idLine}
                 </div>
               </div>
@@ -1463,6 +1470,18 @@ function renderHariH(data, formResponses = []){
   html += `</div>`;
   container.innerHTML = html;
 }
+
+// ── Toggle kandidat ──
+function toggleCandidates(id) {
+  const el   = document.getElementById("cand-" + id);
+  const icon = document.getElementById("cand-icon-" + id);
+  if (!el) return;
+  const isOpen = el.style.display === "flex" || el.style.display === "block";
+  el.style.display = isOpen ? "none" : "flex";
+  el.style.flexDirection = "column";
+  if (icon) icon.textContent = isOpen ? "▸" : "▾";
+}
+
 
 // ── Toggle kandidat form responses ──
 function toggleCandidates(id) {
