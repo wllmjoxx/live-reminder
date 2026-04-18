@@ -84,13 +84,13 @@ function startPresenceHeartbeat() {
 
 
 const PIC_MENTIONS = {
-  "jonathan":"@jonathan","tyo":"@Tyo","hamzah":"@Hamzah","hanif":"@Hanif",
-  "riva":"@Riva","ferry":"@Ferry","bernhard":"@Bernhard","leleng":"@Leleng",
-  "nadiem":"@Nadiem","fadhil":"@Fadhil","imam":"@Imam","eric":"@Eric",
-  "rizky":"@Rizky","yohan":"@Yohan","septian":"@Septian","agung":"@Agung",
-  "apri":"@Apri","maulidan":"@Maul","arbi":"@Arbi","afdal":"@Afdal",
-  "roiisul":"@Roiisul","rakha":"@Rakha","isaac":"@Isaac","raffyco":"@Raffyco",
-  "luthfi rizal":"@Luthfi Rizal",
+  "jonathan":"Jonathan","tyo":"Tyo","hamzah":"Hamzah","hanif":"Hanif",
+  "riva":"Riva","ferry":"Ferry","bernhard":"Bernhard","leleng":"Leleng",
+  "nadiem":"Nadiem","fadhil":"Fadhil","imam":"Imam","eric":"Eric",
+  "rizky":"Rizky","yohan":"Yohan","septian":"Septian","agung":"Agung",
+  "apri":"Apri","maulidan":"Maul","arbi":"Arbi","afdal":"Afdal",
+  "roiisul":"Roiisul","rakha":"Rakha","isaac":"Isaac","raffyco":"Raffyco",
+  "luthfi rizal":"Luthfi Rizal",
 };
 
 const MAX_STUDIO_PER_PIC = 2;
