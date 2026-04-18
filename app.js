@@ -983,7 +983,7 @@ function renderKlasemen(data){
     const pts  =r.pendingPoints;
     const medal=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
     const sColor=pts===0?"var(--bs-success)":pts<=5?"var(--bs-primary)":pts<=15?"#856404":"var(--bs-danger)";
-    const sTxt  =pts>0?`${pts} pts pending`:"✅ Bersih";
+    const sTxt  =pts>0?`${pts} data pending`:"✅ Data Lengkap";
     const rowBg =idx%2===1?"var(--bs-light)":"var(--bs-white)";
 
     html+=`
