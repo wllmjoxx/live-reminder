@@ -1120,12 +1120,12 @@ async function loadHariH(){
 // ─────────────────────────────────────────────
 // HARI H HELPERS
 // ─────────────────────────────────────────────
-function getHariHShift(timeStr) {
-  if (!timeStr || timeStr === "-") return "siang";
-  const [h] = timeStr.split(":").map(Number);
+function getHariHShift(endTime) {
+  if (!endTime || endTime === "-") return "siang";
+  const [h] = endTime.split(":").map(Number);
   if (h >= 8  && h < 16) return "pagi";
   if (h >= 16)           return "siang";
-  return "malam";
+  return "malam"; // 00:01 - 07:59
 }
 
 const SHIFT_ORDER = { pagi: 0, siang: 1, malam: 2 };
@@ -1148,18 +1148,19 @@ function renderHariH(data){
   const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
   const totalAll     = data.leaderboard.reduce((s,r) => s + r.total, 0);
 
-  // Susun ulang: shift → pic → rows
-  const shiftGroups = { pagi: {}, siang: {}, malam: {} };
-  data.leaderboard.forEach(r => {
-    if (!r.rows || !r.rows.length) return;
-    r.rows.forEach(row => {
-      const shift = getHariHShift(row.startTime);
-      if (!shiftGroups[shift][r.pic]) {
-        shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
-      }
-      shiftGroups[shift][r.pic].rows.push(row);
-    });
+// Susun ulang: shift → pic → rows
+const shiftGroups = { pagi: {}, siang: {}, malam: {} };
+data.leaderboard.forEach(r => {
+  if (!r.rows || !r.rows.length) return;
+  r.rows.forEach(row => {
+    const shift = getHariHShift(row.endTime); // ← ganti startTime → endTime
+    if (!shiftGroups[shift][r.pic]) {
+      shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
+    }
+    shiftGroups[shift][r.pic].rows.push(row);
   });
+});
+
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);

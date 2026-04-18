@@ -439,6 +439,32 @@
       color: #adb5bd; font-size: 0.88rem;
     }
     .empty .empty-icon { font-size: 2.5rem; display: block; margin-bottom: 8px; opacity: 0.5; }
+
+    .nav-pills-wrap {
+  overflow: hidden; /* jangan hidden, ganti ke: */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-pills {
+    display: flex;
+    flex-wrap: nowrap;        /* ← jangan wrap */
+    gap: 6px;
+    padding: 6px 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex-shrink: 0;           /* ← tombol tidak menyusut */
+    white-space: nowrap;
+  }
+
   </style>
 </head>
 <body>
@@ -498,18 +524,17 @@
     </div>
   </div>
 
-  <!-- NAV PILLS -->
-  <div class="nav-pills-wrap">
-    <div class="nav-pills">
-      <button id="tab-marathon" class="nav-link t-marathon active" onclick="switchTab('marathon')">🏃 Marathon</button>
-      <button id="tab-timeline" class="nav-link t-timeline"        onclick="switchTab('timeline')">⏱ Timeline</button>
-      <button id="tab-single"   class="nav-link t-single"          onclick="switchTab('single')">⚡ Single</button>
-      <button id="tab-standby"  class="nav-link t-standby"         onclick="switchTab('standby')">📌 Standby</button>
-      <button id="tab-klasemen" class="nav-link t-klasemen" onclick="switchTab('klasemen')">Data</button>
-      <button id="tab-hariH"   class="nav-link"             onclick="switchTab('hariH')">Data</button>
-
-    </div>
+<!-- NAV PILLS -->
+<div class="nav-pills-wrap">
+  <div class="nav-pills">
+    <button id="tab-marathon" class="nav-link active" onclick="switchTab('marathon')">🏃 Marathon</button>
+    <button id="tab-timeline" class="nav-link" onclick="switchTab('timeline')">🕐 Timeline</button>
+    <button id="tab-single"   class="nav-link" onclick="switchTab('single')">⚡ Single</button>
+    <button id="tab-standby"  class="nav-link" onclick="switchTab('standby')">📌 Standby</button>
+    <button id="tab-klasemen" class="nav-link t-klasemen" onclick="switchTab('klasemen')">Data</button>
+    <button id="tab-hariH"    class="nav-link" onclick="switchTab('hariH')">Data</button>
   </div>
+</div>
 
   <!-- ACTION BAR -->
   <div class="action-bar">
