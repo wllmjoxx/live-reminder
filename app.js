@@ -1148,19 +1148,21 @@ function renderHariH(data){
   const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
   const totalAll     = data.leaderboard.reduce((s,r) => s + r.total, 0);
 
-// Susun ulang: shift → pic → rows
-const shiftGroups = { pagi: {}, siang: {}, malam: {} };
-data.leaderboard.forEach(r => {
-  if (!r.rows || !r.rows.length) return;
-  r.rows.forEach(row => {
-    const shift = getHariHShift(row.endTime); // ← ganti startTime → endTime
-    if (!shiftGroups[shift][r.pic]) {
-      shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
-    }
-    shiftGroups[shift][r.pic].rows.push(row);
+  const shiftGroups = { pagi: {}, siang: {}, malam: {} };
+  data.leaderboard.forEach(r => {
+    if (!r.rows || !r.rows.length) return;
+    r.rows.forEach(row => {
+      const shift = getHariHShift(row.endTime);
+      if (!shiftGroups[shift][r.pic]) {
+        shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
+      }
+      shiftGroups[shift][r.pic].rows.push(row);
+    });
   });
-});
 
+  // Simpan untuk copy function
+  window._hariHShiftGroups = shiftGroups;
+  window._hariHDate = data.date;
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
@@ -1172,14 +1174,12 @@ data.leaderboard.forEach(r => {
 
   let html = `<div style="padding:8px 10px 24px">`;
 
-  // Header
   html += `
     <div style="text-align:center;margin-bottom:12px">
       <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Pantau Data Hari H</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
     </div>`;
 
-  // Summary
   html += `<div style="display:flex;gap:7px;margin-bottom:16px">
     ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPending,"⏳ Belum Diisi")}
     ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll - totalPending,"✅ Sudah Diisi")}
@@ -1192,8 +1192,6 @@ data.leaderboard.forEach(r => {
         ✅ Semua data hari ini sudah diisi!
       </div>`;
   } else {
-
-    // Render per shift section
     ["pagi","siang","malam"].forEach(shift => {
       const picMap     = shiftGroups[shift];
       const pics       = Object.values(picMap);
@@ -1202,73 +1200,89 @@ data.leaderboard.forEach(r => {
       const c          = SHIFT_COLOR[shift];
       const totalShift = pics.reduce((s, p) => s + p.rows.length, 0);
 
-      // Section header
+      // Section header + tombol copy shift
       html += `
         <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
                     padding:8px 12px;margin-bottom:8px;
                     display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:0.78rem;font-weight:700;color:${c.text}">${SHIFT_LABEL[shift]}</div>
-          <div style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">
-            ${totalShift} sesi belum
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">
+              ${totalShift} sesi belum
+            </span>
+            <button onclick="copyShiftPending('${shift}')"
+              style="padding:3px 9px;border:1px solid ${c.border};border-radius:var(--bs-radius-pill);
+                     background:white;color:${c.text};font-size:0.62rem;font-weight:700;cursor:pointer">
+              📋 Copy
+            </button>
           </div>
         </div>`;
 
-      // PIC cards dalam shift
-      pics
-        .sort((a, b) => b.rows.length - a.rows.length)
-        .forEach(picData => {
-          const rows = [...picData.rows].sort((a, b) => a.startTime.localeCompare(b.startTime));
-          const ids  = rows.map(p => p.idLine).filter(Boolean);
+      // PIC cards — dropdown
+      pics.sort((a, b) => b.rows.length - a.rows.length).forEach(picData => {
+        const rows    = [...picData.rows].sort((a, b) => a.startTime.localeCompare(b.startTime));
+        const ids     = rows.map(p => p.idLine).filter(Boolean);
+        const safeKey = (picData.pic + "_" + shift).replace(/[^a-zA-Z0-9]/g, '_');
 
-          html += `
-            <div style="background:var(--bs-white);border:1px solid var(--bs-border);
-                        border-radius:var(--bs-radius-lg);margin-bottom:8px;
-                        overflow:hidden;box-shadow:var(--bs-shadow-sm)">
+        html += `
+          <div style="background:var(--bs-white);border:1px solid var(--bs-border);
+                      border-radius:var(--bs-radius-lg);margin-bottom:8px;
+                      overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
-              <!-- PIC header -->
-              <div style="padding:7px 10px;background:var(--bs-light);
-                          border-bottom:1px solid var(--bs-border);
-                          display:flex;align-items:center;justify-content:space-between">
-                <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark)">
-                  ${formatPic(picData.pic)}
-                  <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger);margin-left:4px">
-                    ${rows.length} sesi
-                  </span>
-                </div>
-                <button onclick="copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
-                  style="padding:3px 10px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
-                         background:var(--bs-primary-subtle);color:var(--bs-primary-text);
-                         font-size:0.65rem;font-weight:600;cursor:pointer">
-                  📋 Copy ID
-                </button>
+            <!-- PIC header — klik untuk buka/tutup -->
+            <div onclick="togglePicDropdown('${safeKey}')"
+              style="padding:8px 10px;background:var(--bs-light);
+                     display:flex;align-items:center;justify-content:space-between;
+                     cursor:pointer;user-select:none">
+              <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark);
+                          display:flex;align-items:center;gap:6px">
+                <span id="pic-icon-${safeKey}" style="font-size:0.75rem">▾</span>
+                ${formatPic(picData.pic)}
+                <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger)">
+                  ${rows.length} sesi
+                </span>
               </div>
+              <button onclick="event.stopPropagation();copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
+                style="padding:3px 9px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
+                       background:var(--bs-primary-subtle);color:var(--bs-primary-text);
+                       font-size:0.62rem;font-weight:600;cursor:pointer">
+                📋 ID
+              </button>
+            </div>
 
-              <!-- Session rows -->`;
+            <!-- Dropdown content -->
+            <div id="pic-content-${safeKey}"
+              style="overflow:hidden;transition:max-height 0.25s ease;max-height:1000px">`;
 
-          rows.forEach(p => {
-            html += `
-              <div style="padding:6px 10px;border-bottom:1px solid var(--bs-border-subtle);
-                          display:flex;align-items:center;gap:8px">
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
-                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">
-                    ${p.startTime} · ${p.studio} · ${p.mp}
-                  </div>
+        rows.forEach(p => {
+          const timeRange = (p.endTime && p.endTime !== '-')
+            ? `${p.startTime} → ${p.endTime}`
+            : p.startTime;
+          html += `
+            <div style="padding:8px 10px;border-bottom:1px solid var(--bs-border-subtle);
+                        display:flex;align-items:center;gap:8px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+                <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">
+                  🕐 ${timeRange}
                 </div>
-                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">
-                  ${p.idLine}
+                <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">
+                  📍 ${p.studio} · ${p.mp}
                 </div>
-              </div>`;
-          });
-
-          html += `</div>`; // end PIC card
+              </div>
+              <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">
+                ${p.idLine}
+              </div>
+            </div>`;
         });
 
-      html += `<div style="margin-bottom:12px"></div>`; // spacer antar shift
+        html += `</div></div>`; // end dropdown + card
+      });
+
+      html += `<div style="margin-bottom:12px"></div>`;
     });
   }
 
-  // Refresh button
   html += `
     <button onclick="loadHariH()" class="btn btn-outline-primary btn-block"
       style="margin-top:4px;padding:10px">
@@ -1278,6 +1292,46 @@ data.leaderboard.forEach(r => {
   html += `</div>`;
   container.innerHTML = html;
 }
+
+// ── Toggle dropdown per PIC ──
+function togglePicDropdown(safeKey) {
+  const content = document.getElementById(`pic-content-${safeKey}`);
+  const icon    = document.getElementById(`pic-icon-${safeKey}`);
+  if (!content) return;
+  const isOpen = content.style.maxHeight !== '0px';
+  content.style.maxHeight = isOpen ? '0px' : '1000px';
+  if (icon) icon.textContent = isOpen ? '▸' : '▾';
+}
+
+// ── Copy pending per shift ──
+function copyShiftPending(shift) {
+  const shiftGroups = window._hariHShiftGroups;
+  const date        = window._hariHDate || '';
+  if (!shiftGroups) return;
+
+  const picMap = shiftGroups[shift];
+  const pics   = Object.values(picMap);
+  if (!pics.length) { showBanner('Tidak ada pending di shift ini', 'warning'); return; }
+
+  const label = { pagi:'PAGI', siang:'SIANG', malam:'MALAM' };
+  let text = `📋 PENDING SHIFT ${label[shift]} — ${date}\n\n`;
+
+  pics.sort((a,b) => b.rows.length - a.rows.length).forEach(picData => {
+    const rows = [...picData.rows].sort((a,b) => a.startTime.localeCompare(b.startTime));
+    text += `${formatPic(picData.pic)} (${rows.length} sesi)\n`;
+    rows.forEach(p => {
+      const timeRange = (p.endTime && p.endTime !== '-')
+        ? `${p.startTime}→${p.endTime}` : p.startTime;
+      text += `• ${p.brand} | ${p.studio} | ${p.mp} | ${timeRange} | ID: ${p.idLine}\n`;
+    });
+    text += '\n';
+  });
+
+  navigator.clipboard.writeText(text.trim())
+    .then(() => showBanner(`✅ Data pending shift ${label[shift]} di-copy!`, 'success'))
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
+
 
 
 function copyIdLines(picName,idLines){
