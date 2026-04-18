@@ -1173,7 +1173,12 @@ function renderHariH(data, formResponses = []){
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
-  function sessionMatch(formResp, p, hostName) {
+  // ── Match form response ke host — pakai slot waktu spesifik host ──
+  function sessionMatch(formResp, p, hostObj) {
+    const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
+    const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
+
+    // 1. Host name — cukup 1 kata cocok, min 3 char
     const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
     const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
     const anyWordMatch = wordsForm.some(wf => {
@@ -1185,33 +1190,49 @@ function renderHariH(data, formResponses = []){
       });
     });
     if (!anyWordMatch) return false;
+
+    // 2. Brand (fuzzy)
     const fBrand = formResp.brand.toLowerCase().trim();
     const sBrand = p.brand.toLowerCase().trim();
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+
+    // 3. Marketplace (fuzzy)
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
-    if (formResp.startLive && p.startTime) {
-      if (Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime)) > 180) return false;
+
+    // 4. Time — pakai h.start (slot spesifik host), bukan p.startTime (session keseluruhan)
+    //    Toleransi ±90 menit (lebih ketat)
+    if (formResp.startLive && hostStart) {
+      const diff = Math.abs(toMinJS(formResp.startLive) - toMinJS(hostStart));
+      if (diff > 90) return false;
     }
+
     return true;
   }
 
-  function findSessionCandidates(p) {
+  // ── Kandidat berdasarkan sesi — pakai slot waktu host juga ──
+  function findSessionCandidates(p, hostObj) {
+    const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
+
     return formResponses.filter(r => {
       const fBrand = r.brand.toLowerCase().trim();
       const sBrand = p.brand.toLowerCase().trim();
       if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+
       if (r.marketplace && p.mp) {
         const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
           || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
         if (!mpOk) return false;
       }
-      if (r.startLive && p.startTime) {
-        if (Math.abs(toMinJS(r.startLive) - toMinJS(p.startTime)) > 180) return false;
+
+      // Pakai hostStart, bukan p.startTime
+      if (r.startLive && hostStart) {
+        if (Math.abs(toMinJS(r.startLive) - toMinJS(hostStart)) > 90) return false;
       }
+
       return true;
     });
   }
@@ -1278,7 +1299,6 @@ function renderHariH(data, formResponses = []){
                       border-radius:var(--bs-radius-lg);margin-bottom:10px;
                       overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
-            <!-- PIC header -->
             <div onclick="togglePicDropdown('${safeKey}')"
               style="padding:9px 12px;background:var(--bs-light);
                      display:flex;align-items:center;justify-content:space-between;
@@ -1302,7 +1322,6 @@ function renderHariH(data, formResponses = []){
               </button>
             </div>
 
-            <!-- Dropdown content -->
             <div id="pic-content-${safeKey}"
               style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px">`;
 
@@ -1318,28 +1337,22 @@ function renderHariH(data, formResponses = []){
                             font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">
                  ⚡ Single</span>`;
 
-          // hosts bisa array of string (lama) atau array of object {name,start,end} (baru)
           const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
           const hosts    = rawHosts.map(h => typeof h === 'string'
-            ? { name: h, start: null, end: null }
-            : h);
+            ? { name: h, start: null, end: null } : h);
 
-          // Pisah matched vs unmatched
+          // ← FIXED: pass full host object ke sessionMatch
           const matchedList   = [];
           const unmatchedList = [];
           hosts.forEach((h, hIdx) => {
-            const match = formResponses.find(r => sessionMatch(r, p, h.name));
+            const match = formResponses.find(r => sessionMatch(r, p, h));
             if (match) matchedList.push({ h, match });
             else       unmatchedList.push({ h, hIdx });
           });
 
-          // ── Session card ──
           html += `
             <div style="padding:12px 14px;border-bottom:1px solid var(--bs-border-subtle)">
-
-              <!-- Session info -->
-              <div style="display:flex;align-items:flex-start;justify-content:space-between;
-                          margin-bottom:10px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
                 <div>
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
                     <span style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${p.brand}</span>
@@ -1350,13 +1363,11 @@ function renderHariH(data, formResponses = []){
                     <span>📍 ${p.studio} · ${p.mp}</span>
                   </div>
                 </div>
-                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;
-                            flex-shrink:0;padding-top:2px">
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;padding-top:2px">
                   ${p.idLine}
                 </div>
               </div>
 
-              <!-- Host rows -->
               <div style="display:flex;flex-direction:column;gap:6px">`;
 
           if (hosts.length === 0) {
@@ -1366,7 +1377,7 @@ function renderHariH(data, formResponses = []){
                 </div>`;
           } else {
 
-            // ✅ Matched hosts
+            // ✅ Matched
             matchedList.forEach(({ h, match }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
@@ -1379,9 +1390,7 @@ function renderHariH(data, formResponses = []){
                             border-radius:var(--bs-radius);padding:7px 10px;
                             display:flex;align-items:center;justify-content:space-between;gap:8px">
                   <div>
-                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">
-                      ✅ ${h.name}
-                    </div>
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">✅ ${h.name}</div>
                     <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
                   </div>
                   <div style="display:flex;gap:5px;flex-shrink:0">
@@ -1396,26 +1405,21 @@ function renderHariH(data, formResponses = []){
                 </div>`;
             });
 
-            // ❓ / ⏳ Unmatched hosts
+            // ❓ / ⏳ Unmatched — pass hostObj ke findSessionCandidates
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
-              const candidates = findSessionCandidates(p);
-              const slotTime   = h.start
-                ? `${h.start}${h.end?' → '+h.end:''}`
-                : null;
+              const candidates = findSessionCandidates(p, h); // ← FIXED: pass h
+              const slotTime   = h.start ? `${h.start}${h.end?' → '+h.end:''}` : null;
 
               if (candidates.length > 0) {
                 html += `
                   <div style="background:#fffbeb;border:1px solid #ffe69c;
                               border-radius:var(--bs-radius);overflow:hidden">
-                    <!-- Host row -->
                     <div onclick="toggleCandidates('${candId}')"
                       style="padding:7px 10px;display:flex;align-items:center;
                              justify-content:space-between;cursor:pointer;gap:8px">
                       <div>
-                        <div style="font-size:0.72rem;font-weight:700;color:#92400e">
-                          ❓ ${h.name}
-                        </div>
+                        <div style="font-size:0.72rem;font-weight:700;color:#92400e">❓ ${h.name}</div>
                         ${slotTime
                           ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>`
                           : ''}
@@ -1428,11 +1432,10 @@ function renderHariH(data, formResponses = []){
                         <span id="cand-icon-${candId}" style="font-size:0.72rem;color:#92400e">▸</span>
                       </div>
                     </div>
-                    <!-- Kandidat list -->
                     <div id="cand-${candId}"
                       style="display:none;border-top:1px solid #ffe69c;
                              background:#fffdf0;padding:6px 10px;
-                             display:none;flex-direction:column;gap:5px">
+                             flex-direction:column;gap:5px">
                       ${candidates.map(c => {
                         const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
                         return `
@@ -1458,14 +1461,11 @@ function renderHariH(data, formResponses = []){
                       }).join('')}
                     </div>
                   </div>`;
-
               } else {
                 html += `
                   <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
                               border-radius:var(--bs-radius);padding:7px 10px">
-                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-danger-text)">
-                      ⏳ ${h.name}
-                    </div>
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-danger-text)">⏳ ${h.name}</div>
                     ${slotTime
                       ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">
                            ${slotTime}
@@ -1476,10 +1476,10 @@ function renderHariH(data, formResponses = []){
             });
           }
 
-          html += `</div></div>`; // end host rows + session card
+          html += `</div></div>`;
         });
 
-        html += `</div></div>`; // end dropdown + PIC card
+        html += `</div></div>`;
       });
 
       html += `<div style="margin-bottom:14px"></div>`;
@@ -1495,6 +1495,7 @@ function renderHariH(data, formResponses = []){
   html += `</div>`;
   container.innerHTML = html;
 }
+
 
 function toggleCandidates(id) {
   const el   = document.getElementById("cand-" + id);
