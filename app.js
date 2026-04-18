@@ -1236,7 +1236,7 @@ function renderHariH(data){
                      cursor:pointer;user-select:none">
               <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark);
                           display:flex;align-items:center;gap:6px">
-                <span id="pic-icon-${safeKey}" style="font-size:0.75rem">▾</span>
+                <span id="pic-icon-${safeKey}">▸</span>
                 ${formatPic(picData.pic)}
                 <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger)">
                   ${rows.length} sesi
@@ -1252,7 +1252,7 @@ function renderHariH(data){
 
             <!-- Dropdown content -->
             <div id="pic-content-${safeKey}"
-              style="overflow:hidden;transition:max-height 0.25s ease;max-height:1000px">`;
+              style="overflow:hidden;transition:max-height 0.25s ease;max-height:0px">`;
 
         rows.forEach(p => {
           const timeRange = (p.endTime && p.endTime !== '-')
