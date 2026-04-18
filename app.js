@@ -1174,37 +1174,44 @@ function renderHariH(data, formResponses = []){
   window._hariHDate        = data.date;
 
   // ── Match 1 form response ke 1 host dalam 1 sesi ──
-  function sessionMatch(formResp, p, hostName) {
-    // 1. Host (fuzzy nama depan)
-    const fHost = formResp.host.toLowerCase().trim();
-    const sHost = hostName.toLowerCase().trim();
-    const hostOk = fHost === sHost
-      || fHost.includes(sHost.split(" ")[0])
-      || sHost.includes(fHost.split(" ")[0]);
-    if (!hostOk) return false;
+ function sessionMatch(formResp, p, hostName) {
+  // 1. Host — word similarity (cocokkan per kata, min 4 char prefix)
+  const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
+  const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
+  let wordMatches  = 0;
+  wordsForm.forEach(wf => {
+    if (wordsSched.some(ws =>
+      ws.substring(0,4) === wf.substring(0,4) ||
+      ws.includes(wf.substring(0,4)) ||
+      wf.includes(ws.substring(0,4))
+    )) wordMatches++;
+  });
+  const hostSim = wordMatches / Math.max(wordsForm.length, wordsSched.length);
+  if (hostSim < 0.5) return false; // minimal 50% kata cocok
 
-    // 2. Brand (fuzzy)
-    const fBrand = formResp.brand.toLowerCase().trim();
-    const sBrand = p.brand.toLowerCase().trim();
-    const brandOk = fBrand.includes(sBrand.substring(0, 5))
-      || sBrand.includes(fBrand.substring(0, 5));
-    if (!brandOk) return false;
+  // 2. Brand (fuzzy)
+  const fBrand = formResp.brand.toLowerCase().trim();
+  const sBrand = p.brand.toLowerCase().trim();
+  const brandOk = fBrand.includes(sBrand.substring(0, 5))
+    || sBrand.includes(fBrand.substring(0, 5));
+  if (!brandOk) return false;
 
-    // 3. Marketplace (fuzzy)
-    if (formResp.marketplace && p.mp) {
-      const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0, 4))
-        || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0, 4));
-      if (!mpOk) return false;
-    }
-
-    // 4. Start time (toleransi ±60 menit)
-    if (formResp.startLive && p.startTime) {
-      const diff = Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime));
-      if (diff > 60) return false;
-    }
-
-    return true;
+  // 3. Marketplace (fuzzy)
+  if (formResp.marketplace && p.mp) {
+    const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0, 4))
+      || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0, 4));
+    if (!mpOk) return false;
   }
+
+  // 4. Start time (toleransi ±60 menit)
+  if (formResp.startLive && p.startTime) {
+    const diff = Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime));
+    if (diff > 60) return false;
+  }
+
+  return true;
+}
+
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
