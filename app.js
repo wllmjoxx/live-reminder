@@ -1105,17 +1105,27 @@ async function loadHariH(){
   try{
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),20000);
-    const res=await fetch(API_URL+"?action=today&t="+Date.now(),{signal:controller.signal});
+
+    // Fetch paralel: today data + form responses
+    const [todayRes, formRes] = await Promise.all([
+      fetch(API_URL+"?action=today&t="+Date.now(),    {signal:controller.signal}),
+      fetch(API_URL+"?action=formcheck&t="+Date.now(),{signal:controller.signal}),
+    ]);
     clearTimeout(timeout);
-    const data=JSON.parse(await res.text());
-    if(!data.success)throw new Error(data.error||"Unknown error");
+
+    const data     = JSON.parse(await todayRes.text());
+    const formData = JSON.parse(await formRes.text());
+
+    if(!data.success) throw new Error(data.error||"Unknown error");
     if(activeTab!=="hariH")return;
-    renderHariH(data);
+
+    renderHariH(data, formData.success ? formData.responses : []);
   }catch(err){
     if(activeTab!=="hariH")return;
     container.innerHTML=`<div class="empty"><span class="empty-icon">❌</span>${err.name==="AbortError"?"Timeout, coba refresh":err.message}</div>`;
   }
 }
+
 
 // ─────────────────────────────────────────────
 // HARI H HELPERS
@@ -1143,7 +1153,7 @@ const SHIFT_COLOR = {
 // ─────────────────────────────────────────────
 // RENDER HARI H
 // ─────────────────────────────────────────────
-function renderHariH(data){
+function renderHariH(data, formResponses = []){
   const container    = document.getElementById("schedule-list");
   const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
   const totalAll     = data.leaderboard.reduce((s,r) => s + r.total, 0);
@@ -1160,9 +1170,16 @@ function renderHariH(data){
     });
   });
 
-  // Simpan untuk copy function
   window._hariHShiftGroups = shiftGroups;
-  window._hariHDate = data.date;
+  window._hariHDate        = data.date;
+
+  // Helper: cari form responses yang cocok dengan session ini
+  function findFormMatches(p) {
+    return formResponses.filter(r =>
+      r.brand.toLowerCase().includes(p.brand.toLowerCase().substring(0,6)) ||
+      p.brand.toLowerCase().includes(r.brand.toLowerCase().substring(0,6))
+    );
+  }
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
@@ -1182,7 +1199,7 @@ function renderHariH(data){
 
   html += `<div style="display:flex;gap:7px;margin-bottom:16px">
     ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPending,"⏳ Belum Diisi")}
-    ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll - totalPending,"✅ Sudah Diisi")}
+    ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll-totalPending,"✅ Sudah Diisi")}
     ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalAll,"📋 Total Sesi")}
   </div>`;
 
@@ -1200,7 +1217,6 @@ function renderHariH(data){
       const c          = SHIFT_COLOR[shift];
       const totalShift = pics.reduce((s, p) => s + p.rows.length, 0);
 
-      // Section header + tombol copy shift
       html += `
         <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
                     padding:8px 12px;margin-bottom:8px;
@@ -1218,7 +1234,6 @@ function renderHariH(data){
           </div>
         </div>`;
 
-      // PIC cards — dropdown
       pics.sort((a, b) => b.rows.length - a.rows.length).forEach(picData => {
         const rows    = [...picData.rows].sort((a, b) => a.startTime.localeCompare(b.startTime));
         const ids     = rows.map(p => p.idLine).filter(Boolean);
@@ -1229,14 +1244,13 @@ function renderHariH(data){
                       border-radius:var(--bs-radius-lg);margin-bottom:8px;
                       overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
-            <!-- PIC header — klik untuk buka/tutup -->
             <div onclick="togglePicDropdown('${safeKey}')"
               style="padding:8px 10px;background:var(--bs-light);
                      display:flex;align-items:center;justify-content:space-between;
                      cursor:pointer;user-select:none">
               <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark);
                           display:flex;align-items:center;gap:6px">
-                <span id="pic-icon-${safeKey}">▸</span>
+                <span id="pic-icon-${safeKey}">▾</span>
                 ${formatPic(picData.pic)}
                 <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger)">
                   ${rows.length} sesi
@@ -1250,33 +1264,70 @@ function renderHariH(data){
               </button>
             </div>
 
-            <!-- Dropdown content -->
             <div id="pic-content-${safeKey}"
-              style="overflow:hidden;transition:max-height 0.25s ease;max-height:0px">`;
+              style="overflow:hidden;transition:max-height 0.25s ease;max-height:2000px">`;
 
         rows.forEach(p => {
           const timeRange = (p.endTime && p.endTime !== '-')
-            ? `${p.startTime} → ${p.endTime}`
-            : p.startTime;
+            ? `${p.startTime} → ${p.endTime}` : p.startTime;
+
+          // Cek form responses yang cocok
+          const matches = findFormMatches(p);
+          let formHtml  = '';
+
+          if (matches.length > 0) {
+            // Ada yang submit
+            formHtml += `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">`;
+            matches.forEach((r, ri) => {
+              const links = r.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+              formHtml += `
+                <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
+                            border-radius:var(--bs-radius);padding:3px 7px;
+                            font-size:0.6rem;color:var(--bs-success-text);font-weight:600;
+                            display:flex;align-items:center;gap:4px">
+                  ✅ ${r.host}`;
+              if (links.length > 0) {
+                links.forEach((lnk, li) => {
+                  if (lnk) formHtml += `
+                    <a href="${lnk}" target="_blank"
+                      style="margin-left:3px;color:var(--bs-primary);font-size:0.58rem;
+                             text-decoration:underline;font-weight:700">
+                      📎${li > 0 ? li+1 : ''}
+                    </a>`;
+                });
+              }
+              formHtml += `</div>`;
+            });
+            formHtml += `</div>`;
+          } else {
+            // Belum ada yang submit
+            formHtml = `
+              <div style="margin-top:4px;font-size:0.6rem;color:#adb5bd;font-style:italic">
+                ⏳ Belum ada host yang upload form
+              </div>`;
+          }
+
           html += `
-            <div style="padding:8px 10px;border-bottom:1px solid var(--bs-border-subtle);
-                        display:flex;align-items:center;gap:8px">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
-                <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">
-                  🕐 ${timeRange}
+            <div style="padding:8px 10px;border-bottom:1px solid var(--bs-border-subtle)">
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">
+                    🕐 ${timeRange}
+                  </div>
+                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">
+                    📍 ${p.studio} · ${p.mp}
+                  </div>
+                  ${formHtml}
                 </div>
-                <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">
-                  📍 ${p.studio} · ${p.mp}
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;margin-top:2px">
+                  ${p.idLine}
                 </div>
-              </div>
-              <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">
-                ${p.idLine}
               </div>
             </div>`;
         });
 
-        html += `</div></div>`; // end dropdown + card
+        html += `</div></div>`;
       });
 
       html += `<div style="margin-bottom:12px"></div>`;
@@ -1292,6 +1343,7 @@ function renderHariH(data){
   html += `</div>`;
   container.innerHTML = html;
 }
+
 
 // ── Toggle dropdown per PIC ──
 function togglePicDropdown(safeKey) {
