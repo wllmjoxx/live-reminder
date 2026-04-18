@@ -1173,9 +1173,7 @@ function renderHariH(data, formResponses = []){
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
-  // ── Match form response ke host ──
   function sessionMatch(formResp, p, hostName) {
-    // Host: cukup 1 kata cocok (min 3 char)
     const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
     const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
     const anyWordMatch = wordsForm.some(wf => {
@@ -1187,28 +1185,20 @@ function renderHariH(data, formResponses = []){
       });
     });
     if (!anyWordMatch) return false;
-
-    // Brand
     const fBrand = formResp.brand.toLowerCase().trim();
     const sBrand = p.brand.toLowerCase().trim();
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
-
-    // Marketplace
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
-
-    // Start time — toleransi ±180 menit (handle marathon multi-slot)
     if (formResp.startLive && p.startTime) {
       if (Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime)) > 180) return false;
     }
-
     return true;
   }
 
-  // ── Kandidat berdasarkan sesi (brand + mp + waktu), tanpa filter host ──
   function findSessionCandidates(p) {
     return formResponses.filter(r => {
       const fBrand = r.brand.toLowerCase().trim();
@@ -1258,13 +1248,12 @@ function renderHariH(data, formResponses = []){
       const picMap     = shiftGroups[shift];
       const pics       = Object.values(picMap);
       if (!pics.length) return;
-
       const c          = SHIFT_COLOR[shift];
       const totalShift = pics.reduce((s, p) => s + p.rows.length, 0);
 
       html += `
         <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
-                    padding:8px 12px;margin-bottom:8px;
+                    padding:8px 12px;margin-bottom:10px;
                     display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:0.78rem;font-weight:700;color:${c.text}">${SHIFT_LABEL[shift]}</div>
           <div style="display:flex;align-items:center;gap:8px">
@@ -1286,178 +1275,214 @@ function renderHariH(data, formResponses = []){
 
         html += `
           <div style="background:var(--bs-white);border:1px solid var(--bs-border);
-                      border-radius:var(--bs-radius-lg);margin-bottom:8px;
+                      border-radius:var(--bs-radius-lg);margin-bottom:10px;
                       overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
+            <!-- PIC header -->
             <div onclick="togglePicDropdown('${safeKey}')"
-              style="padding:8px 10px;background:var(--bs-light);
+              style="padding:9px 12px;background:var(--bs-light);
                      display:flex;align-items:center;justify-content:space-between;
-                     cursor:pointer;user-select:none">
-              <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark);
-                          display:flex;align-items:center;gap:6px">
-                <span id="pic-icon-${safeKey}">▸</span>
-                ${formatPic(picData.pic)}
-                <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger)">
+                     cursor:pointer;user-select:none;border-bottom:1px solid var(--bs-border)">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span id="pic-icon-${safeKey}" style="font-size:0.75rem;color:var(--bs-muted)">▸</span>
+                <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">
+                  ${formatPic(picData.pic)}
+                </span>
+                <span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);
+                             border:1px solid #f1aeb5;font-size:0.6rem;font-weight:700;
+                             padding:1px 7px;border-radius:var(--bs-radius-pill)">
                   ${rows.length} sesi
                 </span>
               </div>
               <button onclick="event.stopPropagation();copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
-                style="padding:3px 9px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
+                style="padding:3px 10px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
                        background:var(--bs-primary-subtle);color:var(--bs-primary-text);
                        font-size:0.62rem;font-weight:600;cursor:pointer">
                 📋 ID
               </button>
             </div>
 
+            <!-- Dropdown content -->
             <div id="pic-content-${safeKey}"
-              style="overflow:hidden;transition:max-height 0.25s ease;max-height:0px">`;
+              style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px">`;
 
         rows.forEach((p, pIdx) => {
-          const timeRange = (p.endTime && p.endTime !== '-')
+          const sessionTime = (p.endTime && p.endTime !== '-')
             ? `${p.startTime} → ${p.endTime}` : p.startTime;
 
           const typeBadge = p.isMarathon
             ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;
-                            font-size:0.55rem;padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
+                            font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">
                  🏃 Marathon</span>`
             : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;
-                            font-size:0.55rem;padding:1px 5px;border-radius:var(--bs-radius-pill);font-weight:700">
+                            font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">
                  ⚡ Single</span>`;
 
-          const hosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
+          // hosts bisa array of string (lama) atau array of object {name,start,end} (baru)
+          const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
+          const hosts    = rawHosts.map(h => typeof h === 'string'
+            ? { name: h, start: null, end: null }
+            : h);
 
-          // Pisahkan host: matched vs unmatched
-          const matchedHosts   = [];
-          const unmatchedHosts = [];
-
-          hosts.forEach((hostName, hIdx) => {
-            const match = formResponses.find(r => sessionMatch(r, p, hostName));
-            if (match) {
-              matchedHosts.push({ hostName, match });
-            } else {
-              unmatchedHosts.push({ hostName, hIdx });
-            }
+          // Pisah matched vs unmatched
+          const matchedList   = [];
+          const unmatchedList = [];
+          hosts.forEach((h, hIdx) => {
+            const match = formResponses.find(r => sessionMatch(r, p, h.name));
+            if (match) matchedList.push({ h, match });
+            else       unmatchedList.push({ h, hIdx });
           });
 
-          // Bangun formHtml — row per unmatched host saja
-          let formHtml = '';
-
-          if (hosts.length === 0) {
-            formHtml = `<div style="margin-top:4px;font-size:0.6rem;color:#adb5bd;font-style:italic">
-              ⚠️ Tidak ada data host
-            </div>`;
-          } else {
-            // Summary host yang sudah upload
-            if (matchedHosts.length > 0) {
-              const matchedNames = matchedHosts.map(m => {
-                const links = m.match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
-                const linkHtml = links.map((lnk, li) => lnk
-                  ? `<a href="${lnk}" target="_blank"
-                       style="color:var(--bs-primary);font-size:0.58rem;text-decoration:underline;font-weight:700">
-                       📎${links.length > 1 ? li+1 : ''}
-                     </a>` : '').join('');
-                return `<span style="display:inline-flex;align-items:center;gap:3px">
-                  ✅ ${m.hostName} ${linkHtml}
-                </span>`;
-              }).join(' · ');
-              formHtml += `
-                <div style="margin-top:4px;font-size:0.6rem;color:var(--bs-success-text);
-                            font-weight:600;display:flex;flex-wrap:wrap;gap:4px">
-                  ${matchedNames}
-                </div>`;
-            }
-
-            // Row per unmatched host
-            if (unmatchedHosts.length > 0) {
-              formHtml += `<div style="margin-top:5px;display:flex;flex-direction:column;gap:4px">`;
-
-              unmatchedHosts.forEach(({ hostName, hIdx }) => {
-                const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
-                const candidates = findSessionCandidates(p);
-
-                if (candidates.length > 0) {
-                  // ❓ Ada kandidat
-                  formHtml += `
-                    <div style="background:#fff8e1;border:1px solid #ffe69c;
-                                border-radius:var(--bs-radius);padding:5px 8px;font-size:0.62rem;color:#856404">
-                      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer"
-                        onclick="toggleCandidates('${candId}')">
-                        <span style="font-weight:600">❓ ${hostName}</span>
-                        <span style="display:flex;align-items:center;gap:4px">
-                          <span style="background:#856404;color:white;font-size:0.55rem;
-                                       padding:1px 6px;border-radius:var(--bs-radius-pill)">
-                            ${candidates.length} kandidat
-                          </span>
-                          <span id="cand-icon-${candId}">▸</span>
-                        </span>
-                      </div>
-                      <div id="cand-${candId}"
-                        style="display:none;margin-top:6px;border-top:1px solid #ffe69c;padding-top:5px;
-                               display:none;flex-direction:column;gap:4px">`;
-
-                  candidates.forEach(c => {
-                    const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
-                    formHtml += `
-                        <div style="display:flex;align-items:center;gap:6px;padding:3px 0;
-                                    border-bottom:1px solid #fff3cd">
-                          <div style="flex:1;min-width:0">
-                            <div style="font-weight:700">${c.host}</div>
-                            <div style="font-size:0.58rem;color:#a0832a;font-weight:400">
-                              ${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}
-                            </div>
-                          </div>
-                          <div style="display:flex;gap:4px;flex-shrink:0">`;
-                    links.forEach((lnk, li) => {
-                      if (lnk) formHtml += `
-                            <a href="${lnk}" target="_blank"
-                              style="color:var(--bs-primary);font-size:0.65rem;
-                                     text-decoration:underline;font-weight:700">
-                              📎${links.length > 1 ? li+1 : ''}
-                            </a>`;
-                    });
-                    formHtml += `</div></div>`;
-                  });
-
-                  formHtml += `</div></div>`;
-
-                } else {
-                  // ⏳ Tidak ada kandidat
-                  formHtml += `
-                    <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
-                                border-radius:var(--bs-radius);padding:5px 8px;
-                                font-size:0.62rem;color:var(--bs-danger-text);font-weight:600">
-                      ⏳ ${hostName}
-                    </div>`;
-                }
-              });
-
-              formHtml += `</div>`;
-            }
-          }
-
+          // ── Session card ──
           html += `
-            <div style="padding:8px 10px;border-bottom:1px solid var(--bs-border-subtle)">
-              <div style="display:flex;align-items:flex-start;gap:8px">
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark);
-                              display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-                    ${p.brand} ${typeBadge}
+            <div style="padding:12px 14px;border-bottom:1px solid var(--bs-border-subtle)">
+
+              <!-- Session info -->
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;
+                          margin-bottom:10px">
+                <div>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+                    <span style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${p.brand}</span>
+                    ${typeBadge}
                   </div>
-                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:2px">🕐 ${timeRange}</div>
-                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">📍 ${p.studio} · ${p.mp}</div>
-                  ${formHtml}
+                  <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
+                    <span>🕐 ${sessionTime}</span>
+                    <span>📍 ${p.studio} · ${p.mp}</span>
+                  </div>
                 </div>
-                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;margin-top:2px">
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;
+                            flex-shrink:0;padding-top:2px">
                   ${p.idLine}
                 </div>
               </div>
-            </div>`;
+
+              <!-- Host rows -->
+              <div style="display:flex;flex-direction:column;gap:6px">`;
+
+          if (hosts.length === 0) {
+            html += `
+                <div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">
+                  ⚠️ Tidak ada data host
+                </div>`;
+          } else {
+
+            // ✅ Matched hosts
+            matchedList.forEach(({ h, match }) => {
+              const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+              const slotTime = h.start
+                ? `<span style="color:var(--bs-muted)">${h.start}${h.end?' → '+h.end:''}</span>`
+                : (match.startLive
+                  ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive?' → '+match.endLive:''}</span>`
+                  : '');
+              html += `
+                <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
+                            border-radius:var(--bs-radius);padding:7px 10px;
+                            display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <div>
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">
+                      ✅ ${h.name}
+                    </div>
+                    <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
+                  </div>
+                  <div style="display:flex;gap:5px;flex-shrink:0">
+                    ${links.map((lnk, li) => lnk
+                      ? `<a href="${lnk}" target="_blank"
+                           style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
+                                  border-radius:var(--bs-radius-pill);color:var(--bs-primary);
+                                  font-size:0.62rem;font-weight:700;text-decoration:none">
+                           📎${links.length > 1 ? li+1 : ''}
+                         </a>` : '').join('')}
+                  </div>
+                </div>`;
+            });
+
+            // ❓ / ⏳ Unmatched hosts
+            unmatchedList.forEach(({ h, hIdx }) => {
+              const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
+              const candidates = findSessionCandidates(p);
+              const slotTime   = h.start
+                ? `${h.start}${h.end?' → '+h.end:''}`
+                : null;
+
+              if (candidates.length > 0) {
+                html += `
+                  <div style="background:#fffbeb;border:1px solid #ffe69c;
+                              border-radius:var(--bs-radius);overflow:hidden">
+                    <!-- Host row -->
+                    <div onclick="toggleCandidates('${candId}')"
+                      style="padding:7px 10px;display:flex;align-items:center;
+                             justify-content:space-between;cursor:pointer;gap:8px">
+                      <div>
+                        <div style="font-size:0.72rem;font-weight:700;color:#92400e">
+                          ❓ ${h.name}
+                        </div>
+                        ${slotTime
+                          ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>`
+                          : ''}
+                      </div>
+                      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
+                        <span style="background:#92400e;color:white;font-size:0.58rem;
+                                     padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:700">
+                          ${candidates.length} kandidat
+                        </span>
+                        <span id="cand-icon-${candId}" style="font-size:0.72rem;color:#92400e">▸</span>
+                      </div>
+                    </div>
+                    <!-- Kandidat list -->
+                    <div id="cand-${candId}"
+                      style="display:none;border-top:1px solid #ffe69c;
+                             background:#fffdf0;padding:6px 10px;
+                             display:none;flex-direction:column;gap:5px">
+                      ${candidates.map(c => {
+                        const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+                        return `
+                          <div style="display:flex;align-items:center;justify-content:space-between;
+                                      padding:5px 8px;background:white;border-radius:var(--bs-radius);
+                                      border:1px solid #ffe69c;gap:8px">
+                            <div style="min-width:0">
+                              <div style="font-size:0.7rem;font-weight:700;color:#92400e">${c.host}</div>
+                              <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">
+                                ${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}
+                              </div>
+                            </div>
+                            <div style="display:flex;gap:4px;flex-shrink:0">
+                              ${links.map((lnk, li) => lnk
+                                ? `<a href="${lnk}" target="_blank"
+                                     style="padding:3px 8px;background:#fffbeb;border:1px solid #ffe69c;
+                                            border-radius:var(--bs-radius-pill);color:var(--bs-primary);
+                                            font-size:0.62rem;font-weight:700;text-decoration:none">
+                                     📎${links.length > 1 ? li+1 : ''}
+                                   </a>` : '').join('')}
+                            </div>
+                          </div>`;
+                      }).join('')}
+                    </div>
+                  </div>`;
+
+              } else {
+                html += `
+                  <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
+                              border-radius:var(--bs-radius);padding:7px 10px">
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-danger-text)">
+                      ⏳ ${h.name}
+                    </div>
+                    ${slotTime
+                      ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">
+                           ${slotTime}
+                         </div>`
+                      : ''}
+                  </div>`;
+              }
+            });
+          }
+
+          html += `</div></div>`; // end host rows + session card
         });
 
-        html += `</div></div>`;
+        html += `</div></div>`; // end dropdown + PIC card
       });
 
-      html += `<div style="margin-bottom:12px"></div>`;
+      html += `<div style="margin-bottom:14px"></div>`;
     });
   }
 
@@ -1471,7 +1496,6 @@ function renderHariH(data, formResponses = []){
   container.innerHTML = html;
 }
 
-// ── Toggle kandidat ──
 function toggleCandidates(id) {
   const el   = document.getElementById("cand-" + id);
   const icon = document.getElementById("cand-icon-" + id);
@@ -1479,17 +1503,6 @@ function toggleCandidates(id) {
   const isOpen = el.style.display === "flex" || el.style.display === "block";
   el.style.display = isOpen ? "none" : "flex";
   el.style.flexDirection = "column";
-  if (icon) icon.textContent = isOpen ? "▸" : "▾";
-}
-
-
-// ── Toggle kandidat form responses ──
-function toggleCandidates(id) {
-  const el   = document.getElementById("cand-" + id);
-  const icon = document.getElementById("cand-icon-" + id);
-  if (!el) return;
-  const isOpen = el.style.display !== "none";
-  el.style.display = isOpen ? "none" : "block";
   if (icon) icon.textContent = isOpen ? "▸" : "▾";
 }
 
