@@ -451,24 +451,25 @@
   <nav class="navbar">
     
     <div class="navbar-brand">🎬 Live Schedule Reminder</div>
-    <!-- Google Sign In -->
-<div id="user-login-wrapper" style="padding:4px 12px 6px;display:none;justify-content:center">
-  <!-- Pakai HTML attribute approach - lebih reliable -->
-  <div id="g_id_onload"
-    data-client_id="343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com"
-    data-callback="handleGoogleSignIn"
-    data-auto_prompt="false"
-    data-itp_support="true">
-  </div>
-  <div class="g_id_signin"
-    data-type="standard"
-    data-theme="filled_blue"
-    data-text="sign_in_with"
-    data-size="large"
-    data-logo_alignment="left"
-    data-width="280">
-  </div>
-</div>
+    <!-- Google Sign In wrapper -->
+      <div id="user-login-wrapper" style="display:none;padding:4px 12px 6px;justify-content:center">
+        <div id="g_id_onload"
+          data-client_id="343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com"
+          data-callback="handleGoogleSignIn"
+          data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+          data-type="standard"
+          data-theme="filled_blue"
+          data-text="sign_in_with"
+          data-size="large"
+          data-width="280">
+        </div>
+      </div>
+
+      <!-- Online users display -->
+      <div id="online-users" style="font-size:0.62rem;color:#475569;padding:2px 12px 4px">👤 ...</div>
+
 
     <div class="navbar-clock">
       <div id="clock">--:--:--</div>
@@ -505,6 +506,8 @@
       <button id="tab-single"   class="nav-link t-single"          onclick="switchTab('single')">⚡ Single</button>
       <button id="tab-standby"  class="nav-link t-standby"         onclick="switchTab('standby')">📌 Standby</button>
       <button id="tab-klasemen" class="nav-link t-klasemen"        onclick="switchTab('klasemen')">🏆 Rank</button>
+      <button id="tab-hariH" class="nav-link" onclick="switchTab('hariH')">📅 Data hari H</button>
+
     </div>
   </div>
 
