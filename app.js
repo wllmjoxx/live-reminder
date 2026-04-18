@@ -1117,12 +1117,51 @@ async function loadHariH(){
   }
 }
 
-function renderHariH(data){
-  const container=document.getElementById("schedule-list");
-  const totalPending=data.leaderboard.reduce((s,r)=>s+r.pending,0);
-  const totalAll    =data.leaderboard.reduce((s,r)=>s+r.total,0);
+// ─────────────────────────────────────────────
+// HARI H HELPERS
+// ─────────────────────────────────────────────
+function getHariHShift(timeStr) {
+  if (!timeStr || timeStr === "-") return "siang";
+  const [h] = timeStr.split(":").map(Number);
+  if (h >= 8  && h < 16) return "pagi";
+  if (h >= 16)           return "siang";
+  return "malam";
+}
 
-  const summaryCard=(bg,border,numColor,num,label)=>
+const SHIFT_ORDER = { pagi: 0, siang: 1, malam: 2 };
+const SHIFT_LABEL = {
+  pagi : "☀️ Shift Pagi   08:00 – 15:59",
+  siang: "🌆 Shift Siang  16:00 – 00:00",
+  malam: "🌙 Shift Malam  00:01 – 07:59",
+};
+const SHIFT_COLOR = {
+  pagi : { bg: "var(--bs-warning-subtle)",   border: "#ffe69c",          text: "#856404" },
+  siang: { bg: "var(--bs-primary-subtle)",   border: "#9ec5fe",          text: "var(--bs-primary)" },
+  malam: { bg: "var(--bs-secondary-subtle)", border: "var(--bs-border)", text: "var(--bs-secondary)" },
+};
+
+// ─────────────────────────────────────────────
+// RENDER HARI H
+// ─────────────────────────────────────────────
+function renderHariH(data){
+  const container    = document.getElementById("schedule-list");
+  const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
+  const totalAll     = data.leaderboard.reduce((s,r) => s + r.total, 0);
+
+  // Susun ulang: shift → pic → rows
+  const shiftGroups = { pagi: {}, siang: {}, malam: {} };
+  data.leaderboard.forEach(r => {
+    if (!r.rows || !r.rows.length) return;
+    r.rows.forEach(row => {
+      const shift = getHariHShift(row.startTime);
+      if (!shiftGroups[shift][r.pic]) {
+        shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
+      }
+      shiftGroups[shift][r.pic].rows.push(row);
+    });
+  });
+
+  const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
                  padding:10px 6px;text-align:center">
        <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
@@ -1130,117 +1169,113 @@ function renderHariH(data){
                    text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
 
-  let html=`<div style="padding:8px 10px 24px">`;
+  let html = `<div style="padding:8px 10px 24px">`;
 
-  // ── Header ──
-  html+=`
+  // Header
+  html += `
     <div style="text-align:center;margin-bottom:12px">
       <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Pantau Data Hari H</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
     </div>`;
 
-  // ── Summary ──
-  html+=`<div style="display:flex;gap:7px;margin-bottom:14px">
+  // Summary
+  html += `<div style="display:flex;gap:7px;margin-bottom:16px">
     ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPending,"⏳ Belum Diisi")}
-    ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll-totalPending,"✅ Sudah Diisi")}
+    ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll - totalPending,"✅ Sudah Diisi")}
     ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalAll,"📋 Total Sesi")}
   </div>`;
 
-  // ── Leaderboard table ──
-  html+=`
-    <div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;
-                margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
-      <div style="padding:7px 12px;background:var(--bs-light);border-bottom:1px solid var(--bs-border);
-                  font-size:0.6rem;font-weight:700;color:var(--bs-muted);display:flex;gap:4px;
-                  text-transform:uppercase;letter-spacing:0.5px">
-        <span style="width:26px">#</span>
-        <span style="flex:1">PIC</span>
-        <span style="width:54px;text-align:center">Belum</span>
-        <span style="width:40px;text-align:center">Total</span>
-      </div>`;
-
-  data.leaderboard.forEach((r,idx)=>{
-    const medal =idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    const color =r.pending===0?"var(--bs-success)":r.pending<=3?"#856404":"var(--bs-danger)";
-    const sTxt  =r.pending===0?"✅ Bersih":`${r.pending} sesi belum diisi`;
-    const rowBg =idx%2===1?"var(--bs-light)":"var(--bs-white)";
-    html+=`
-      <div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);
-                  display:flex;align-items:center;gap:4px;background:${rowBg}">
-        <span style="width:26px;font-size:0.8rem">${medal}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div>
-          <div style="font-size:0.6rem;color:${color};font-weight:600;margin-top:1px">${sTxt}</div>
-        </div>
-        <span style="width:54px;text-align:center;font-size:0.9rem;font-weight:800;color:${color}">${r.pending}</span>
-        <span style="width:40px;text-align:center;font-size:0.75rem;color:var(--bs-muted)">${r.total}</span>
-      </div>`;
-  });
-  html+=`</div>`;
-
-  // ── Copy buttons per PIC ──
-  const withPending=data.leaderboard.filter(r=>r.pending>0);
-  if(withPending.length>0){
-    html+=`
-      <div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);
-                  text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
-        📋 Copy ID Line per PIC
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
-
-    withPending.forEach(r=>{
-      const ids=r.rows.map(p=>p.idLine).filter(Boolean);
-      html+=`
-        <button onclick="copyIdLines('${r.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
-          style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
-                 background:var(--bs-primary-subtle);color:var(--bs-primary-text);
-                 font-size:0.7rem;font-weight:600;cursor:pointer">
-          ${formatPic(r.pic)}
-          <span style="color:#856404;font-weight:700">(${r.pending})</span>
-        </button>`;
-    });
-    html+=`</div>`;
-
-    // ── Detail sesi belum diisi per PIC ──
-    withPending.forEach(r=>{
-      html+=`
-        <div style="margin-bottom:12px">
-          <div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);
-                      text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">
-            ${formatPic(r.pic)} — ${r.rows.length} sesi belum diisi
-          </div>`;
-      r.rows.forEach(p=>{
-        html+=`
-          <div style="background:var(--bs-white);border-radius:var(--bs-radius);padding:7px 10px;
-                      margin-bottom:3px;display:flex;align-items:center;gap:8px;
-                      border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
-              <div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">
-                ${p.startTime} · ${p.studio} · ${p.mp}
-              </div>
-            </div>
-            <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">${p.idLine}</div>
-          </div>`;
-      });
-      html+=`</div>`;
-    });
-  } else {
-    html+=`
+  if (totalPending === 0) {
+    html += `
       <div style="text-align:center;padding:28px;color:var(--bs-success);font-size:0.85rem;font-weight:600">
         ✅ Semua data hari ini sudah diisi!
       </div>`;
+  } else {
+
+    // Render per shift section
+    ["pagi","siang","malam"].forEach(shift => {
+      const picMap     = shiftGroups[shift];
+      const pics       = Object.values(picMap);
+      if (!pics.length) return;
+
+      const c          = SHIFT_COLOR[shift];
+      const totalShift = pics.reduce((s, p) => s + p.rows.length, 0);
+
+      // Section header
+      html += `
+        <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
+                    padding:8px 12px;margin-bottom:8px;
+                    display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:0.78rem;font-weight:700;color:${c.text}">${SHIFT_LABEL[shift]}</div>
+          <div style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">
+            ${totalShift} sesi belum
+          </div>
+        </div>`;
+
+      // PIC cards dalam shift
+      pics
+        .sort((a, b) => b.rows.length - a.rows.length)
+        .forEach(picData => {
+          const rows = [...picData.rows].sort((a, b) => a.startTime.localeCompare(b.startTime));
+          const ids  = rows.map(p => p.idLine).filter(Boolean);
+
+          html += `
+            <div style="background:var(--bs-white);border:1px solid var(--bs-border);
+                        border-radius:var(--bs-radius-lg);margin-bottom:8px;
+                        overflow:hidden;box-shadow:var(--bs-shadow-sm)">
+
+              <!-- PIC header -->
+              <div style="padding:7px 10px;background:var(--bs-light);
+                          border-bottom:1px solid var(--bs-border);
+                          display:flex;align-items:center;justify-content:space-between">
+                <div style="font-size:0.8rem;font-weight:700;color:var(--bs-dark)">
+                  ${formatPic(picData.pic)}
+                  <span style="font-size:0.65rem;font-weight:600;color:var(--bs-danger);margin-left:4px">
+                    ${rows.length} sesi
+                  </span>
+                </div>
+                <button onclick="copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
+                  style="padding:3px 10px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
+                         background:var(--bs-primary-subtle);color:var(--bs-primary-text);
+                         font-size:0.65rem;font-weight:600;cursor:pointer">
+                  📋 Copy ID
+                </button>
+              </div>
+
+              <!-- Session rows -->`;
+
+          rows.forEach(p => {
+            html += `
+              <div style="padding:6px 10px;border-bottom:1px solid var(--bs-border-subtle);
+                          display:flex;align-items:center;gap:8px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+                  <div style="font-size:0.62rem;color:var(--bs-muted);margin-top:1px">
+                    ${p.startTime} · ${p.studio} · ${p.mp}
+                  </div>
+                </div>
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">
+                  ${p.idLine}
+                </div>
+              </div>`;
+          });
+
+          html += `</div>`; // end PIC card
+        });
+
+      html += `<div style="margin-bottom:12px"></div>`; // spacer antar shift
+    });
   }
 
-  // ── Refresh button ──
-  html+=`
+  // Refresh button
+  html += `
     <button onclick="loadHariH()" class="btn btn-outline-primary btn-block"
-      style="margin-top:6px;padding:10px">
+      style="margin-top:4px;padding:10px">
       🔄 Refresh
     </button>`;
 
-  html+=`</div>`;
-  container.innerHTML=html;
+  html += `</div>`;
+  container.innerHTML = html;
 }
 
 
