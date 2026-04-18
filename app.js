@@ -138,6 +138,7 @@ const seenNtfyIds=new Set();
 
 window.addEventListener("DOMContentLoaded", async () => {
   updateClock();
+  updateTabLabels();
   setInterval(updateClock, 1000);
   await registerSW();
   await requestNotifPermission();
@@ -1076,6 +1077,23 @@ function renderKlasemen(data){
   html+=`</div>`;
   container.innerHTML=html;
 }
+
+function updateTabLabels() {
+  const toWIB = d => new Date(d.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const fmt   = d => d.toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
+
+  const today = toWIB(new Date());
+
+  const h7 = new Date(today); h7.setDate(h7.getDate() - 7);
+  const h1 = new Date(today); h1.setDate(h1.getDate() - 1);
+
+  const btnKlasemen = document.getElementById("tab-klasemen");
+  const btnHariH    = document.getElementById("tab-hariH");
+
+  if (btnKlasemen) btnKlasemen.innerHTML = `Data <span style="opacity:0.75;font-size:0.85em">${fmt(h7)} – ${fmt(h1)}</span>`;
+  if (btnHariH)    btnHariH.innerHTML    = `Data <span style="opacity:0.75;font-size:0.85em">${fmt(today)}</span>`;
+}
+
 
 // ─────────────────────────────────────────────
 // HARI H — Pantau data hari ini (Hari H only)
