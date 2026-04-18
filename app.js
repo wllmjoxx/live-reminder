@@ -1173,45 +1173,58 @@ function renderHariH(data, formResponses = []){
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
-  // ── Match 1 form response ke 1 host dalam 1 sesi ──
- function sessionMatch(formResp, p, hostName) {
-  // 1. Host — word similarity (cocokkan per kata, min 4 char prefix)
-  const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
-  const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
-  let wordMatches  = 0;
-  wordsForm.forEach(wf => {
-    if (wordsSched.some(ws =>
-      ws.substring(0,4) === wf.substring(0,4) ||
-      ws.includes(wf.substring(0,4)) ||
-      wf.includes(ws.substring(0,4))
-    )) wordMatches++;
-  });
-  const hostSim = wordMatches / Math.max(wordsForm.length, wordsSched.length);
-  if (hostSim < 0.5) return false; // minimal 50% kata cocok
+  // ── Match 1 form response ke 1 host (cukup 1 kata cocok) ──
+  function sessionMatch(formResp, p, hostName) {
+    const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
+    const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
 
-  // 2. Brand (fuzzy)
-  const fBrand = formResp.brand.toLowerCase().trim();
-  const sBrand = p.brand.toLowerCase().trim();
-  const brandOk = fBrand.includes(sBrand.substring(0, 5))
-    || sBrand.includes(fBrand.substring(0, 5));
-  if (!brandOk) return false;
+    const anyWordMatch = wordsForm.some(wf => {
+      if (wf.length < 3) return false;
+      return wordsSched.some(ws => {
+        if (ws.length < 3) return false;
+        const minLen = Math.min(wf.length, ws.length);
+        return wf.substring(0, minLen) === ws.substring(0, minLen);
+      });
+    });
+    if (!anyWordMatch) return false;
 
-  // 3. Marketplace (fuzzy)
-  if (formResp.marketplace && p.mp) {
-    const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0, 4))
-      || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0, 4));
-    if (!mpOk) return false;
+    const fBrand = formResp.brand.toLowerCase().trim();
+    const sBrand = p.brand.toLowerCase().trim();
+    if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+
+    if (formResp.marketplace && p.mp) {
+      const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
+        || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
+      if (!mpOk) return false;
+    }
+
+    if (formResp.startLive && p.startTime) {
+      if (Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime)) > 60) return false;
+    }
+
+    return true;
   }
 
-  // 4. Start time (toleransi ±60 menit)
-  if (formResp.startLive && p.startTime) {
-    const diff = Math.abs(toMinJS(formResp.startLive) - toMinJS(p.startTime));
-    if (diff > 60) return false;
+  // ── Cari kandidat berdasarkan sesi (brand + mp + waktu), tanpa filter host ──
+  function findSessionCandidates(p) {
+    return formResponses.filter(r => {
+      const fBrand = r.brand.toLowerCase().trim();
+      const sBrand = p.brand.toLowerCase().trim();
+      if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+
+      if (r.marketplace && p.mp) {
+        const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
+          || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
+        if (!mpOk) return false;
+      }
+
+      if (r.startLive && p.startTime) {
+        if (Math.abs(toMinJS(r.startLive) - toMinJS(p.startTime)) > 60) return false;
+      }
+
+      return true;
+    });
   }
-
-  return true;
-}
-
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
@@ -1276,7 +1289,6 @@ function renderHariH(data, formResponses = []){
                       border-radius:var(--bs-radius-lg);margin-bottom:8px;
                       overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
-            <!-- PIC header — default TUTUP -->
             <div onclick="togglePicDropdown('${safeKey}')"
               style="padding:8px 10px;background:var(--bs-light);
                      display:flex;align-items:center;justify-content:space-between;
@@ -1297,15 +1309,13 @@ function renderHariH(data, formResponses = []){
               </button>
             </div>
 
-            <!-- Dropdown — default max-height:0 (tutup) -->
             <div id="pic-content-${safeKey}"
               style="overflow:hidden;transition:max-height 0.25s ease;max-height:0px">`;
 
-        rows.forEach(p => {
+        rows.forEach((p, pIdx) => {
           const timeRange = (p.endTime && p.endTime !== '-')
             ? `${p.startTime} → ${p.endTime}` : p.startTime;
 
-          // Badge marathon / single
           const typeBadge = p.isMarathon
             ? `<span style="background:var(--bs-warning-subtle);color:#856404;
                             border:1px solid #ffe69c;font-size:0.55rem;
@@ -1318,7 +1328,6 @@ function renderHariH(data, formResponses = []){
                  ⚡ Single
                </span>`;
 
-          // ── Status upload per host ──
           const hosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
           let formHtml = '';
 
@@ -1328,10 +1337,13 @@ function renderHariH(data, formResponses = []){
             </div>`;
           } else {
             formHtml = `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">`;
-            hosts.forEach(hostName => {
-              const match = formResponses.find(r => sessionMatch(r, p, hostName));
+
+            hosts.forEach((hostName, hIdx) => {
+              const match   = formResponses.find(r => sessionMatch(r, p, hostName));
+              const candId  = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g, '_');
+
               if (match) {
-                // ✅ Sudah upload
+                // ✅ Match langsung
                 const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
                 formHtml += `
                   <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
@@ -1348,16 +1360,66 @@ function renderHariH(data, formResponses = []){
                     </a>`;
                 });
                 formHtml += `</div>`;
+
               } else {
-                // ⏳ Belum upload
-                formHtml += `
-                  <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
-                              border-radius:var(--bs-radius);padding:3px 8px;
-                              font-size:0.62rem;color:var(--bs-danger-text);font-weight:600">
-                    ⏳ ${hostName}
-                  </div>`;
+                // Tidak match — cari kandidat dari form
+                const candidates = findSessionCandidates(p);
+
+                if (candidates.length > 0) {
+                  // ❓ Ada kandidat — tampilkan opsi
+                  formHtml += `
+                    <div style="background:#fff8e1;border:1px solid #ffe69c;
+                                border-radius:var(--bs-radius);padding:3px 8px;
+                                font-size:0.62rem;color:#856404;font-weight:600">
+                      <div style="display:flex;align-items:center;gap:5px;cursor:pointer"
+                        onclick="toggleCandidates('${candId}')">
+                        ❓ ${hostName}
+                        <span style="background:#856404;color:white;font-size:0.55rem;
+                                     padding:1px 5px;border-radius:var(--bs-radius-pill)">
+                          ${candidates.length} kandidat
+                        </span>
+                        <span id="cand-icon-${candId}">▸</span>
+                      </div>
+
+                      <div id="cand-${candId}"
+                        style="display:none;margin-top:5px;border-top:1px solid #ffe69c;padding-top:5px">`;
+
+                  candidates.forEach(c => {
+                    const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+                    formHtml += `
+                        <div style="display:flex;align-items:center;gap:6px;
+                                    padding:3px 0;border-bottom:1px solid #fff3cd">
+                          <div style="flex:1;min-width:0">
+                            <div style="font-weight:700">${c.host}</div>
+                            <div style="font-size:0.58rem;font-weight:400;color:#a0832a">
+                              ${c.startLive}${c.endLive ? ' → '+c.endLive : ''} · ${c.typeLive || '-'}
+                            </div>
+                          </div>`;
+                    links.forEach((lnk, li) => {
+                      if (lnk) formHtml += `
+                          <a href="${lnk}" target="_blank"
+                            style="color:var(--bs-primary);font-size:0.62rem;
+                                   text-decoration:underline;font-weight:700;flex-shrink:0">
+                            📎${links.length > 1 ? li+1 : ''}
+                          </a>`;
+                    });
+                    formHtml += `</div>`;
+                  });
+
+                  formHtml += `</div></div>`;
+
+                } else {
+                  // ⏳ Tidak ada kandidat sama sekali
+                  formHtml += `
+                    <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
+                                border-radius:var(--bs-radius);padding:3px 8px;
+                                font-size:0.62rem;color:var(--bs-danger-text);font-weight:600">
+                      ⏳ ${hostName}
+                    </div>`;
+                }
               }
             });
+
             formHtml += `</div>`;
           }
 
@@ -1385,7 +1447,7 @@ function renderHariH(data, formResponses = []){
             </div>`;
         });
 
-        html += `</div></div>`; // end dropdown + card
+        html += `</div></div>`;
       });
 
       html += `<div style="margin-bottom:12px"></div>`;
@@ -1402,6 +1464,49 @@ function renderHariH(data, formResponses = []){
   container.innerHTML = html;
 }
 
+// ── Toggle kandidat form responses ──
+function toggleCandidates(id) {
+  const el   = document.getElementById("cand-" + id);
+  const icon = document.getElementById("cand-icon-" + id);
+  if (!el) return;
+  const isOpen = el.style.display !== "none";
+  el.style.display = isOpen ? "none" : "block";
+  if (icon) icon.textContent = isOpen ? "▸" : "▾";
+}
+
+
+// Cari kandidat dari form berdasarkan sesi (brand + mp + waktu), tanpa filter host
+function findSessionCandidates(formResponses, p) {
+  return formResponses.filter(r => {
+    const fBrand = r.brand.toLowerCase().trim();
+    const sBrand = p.brand.toLowerCase().trim();
+    const brandOk = fBrand.includes(sBrand.substring(0, 5))
+      || sBrand.includes(fBrand.substring(0, 5));
+    if (!brandOk) return false;
+
+    if (r.marketplace && p.mp) {
+      const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0, 4))
+        || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0, 4));
+      if (!mpOk) return false;
+    }
+
+    if (r.startLive && p.startTime) {
+      const diff = Math.abs(toMinJS(r.startLive) - toMinJS(p.startTime));
+      if (diff > 60) return false;
+    }
+
+    return true;
+  });
+}
+
+function toggleCandidates(id) {
+  const el   = document.getElementById("cand-" + id);
+  const icon = document.getElementById("cand-icon-" + id);
+  if (!el) return;
+  const isOpen = el.style.display !== "none";
+  el.style.display = isOpen ? "none" : "block";
+  if (icon) icon.textContent = isOpen ? "▸" : "▾";
+}
 
 
 // ── Toggle dropdown per PIC ──
