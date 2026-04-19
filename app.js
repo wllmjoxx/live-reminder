@@ -8,9 +8,6 @@ let currentUserEmail = localStorage.getItem("userEmail") || null;
 let onlineUsers      = {};
 let presenceStarted  = false;
 
-// ─────────────────────────────────────────────
-// GSI ONLOAD
-// ─────────────────────────────────────────────
 function onGsiLoad() {
   if (!currentUserEmail) {
     google.accounts.id.initialize({
@@ -35,9 +32,6 @@ function onGsiLoad() {
   }
 }
 
-// ─────────────────────────────────────────────
-// GOOGLE SIGN IN
-// ─────────────────────────────────────────────
 function handleGoogleSignIn(response) {
   try {
     const payload = JSON.parse(atob(response.credential.split(".")[1]));
@@ -62,9 +56,6 @@ function logoutUser() {
   location.reload();
 }
 
-// ─────────────────────────────────────────────
-// PRESENCE
-// ─────────────────────────────────────────────
 function startPresenceIfNeeded() {
   if (presenceStarted || !currentUserEmail) return;
   presenceStarted = true;
@@ -107,7 +98,6 @@ function listenPresence() {
 function updateOnlineDisplay() {
   const el = document.getElementById("online-users");
   if (!el) return;
-
   if (!currentUserEmail) {
     el.innerHTML = `<span style="cursor:pointer;color:var(--bs-muted);font-size:0.62rem"
       onclick="document.getElementById('user-login-wrapper').style.display='flex'">
@@ -115,14 +105,11 @@ function updateOnlineDisplay() {
     </span>`;
     return;
   }
-
   onlineUsers[currentUserEmail] = Math.max(onlineUsers[currentUserEmail] || 0, Date.now() - 10000);
-
   const cutoff = Date.now() - 5 * 60 * 1000;
   const active = Object.entries(onlineUsers)
     .filter(([, ts]) => ts > cutoff)
     .map(([email]) => email.split("@")[0]);
-
   el.innerHTML = `
     <span style="color:var(--bs-success);font-weight:700">🟢 ${active.length}</span>
     <span style="color:var(--bs-muted)"> online: </span>
@@ -186,9 +173,6 @@ function getDedicatedGroup(n){
 let sessions=[],scheduledTasks=[],swRegistration=null,activeTab="marathon",ntfySource=null;
 const seenNtfyIds=new Set();
 
-// ─────────────────────────────────────────────
-// DOM CONTENT LOADED
-// ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", async () => {
   updateClock();
   updateTabLabels();
@@ -198,12 +182,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   connectNtfy();
   await loadSchedule();
   setInterval(loadSchedule, 5 * 120 * 1000);
-
   if (currentUserEmail) {
     startPresenceIfNeeded();
     updateOnlineDisplay();
   }
-
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       connectNtfy();
@@ -451,10 +433,8 @@ function assignPics(starts,ends,validPics=null){
     }
     s.assignedPic="LSC";
   };
-
   [...starts,...ends].forEach(s=>reg(s.picForEvent||"-"));
   DEDICATED_OPS.forEach(name=>{if(!validPics||validPics.has(name.toLowerCase()))reg(name);});
-
   const sortFn=list=>[...list].sort((a,b)=>{
     const aN=sNum(a),bN=sNum(b);
     const aM=!!MANDATORY_STUDIOS[aN],bM=!!MANDATORY_STUDIOS[bN];
@@ -464,7 +444,6 @@ function assignPics(starts,ends,validPics=null){
     if(aZ!==bZ)return aZ-bZ;
     return aN-bN;
   });
-
   sortFn(ends).forEach(s=>doAssign(s,s.picForEvent||"-"));
   sortFn(starts).forEach(s=>doAssign(s,s.picForEvent||"-"));
 }
@@ -477,35 +456,22 @@ function renderMarathon(){
   container.innerHTML="";
   const list=sessions.filter(s=>s.isMarathon);
   if(!list.length){
-    container.innerHTML=`
-      <div class="empty">
-        <span class="empty-icon">📭</span>
-        Tidak ada sesi marathon hari ini
-      </div>`;
+    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi marathon hari ini</div>`;
     return;
   }
   const now=Date.now();
-
   list.forEach(s=>{
     const curIdx=getCurrentHostIdx(s);
     let endMs=timeToMs(s.date,s.endTime);
     const startMs=timeToMs(s.date,s.startTime);
     if(endMs&&startMs&&endMs<=startMs)endMs+=24*60*60*1000;
     const isEnded=endMs?now>endMs:false;
-
     const card=document.createElement("div");
     card.className=`marathon-session-card${isEnded?" ms-ended":""}`;
     card.innerHTML=`
       <div class="ms-card-header">
-        <div class="ms-brand">
-          🏃 ${s.brand}
-          ${isEnded
-            ? `<span class="badge"
-                style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);
-                       font-size:0.55rem;vertical-align:middle;margin-left:6px">
-                ✓ ENDED
-               </span>`
-            : ""}
+        <div class="ms-brand">🏃 ${s.brand}
+          ${isEnded?`<span class="badge" style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);font-size:0.55rem;vertical-align:middle;margin-left:6px">✓ ENDED</span>`:""}
         </div>
         <div class="ms-meta">
           <span class="badge marketplace">${s.marketplace}</span>
@@ -515,34 +481,19 @@ function renderMarathon(){
         <div class="ms-time">▶ ${s.startTime} &nbsp;·&nbsp; ⏹ ${s.endTime} &nbsp;·&nbsp; ${s.hosts.length} host</div>
       </div>
       <div class="ms-card-body" id="msh-${s.idLine||s.skpId}"></div>`;
-
     container.appendChild(card);
-
     const hc=card.querySelector(`#msh-${s.idLine||s.skpId}`);
     s.hosts.forEach((h,hi)=>{
       const isCurrent=!isEnded&&hi===curIdx;
-      const isNext   =!isEnded&&hi===curIdx+1;
-      const isPast   =isEnded||(curIdx>=0&&hi<curIdx);
-
+      const isNext=!isEnded&&hi===curIdx+1;
+      const isPast=isEnded||(curIdx>=0&&hi<curIdx);
       const row=document.createElement("div");
       row.className=`host-row${isCurrent?" host-current":""}${isNext?" host-next":""}${isPast?" host-past":""}`;
       row.innerHTML=`
         <div class="hr-num">${hi+1}</div>
-        <div class="hr-time">
-          <span class="hr-start">▶ ${h.startTime}</span>
-          <span class="hr-arrow">→</span>
-          <span class="hr-end">⏹ ${h.endTime}</span>
-        </div>
+        <div class="hr-time"><span class="hr-start">▶ ${h.startTime}</span><span class="hr-arrow">→</span><span class="hr-end">⏹ ${h.endTime}</span></div>
         <div class="hr-info">
-          <div class="hr-name">
-            ${h.host}
-            ${isCurrent?`<span class="live-badge">● LIVE</span>`:""}
-            ${isNext   ?`<span class="next-badge">NEXT</span>`:""}
-            ${isEnded&&hi===s.hosts.length-1
-              ?`<span class="badge" style="background:var(--bs-secondary-subtle);
-                  color:var(--bs-secondary);font-size:0.55rem;margin-left:4px">✓ selesai</span>`
-              :""}
-          </div>
+          <div class="hr-name">${h.host}${isCurrent?`<span class="live-badge">● LIVE</span>`:""}${isNext?`<span class="next-badge">NEXT</span>`:""}${isEnded&&hi===s.hosts.length-1?`<span class="badge" style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);font-size:0.55rem;margin-left:4px">✓ selesai</span>`:""}</div>
           <div class="hr-pic">🧑‍💼 PIC: ${h.picData||"-"}</div>
         </div>`;
       hc.appendChild(row);
@@ -556,15 +507,11 @@ function renderMarathon(){
 function renderTimeline(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
-  if(!sessions.length){
-    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada jadwal</div>`;
-    return;
-  }
-
+  if(!sessions.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada jadwal</div>`;return;}
   const events={};
   sessions.forEach(s=>{
     const firstPic=s.hosts?.[0]?.picData||"-";
-    const lastPic =s.hosts?.[s.hosts.length-1]?.picData||"-";
+    const lastPic=s.hosts?.[s.hosts.length-1]?.picData||"-";
     if(s.startTime&&s.startTime!=="-"){
       if(!events[s.startTime])events[s.startTime]={starts:[],ends:[]};
       events[s.startTime].starts.push({...s,picForEvent:firstPic});
@@ -575,39 +522,27 @@ function renderTimeline(){
       events[endKey].ends.push({...s,picForEvent:lastPic});
     }
   });
-
-  Object.entries(events).forEach(([time,ev])=>{
-    assignPics(ev.starts,ev.ends,getAvailableOps(sessions,time));
-  });
-
+  Object.entries(events).forEach(([time,ev])=>{assignPics(ev.starts,ev.ends,getAvailableOps(sessions,time));});
   const now=Date.now();
   const sorted=Object.keys(events).sort((a,b)=>{
     const f=t=>t==="23:59/00:00"?1441:(([h,m])=>h*60+m)(t.split(":").map(Number));
     return f(a)-f(b);
   });
-
   let firstUpcoming=null;
-
   function makeBlock(ev,time,type){
     const items=type==="start"?ev.starts:ev.ends;
     if(!items.length)return null;
-    const display  =time==="23:59/00:00"?"23:59 / 00:00":time;
+    const display=time==="23:59/00:00"?"23:59 / 00:00":time;
     const checkTime=time==="23:59/00:00"?"23:59":time;
-    const eventMs  =timeToMs(sessions[0]?.date,checkTime);
-    const isPast   =eventMs&&eventMs<now;
-
+    const eventMs=timeToMs(sessions[0]?.date,checkTime);
+    const isPast=eventMs&&eventMs<now;
     const block=document.createElement("div");
     block.className=`time-block${isPast?" collapsed":""}`;
-
     const header=document.createElement("div");
     header.className=`time-header ${type==="start"?"start":"end"}-header`;
-
     if(isPast){
       header.style.opacity="0.55";
-      header.innerHTML=`
-        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
-        ${type==="start"?"Start":"End"} ${display}
-        <span class="count-badge">▸ ${items.length}</span>`;
+      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"Start":"End"} ${display}<span class="count-badge">▸ ${items.length}</span>`;
       header.onclick=()=>{
         const wasCollapsed=block.classList.contains("collapsed");
         block.classList.toggle("collapsed");
@@ -615,23 +550,17 @@ function renderTimeline(){
         cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
       };
     }else{
-      header.innerHTML=`
-        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
-        ${type==="start"?"▶ Start":"⏹ End"} ${display}
-        <span class="toggle-icon">▾</span>`;
+      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"▶ Start":"⏹ End"} ${display}<span class="toggle-icon">▾</span>`;
     }
-
     const content=document.createElement("div");
     content.className="sessions-container";
     content.style.maxHeight=isPast?"0px":"none";
-
     items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
     block.appendChild(header);
     block.appendChild(content);
     if(!isPast&&!firstUpcoming)firstUpcoming=block;
     return block;
   }
-
   sorted.forEach(time=>{
     const ev=events[time];
     const sb=makeBlock(ev,time,"start");
@@ -639,56 +568,37 @@ function renderTimeline(){
     if(sb)container.appendChild(sb);
     if(eb)container.appendChild(eb);
   });
-
-  if(firstUpcoming){
-    setTimeout(()=>firstUpcoming.scrollIntoView({behavior:"smooth",block:"start"}),150);
-  }
+  if(firstUpcoming)setTimeout(()=>firstUpcoming.scrollIntoView({behavior:"smooth",block:"start"}),150);
 }
 
 function makeTimelineCard(s,num,mode,eventTime=null){
-  const now      =Date.now();
+  const now=Date.now();
   const checkTime=eventTime||s.startTime;
-  const eventMs  =checkTime==="23:59/00:00"?null:timeToMs(s.date,checkTime);
-  const isPast   =eventMs&&eventMs<now;
-  const isSoon   =eventMs&&(eventMs-now)<15*60*1000&&!isPast;
-  const picLabel =s.assignedPic||"LSC";
-  const isLSC    =picLabel==="LSC";
+  const eventMs=checkTime==="23:59/00:00"?null:timeToMs(s.date,checkTime);
+  const isPast=eventMs&&eventMs<now;
+  const isSoon=eventMs&&(eventMs-now)<15*60*1000&&!isPast;
+  const picLabel=s.assignedPic||"LSC";
+  const isLSC=picLabel==="LSC";
   const firstHost=s.hosts?.[0]?.host||"-";
-  const isSingle =mode==="single";
-
   const card=document.createElement("div");
   card.className=`session-card${isPast?" past":""}${isSoon?" soon":""}${s.isMarathon?" marathon-card":""}`;
   card.innerHTML=`
     <div class="session-num">${num}</div>
     <div class="session-info">
-      <div class="session-brand">
-        ${s.brand}
-        ${s.isMarathon
-          ?`<span class="type-badge marathon-badge">🏃 Marathon</span>`
-          :`<span class="type-badge single-badge">⚡ Single</span>`}
-      </div>
-      <div class="session-meta">
-        <span class="badge marketplace">${s.marketplace}</span>
-        <span class="badge studio">${s.studio}</span>
-      </div>
+      <div class="session-brand">${s.brand}${s.isMarathon?`<span class="type-badge marathon-badge">🏃 Marathon</span>`:`<span class="type-badge single-badge">⚡ Single</span>`}</div>
+      <div class="session-meta"><span class="badge marketplace">${s.marketplace}</span><span class="badge studio">${s.studio}</span></div>
       <div class="session-host">👤 ${firstHost}</div>
-      ${isSingle?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
+      ${mode==="single"?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
     </div>
     <div class="session-pic-right${isLSC?" lsc":""}">${picLabel}</div>`;
   return card;
 }
 
-// ─────────────────────────────────────────────
-// RENDER SINGLE
-// ─────────────────────────────────────────────
 function renderSingle(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
   const list=sessions.filter(s=>!s.isMarathon);
-  if(!list.length){
-    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi single</div>`;
-    return;
-  }
+  if(!list.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi single</div>`;return;}
   const copies=list.map(s=>Object.assign({},s));
   assignPics(copies,[]);
   copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"single")));
@@ -698,22 +608,13 @@ function renderSingle(){
 // STANDBY
 // ─────────────────────────────────────────────
 const STANDBY_BRANDS=[
-  {key:"AT Tiktok",       slotFormat:false,showBackup:true,
-   match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="tiktok"},
-  {key:"Samsonite Tiktok",slotFormat:false,showBackup:true,
-   match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="tiktok"},
-  {key:"AT Shopee",       slotFormat:false,showBackup:false,
-   match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="shopee"},
-  {key:"Samsonite Shopee",slotFormat:true, showBackup:false,
-   match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="shopee"},
-  {key:"ASICS",           slotFormat:false,showBackup:false,
-   match:s=>s.brand.toLowerCase().includes("asics")},
+  {key:"AT Tiktok",slotFormat:false,showBackup:true,match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="tiktok"},
+  {key:"Samsonite Tiktok",slotFormat:false,showBackup:true,match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="tiktok"},
+  {key:"AT Shopee",slotFormat:false,showBackup:false,match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="shopee"},
+  {key:"Samsonite Shopee",slotFormat:true,showBackup:false,match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="shopee"},
+  {key:"ASICS",slotFormat:false,showBackup:false,match:s=>s.brand.toLowerCase().includes("asics")},
 ];
-
-const BACKUP_DEPRIORITY={
-  pagi :new Set(["nadiem"]),
-  siang:new Set(["maulidan"]),
-};
+const BACKUP_DEPRIORITY={pagi:new Set(["nadiem"]),siang:new Set(["maulidan"])};
 
 function buildPicShiftData(){
   const shifts={pagi:{},siang:{}};
@@ -748,18 +649,12 @@ function buildStandbyData(){
       }
     });
   });
-
   function findBackup(shift,usedSet){
     const entries=Object.values(nonDedByShift[shift]);
-    for(const e of entries){
-      if(usedSet.has(e.name.toLowerCase()))continue;
-      if(BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase()))continue;
-      return e;
-    }
+    for(const e of entries){if(usedSet.has(e.name.toLowerCase()))continue;if(BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase()))continue;return e;}
     for(const e of entries){if(usedSet.has(e.name.toLowerCase()))continue;return e;}
     return null;
   }
-
   return STANDBY_BRANDS.map(b=>{
     const matched=sessions.filter(b.match);
     const slots=[],seenKey=new Set();
@@ -769,20 +664,16 @@ function buildStandbyData(){
         s.hosts.forEach(h=>{
           const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
           const shift=getShift(endStr);if(shift==="malam")return;
-          const st=(h.startTime||"").substring(0,5);
-          const en=(h.endTime||"").substring(0,5);
+          const st=(h.startTime||"").substring(0,5),en=(h.endTime||"").substring(0,5);
           let picForSlot=null;
           const picKey=(h.picData||"").trim().toLowerCase();
           if(!h.picData||h.picData==="-"||DEDICATED_OPS.includes(picKey)||LSC_NAMES_SET.has(picKey)){
-            const backup=findBackup(shift,usedNonDed[shift]);
-            if(!backup)return;
-            picForSlot=backup.name;
-            usedNonDed[shift].add(backup.name.toLowerCase());
+            const backup=findBackup(shift,usedNonDed[shift]);if(!backup)return;
+            picForSlot=backup.name;usedNonDed[shift].add(backup.name.toLowerCase());
           }else{picForSlot=h.picData.trim();}
           const slotKey=`${st}-${en}-${picForSlot.toLowerCase()}`;
           if(seenKey.has(slotKey))return;seenKey.add(slotKey);
-          slots.push({type:"slot",label:`${st.replace(":00","")}–${en.replace(":00","")}`,
-            pic:picForSlot,nonDedPic:null,nonDedTime:null,sortKey:toMinJS(h.startTime)});
+          slots.push({type:"slot",label:`${st.replace(":00","")}–${en.replace(":00","")}`,pic:picForSlot,nonDedPic:null,nonDedTime:null,sortKey:toMinJS(h.startTime)});
         });
       }else{
         s.hosts.forEach(h=>{
@@ -794,16 +685,9 @@ function buildStandbyData(){
           let nonDedPic=null,nonDedTime=null;
           if(b.showBackup){
             const backup=findBackup(shift,usedNonDed[shift]);
-            if(backup){
-              nonDedPic=backup.name;
-              const st=backup.minStart.replace(":00","");
-              const en=backup.maxEnd.replace(":00","");
-              nonDedTime=`${st}–${en}`;
-              usedNonDed[shift].add(backup.name.toLowerCase());
-            }
+            if(backup){nonDedPic=backup.name;const st=backup.minStart.replace(":00","");const en=backup.maxEnd.replace(":00","");nonDedTime=`${st}–${en}`;usedNonDed[shift].add(backup.name.toLowerCase());}
           }
-          slots.push({type:"shift",label:shift.toUpperCase(),
-            pic:h.picData.trim(),nonDedPic,nonDedTime,sortKey:shift==="pagi"?0:1});
+          slots.push({type:"shift",label:shift.toUpperCase(),pic:h.picData.trim(),nonDedPic,nonDedTime,sortKey:shift==="pagi"?0:1});
         });
       }
     });
@@ -815,89 +699,42 @@ function buildStandbyData(){
 function renderStandby(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
-  if(!sessions.length){
-    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Data belum dimuat</div>`;
-    return;
-  }
+  if(!sessions.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Data belum dimuat</div>`;return;}
   const dateStr=sessions[0]?.date||"";
   let dateLabel="";
-  try{
-    dateLabel=new Date(dateStr+"T12:00:00+07:00")
-      .toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"})
-      .toUpperCase();
-  }catch(e){}
-
-  const picShift   =buildPicShiftData();
+  try{dateLabel=new Date(dateStr+"T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase();}catch(e){}
+  const picShift=buildPicShiftData();
   const standbyList=buildStandbyData();
-
   let html=`<div class="standby-wrapper">`;
-  html+=`
-    <div class="date-banner">
-      <div class="date-title">📅 REMINDER HARIAN</div>
-      <div class="date-value">${dateLabel}</div>
-    </div>`;
-
+  html+=`<div class="date-banner"><div class="date-title">📅 REMINDER HARIAN</div><div class="date-value">${dateLabel}</div></div>`;
   ["pagi","siang"].forEach(shift=>{
     const data=picShift[shift];
     if(!data||!Object.keys(data).length)return;
     const isShiftPagi=shift==="pagi";
-    html+=`
-      <div class="card">
-        <div class="card-header ${isShiftPagi?"header-primary":"header-warning"}">
-          👥 PIC Shift ${shift.charAt(0).toUpperCase()+shift.slice(1)}
-        </div>
-        <div class="list-group">`;
+    html+=`<div class="card"><div class="card-header ${isShiftPagi?"header-primary":"header-warning"}">👥 PIC Shift ${shift.charAt(0).toUpperCase()+shift.slice(1)}</div><div class="list-group">`;
     Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{
-      html+=`
-          <div class="list-group-item">
-            <span class="item-name">${d.name}</span>
-            <span class="item-right">Studio ${[...d.studios].sort((a,b)=>a-b).join(", ")}</span>
-          </div>`;
+      html+=`<div class="list-group-item"><span class="item-name">${d.name}</span><span class="item-right">Studio ${[...d.studios].sort((a,b)=>a-b).join(", ")}</span></div>`;
     });
     html+=`</div></div>`;
   });
-
   standbyList.forEach(b=>{
-    html+=`
-      <div class="card">
-        <div class="card-header header-warning">📍 Standby ${b.key}</div>`;
+    html+=`<div class="card"><div class="card-header header-warning">📍 Standby ${b.key}</div>`;
     b.slots.forEach(slot=>{
       const picDisp=formatPic(slot.pic);
       let backupStr="";
-      if(slot.nonDedPic){
-        backupStr=` <span style="color:var(--bs-muted);font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;
-        if(slot.nonDedTime) backupStr+=` <span style="color:#adb5bd;font-size:0.62rem">(${slot.nonDedTime})</span>`;
-      }
-      html+=`
-        <div class="standby-row-item">
-          <span class="standby-time">${slot.label}</span>
-          <span class="standby-pic">${picDisp}${backupStr}</span>
-        </div>`;
+      if(slot.nonDedPic){backupStr=` <span style="color:var(--bs-muted);font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;if(slot.nonDedTime)backupStr+=` <span style="color:#adb5bd;font-size:0.62rem">(${slot.nonDedTime})</span>`;}
+      html+=`<div class="standby-row-item"><span class="standby-time">${slot.label}</span><span class="standby-pic">${picDisp}${backupStr}</span></div>`;
     });
     html+=`</div>`;
   });
-
-  html+=`
-    <div class="card">
-      <div class="card-header">📋 Prosedur</div>
-      <div class="card-body">
-        <div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT
-2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG
-3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div>
-      </div>
-    </div>`;
-
-  html+=`
-    <div class="card">
-      <div class="card-header header-primary">🔗 Links</div>
-      <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
-      <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
-      <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
-      <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
-    </div>`;
-
-  html+=`<button class="btn-copy-standby" onclick="copyStandbyText()">📋 Copy Teks Reminder</button>`;
-  html+=`</div>`;
+  html+=`<div class="card"><div class="card-header">📋 Prosedur</div><div class="card-body"><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT\n2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG\n3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div></div></div>`;
+  html+=`<div class="card"><div class="card-header header-primary">🔗 Links</div>
+    <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
+  </div>`;
+  html+=`<button class="btn-copy-standby" onclick="copyStandbyText()">📋 Copy Teks Reminder</button></div>`;
   container.innerHTML=html;
 }
 
@@ -905,12 +742,7 @@ function renderStandby(){
 // KLASEMEN
 // ─────────────────────────────────────────────
 function _bsLoadingHTML(msg){
-  return `
-    <div style="display:flex;flex-direction:column;align-items:center;
-                justify-content:center;padding:56px 20px;gap:12px">
-      <div class="spinner-border"></div>
-      <span style="color:var(--bs-muted);font-size:0.82rem;font-weight:500">${msg}</span>
-    </div>`;
+  return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 20px;gap:12px"><div class="spinner-border"></div><span style="color:var(--bs-muted);font-size:0.82rem;font-weight:500">${msg}</span></div>`;
 }
 
 let _lastKlasemenData = null;
@@ -918,38 +750,29 @@ let _lastKlasemenData = null;
 async function loadKlasemen() {
   if (activeTab !== "klasemen") return;
   const container = document.getElementById("schedule-list");
-
-  if (_lastKlasemenData) {
-    renderKlasemen(_lastKlasemenData);
-  } else {
-    container.innerHTML = _bsLoadingHTML("Memuat klasemen...");
-  }
-
+  if (_lastKlasemenData) { renderKlasemen(_lastKlasemenData); }
+  else { container.innerHTML = _bsLoadingHTML("Memuat klasemen..."); }
   try {
     const controller = new AbortController();
-    const timeout    = setTimeout(() => controller.abort(), 20000);
-    const res  = await fetch(API_URL + "?action=leaderboard&t=" + Date.now(), { signal: controller.signal });
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch(API_URL + "?action=leaderboard&t=" + Date.now(), { signal: controller.signal });
     clearTimeout(timeout);
-
     const data = JSON.parse(await res.text());
     if (!data.success) throw new Error(data.error || "Unknown error");
     if (!data.leaderboard) {
-      if (!_lastKlasemenData && activeTab === "klasemen") {
+      if (!_lastKlasemenData && activeTab === "klasemen")
         container.innerHTML = `<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
-      }
       return;
     }
     if (activeTab !== "klasemen") return;
-
     _lastKlasemenData = data;
     renderKlasemen(_lastKlasemenData);
   } catch(err) {
     if (activeTab !== "klasemen") return;
-    if (!_lastKlasemenData) {
+    if (!_lastKlasemenData)
       container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
-    } else {
+    else
       showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
-    }
   }
 }
 
@@ -958,13 +781,11 @@ async function forceRefreshKlasemen() {
   const container = document.getElementById("schedule-list");
   _lastKlasemenData = null;
   container.innerHTML = _bsLoadingHTML("Force refresh...");
-
   try {
-    const res  = await fetch(API_URL + "?action=leaderboard&nocache=1&t=" + Date.now());
+    const res = await fetch(API_URL + "?action=leaderboard&nocache=1&t=" + Date.now());
     const data = JSON.parse(await res.text());
     if (!data.success) throw new Error(data.error);
     if (activeTab !== "klasemen") return;
-
     _lastKlasemenData = data;
     renderKlasemen(_lastKlasemenData);
     showBanner("✅ Klasemen diperbarui!", "success");
@@ -976,147 +797,79 @@ async function forceRefreshKlasemen() {
 
 function renderKlasemen(data){
   const container=document.getElementById("schedule-list");
-  if(!data.leaderboard){
-    container.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
-    return;
-  }
-
+  if(!data.leaderboard){container.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;return;}
   const totalPendHariH=data.leaderboard.reduce((s,r)=>s+r.pendingHariH,0);
-  const totalPendH1   =data.leaderboard.reduce((s,r)=>s+r.pendingH1,0);
-  const totalRows     =data.leaderboard.reduce((s,r)=>s+r.total,0);
-  const totalHold     =data.leaderboard.reduce((s,r)=>s+r.hold,0);
-
+  const totalPendH1=data.leaderboard.reduce((s,r)=>s+r.pendingH1,0);
+  const totalRows=data.leaderboard.reduce((s,r)=>s+r.total,0);
+  const totalHold=data.leaderboard.reduce((s,r)=>s+r.hold,0);
   const summaryCard=(bg,border,numColor,num,label)=>
-    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
-                 padding:10px 6px;text-align:center;position:relative;overflow:hidden">
+    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center;position:relative;overflow:hidden">
        <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
-       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;
-                   text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
+       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
-
   let html=`<div style="padding:8px 10px 24px">`;
-
-  html+=`
-    <div style="text-align:center;margin-bottom:12px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Data Input</div>
-      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">
-        ${data.dateFrom||""} → ${data.dateTo||""}
-      </div>
-    </div>`;
-
+  html+=`<div style="text-align:center;margin-bottom:12px"><div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Data Input</div><div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.dateFrom||""} → ${data.dateTo||""}</div></div>`;
   html+=`<div style="display:flex;gap:7px;margin-bottom:14px">
     ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPendHariH,"⏳ Hari H")}
     ${summaryCard("var(--bs-warning-subtle)","#ffe69c","#856404",totalPendH1,"📋 H+1")}
     ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalRows,"📂 Total")}
     ${summaryCard("var(--bs-secondary-subtle)","var(--bs-border)","var(--bs-secondary)",totalHold,"⏸ Hold")}
   </div>`;
-
-  html+=`
-    <div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;
-                margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
-      <div style="padding:7px 12px;background:var(--bs-light);border-bottom:1px solid var(--bs-border);
-                  font-size:0.6rem;font-weight:700;color:var(--bs-muted);display:flex;gap:4px;
-                  text-transform:uppercase;letter-spacing:0.5px">
-        <span style="width:26px">#</span>
-        <span style="flex:1">PIC</span>
-        <span style="width:44px;text-align:center">H+1</span>
-        <span style="width:44px;text-align:center">Hari H</span>
-        <span style="width:38px;text-align:center">Total</span>
-        <span style="width:34px;text-align:center">Hold</span>
-      </div>`;
-
+  html+=`<div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
+    <div style="padding:7px 12px;background:var(--bs-light);border-bottom:1px solid var(--bs-border);font-size:0.6rem;font-weight:700;color:var(--bs-muted);display:flex;gap:4px;text-transform:uppercase;letter-spacing:0.5px">
+      <span style="width:26px">#</span><span style="flex:1">PIC</span>
+      <span style="width:44px;text-align:center">H+1</span><span style="width:44px;text-align:center">Hari H</span>
+      <span style="width:38px;text-align:center">Total</span><span style="width:34px;text-align:center">Hold</span>
+    </div>`;
   data.leaderboard.forEach((r,idx)=>{
-    const pts  =r.pendingPoints;
+    const pts=r.pendingPoints;
     const medal=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
     const sColor=pts===0?"var(--bs-success)":pts<=5?"var(--bs-primary)":pts<=15?"#856404":"var(--bs-danger)";
-    const sTxt  =pts>0?`${pts} data pending`:"✅ Data Lengkap";
-    const rowBg =idx%2===1?"var(--bs-light)":"var(--bs-white)";
-
-    html+=`
-      <div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);
-                  display:flex;align-items:center;gap:4px;background:${rowBg}">
-        <span style="width:26px;font-size:0.8rem">${medal}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div>
-          <div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div>
-        </div>
-        <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:#856404">${r.pendingH1}</span>
-        <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:var(--bs-danger)">${r.pendingHariH}</span>
-        <span style="width:38px;text-align:center;font-size:0.75rem;color:var(--bs-muted)">${r.total}</span>
-        <span style="width:34px;text-align:center;font-size:0.75rem;color:var(--bs-secondary)">${r.hold}</span>
-      </div>`;
+    const sTxt=pts>0?`${pts} data pending`:"✅ Data Lengkap";
+    const rowBg=idx%2===1?"var(--bs-light)":"var(--bs-white)";
+    html+=`<div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);display:flex;align-items:center;gap:4px;background:${rowBg}">
+      <span style="width:26px;font-size:0.8rem">${medal}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div><div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div></div>
+      <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:#856404">${r.pendingH1}</span>
+      <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:var(--bs-danger)">${r.pendingHariH}</span>
+      <span style="width:38px;text-align:center;font-size:0.75rem;color:var(--bs-muted)">${r.total}</span>
+      <span style="width:34px;text-align:center;font-size:0.75rem;color:var(--bs-secondary)">${r.hold}</span>
+    </div>`;
   });
   html+=`</div>`;
-
-  html+=`
-    <div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);
-                text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
-      📋 Copy ID Line Pending per PIC
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
-
+  html+=`<div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Copy ID Line Pending per PIC</div>`;
+  html+=`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
   data.leaderboard.forEach(r=>{
     const hasPending=r.pendingRows?.length>0;
-    const idLines   =(r.pendingRows||[]).map(p=>p.idLine).filter(Boolean);
-    const pts       =r.pendingPoints;
+    const idLines=(r.pendingRows||[]).map(p=>p.idLine).filter(Boolean);
+    const pts=r.pendingPoints;
     if(hasPending){
-      html+=`
-        <button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
-          style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
-                 background:var(--bs-primary-subtle);color:var(--bs-primary-text);
-                 font-size:0.7rem;font-weight:600;cursor:pointer">
-          ${formatPic(r.pic)}
-          <span style="color:#856404;font-weight:700">(${pts})</span>
-        </button>`;
+      html+=`<button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
+        style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.7rem;font-weight:600;cursor:pointer">
+        ${formatPic(r.pic)} <span style="color:#856404;font-weight:700">(${pts})</span></button>`;
     }else{
-      html+=`
-        <button disabled
-          style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);
-                 background:var(--bs-light);color:#adb5bd;
-                 font-size:0.7rem;font-weight:600;cursor:not-allowed">
-          ${formatPic(r.pic)} ✅
-        </button>`;
+      html+=`<button disabled style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);background:var(--bs-light);color:#adb5bd;font-size:0.7rem;font-weight:600;cursor:not-allowed">${formatPic(r.pic)} ✅</button>`;
     }
   });
   html+=`</div>`;
-
   const withPending=data.leaderboard.filter(r=>r.pendingRows?.length>0);
   if(withPending.length){
     withPending.forEach(r=>{
-      html+=`
-        <div style="margin-bottom:12px">
-          <div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);
-                      text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">
-            ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
-          </div>`;
+      html+=`<div style="margin-bottom:12px"><div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending</div>`;
       r.pendingRows.forEach(p=>{
         const tags=[];
-        if(p.hariH) tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);
-                                font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
-        if(p.h1)    tags.push(`<span style="background:var(--bs-warning-subtle);color:var(--bs-warning-text);
-                                font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">H+1</span>`);
-        html+=`
-          <div style="background:var(--bs-white);border-radius:var(--bs-radius);padding:7px 10px;
-                      margin-bottom:3px;display:flex;align-items:center;gap:8px;
-                      border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
-              <div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">${p.date} · ${p.startTime} · ${p.studio}</div>
-            </div>
-            <div style="display:flex;gap:3px">${tags.join("")}</div>
-            <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">${p.idLine}</div>
-          </div>`;
+        if(p.hariH)tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
+        if(p.h1)tags.push(`<span style="background:var(--bs-warning-subtle);color:var(--bs-warning-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">H+1</span>`);
+        html+=`<div style="background:var(--bs-white);border-radius:var(--bs-radius);padding:7px 10px;margin-bottom:3px;display:flex;align-items:center;gap:8px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
+          <div style="flex:1;min-width:0"><div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div><div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">${p.date} · ${p.startTime} · ${p.studio}</div></div>
+          <div style="display:flex;gap:3px">${tags.join("")}</div>
+          <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">${p.idLine}</div>
+        </div>`;
       });
       html+=`</div>`;
     });
   }
-
-  html+=`
-    <button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block"
-      style="margin-top:6px;padding:10px">
-      🔄 Refresh (Clear Cache)
-    </button>`;
-
+  html+=`<button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block" style="margin-top:6px;padding:10px">🔄 Refresh (Clear Cache)</button>`;
   html+=`</div>`;
   container.innerHTML=html;
 }
@@ -1142,13 +895,8 @@ let _lastFormData  = [];
 async function loadHariH() {
   if (activeTab !== "hariH") return;
   const container = document.getElementById("schedule-list");
-
-  if (_lastHariHData) {
-    renderHariH(_lastHariHData, _lastFormData);
-  } else {
-    container.innerHTML = _bsLoadingHTML("Memuat data hari ini...");
-  }
-
+  if (_lastHariHData) { renderHariH(_lastHariHData, _lastFormData); }
+  else { container.innerHTML = _bsLoadingHTML("Memuat data hari ini..."); }
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
@@ -1157,33 +905,27 @@ async function loadHariH() {
       fetch(API_URL + "?action=formcheck&t=" + Date.now(), { signal: controller.signal }),
     ]);
     clearTimeout(timeout);
-
     const data     = JSON.parse(await todayRes.text());
     const formData = JSON.parse(await formRes.text());
     if (!data.success) throw new Error(data.error || "Unknown error");
     if (activeTab !== "hariH") return;
-
     _lastHariHData = data;
     _lastFormData  = formData.success ? formData.responses : [];
-
     renderHariH(_lastHariHData, _lastFormData);
   } catch(err) {
     if (activeTab !== "hariH") return;
-    if (!_lastHariHData) {
+    if (!_lastHariHData)
       container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
-    } else {
+    else
       showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
-    }
   }
 }
 
 async function forceRefreshHariH() {
   if (activeTab !== "hariH") return;
   const container = document.getElementById("schedule-list");
-  _lastHariHData = null;
-  _lastFormData  = [];
+  _lastHariHData = null; _lastFormData = [];
   container.innerHTML = _bsLoadingHTML("Force refresh...");
-
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
@@ -1192,15 +934,12 @@ async function forceRefreshHariH() {
       fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
     ]);
     clearTimeout(timeout);
-
     const data     = JSON.parse(await todayRes.text());
     const formData = JSON.parse(await formRes.text());
     if (!data.success) throw new Error(data.error || "Unknown error");
     if (activeTab !== "hariH") return;
-
     _lastHariHData = data;
     _lastFormData  = formData.success ? formData.responses : [];
-
     renderHariH(_lastHariHData, _lastFormData);
     showBanner("✅ Data hari H diperbarui!", "success");
   } catch(err) {
@@ -1213,7 +952,7 @@ function getHariHShift(endTime) {
   if (!endTime || endTime === "-") return "siang";
   const [h] = endTime.split(":").map(Number);
   if (h >= 8  && h < 16) return "pagi";
-  if (h >= 16)           return "siang";
+  if (h >= 16)            return "siang";
   return "malam";
 }
 
@@ -1232,36 +971,26 @@ const SHIFT_COLOR = {
 function _fmtSubmitTime(ms) {
   if (!ms) return '-';
   try {
-    const d    = new Date(ms);
-    const date = d.toLocaleDateString("id-ID", { day:"numeric", month:"short", timeZone:"Asia/Jakarta" });
-    const time = d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
-    return `${date}, ${time}`;
+    const d = new Date(ms);
+    return d.toLocaleDateString("id-ID", { day:"numeric", month:"short", timeZone:"Asia/Jakarta" })
+      + ", " + d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
   } catch(e) { return '-'; }
 }
 
 // ─────────────────────────────────────────────
-// INTERVAL OVERLAP HELPER ← BARU
+// INTERVAL OVERLAP HELPER
 // ─────────────────────────────────────────────
 function getOverlapRatio(formStart, formEnd, hStart, hEnd) {
   if (!formStart || !hStart) return 0;
   const fsMin = toMinJS(formStart);
   const hsMin = toMinJS(hStart);
-
-  // Kalau form tidak ada endLive → fallback point-based
   if (!formEnd || formEnd === '-' || formEnd === '') {
     return Math.abs(fsMin - hsMin) <= 30 ? 0.6 : 0;
   }
-
   let feMin = toMinJS(formEnd);
-  // Kalau hEnd null → JANGAN pakai p.endTime, estimasi dari durasi form
-  let heMin = (hEnd && hEnd !== '-')
-    ? toMinJS(hEnd)
-    : hsMin + (toMinJS(formEnd) - toMinJS(formStart));
-
-  // Handle overnight
+  let heMin = (hEnd && hEnd !== '-') ? toMinJS(hEnd) : hsMin + (toMinJS(formEnd) - toMinJS(formStart));
   if (feMin <= fsMin) feMin += 24 * 60;
   if (heMin <= hsMin) heMin += 24 * 60;
-
   const overlapMin = Math.max(0, Math.min(feMin, heMin) - Math.max(fsMin, hsMin));
   const minDur     = Math.min(feMin - fsMin, heMin - hsMin);
   if (minDur <= 0) return 0;
@@ -1281,9 +1010,7 @@ function renderHariH(data, formResponses = []) {
     if (!r.rows || !r.rows.length) return;
     r.rows.forEach(row => {
       const shift = getHariHShift(row.endTime);
-      if (!shiftGroups[shift][r.pic]) {
-        shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
-      }
+      if (!shiftGroups[shift][r.pic]) shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
       shiftGroups[shift][r.pic].rows.push(row);
     });
   });
@@ -1292,15 +1019,13 @@ function renderHariH(data, formResponses = []) {
   window._hariHDate        = data.date;
 
   // ─────────────────────────────────────────
-  // SESSION MATCH — interval overlap ≥ 50%
+  // HELPER: session match — interval overlap ≥ 50%
   // ─────────────────────────────────────────
   function sessionMatch(formResp, p, hostObj) {
     const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
-    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-')
-      ? hostObj.end : null; // null, bukan p.endTime!
+    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
 
-    // 1. Fuzzy word match host name
     const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
     const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
     const anyWordMatch = wordsForm.some(wf => {
@@ -1313,57 +1038,149 @@ function renderHariH(data, formResponses = []) {
     });
     if (!anyWordMatch) return false;
 
-    // 2. Brand match
     const fBrand = formResp.brand.toLowerCase().trim();
     const sBrand = p.brand.toLowerCase().trim();
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
 
-    // 3. Marketplace match
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
 
-    // 4. Interval overlap ≥ 50% (ganti ±90 menit)
     const ratio = getOverlapRatio(formResp.startLive, formResp.endLive, hostStart, hostEnd);
     if (ratio < 0.5) return false;
-
     return true;
   }
 
   // ─────────────────────────────────────────
-  // FIND CANDIDATES — overlap ≥ 15%
+  // HELPER: dedup form responses
+  // Sama host+brand+mp+startLive+endLive → merge jadi 1, gabung screenshot
   // ─────────────────────────────────────────
+  function deduplicateResponses(responses) {
+    const groups = {};
+    responses.forEach(r => {
+      const key = [
+        r.host.toLowerCase().trim(),
+        r.brand.toLowerCase().trim(),
+        r.marketplace.toLowerCase().trim(),
+        r.startLive || '',
+        r.endLive   || '',
+      ].join('|');
+      if (!groups[key]) {
+        groups[key] = { ...r };
+      } else {
+        // Gabung screenshot URL
+        const existing = groups[key].screenshot.split(',').map(s => s.trim()).filter(Boolean);
+        const incoming = r.screenshot.split(',').map(s => s.trim()).filter(Boolean);
+        incoming.forEach(lnk => { if (!existing.includes(lnk)) existing.push(lnk); });
+        groups[key].screenshot = existing.join(',');
+        // Pakai submittedAt paling baru (form terakhir yang dikirim)
+        if (r.submittedAt && r.submittedAt > (groups[key].submittedAt || 0)) {
+          groups[key].submittedAt = r.submittedAt;
+        }
+      }
+    });
+    return Object.values(groups);
+  }
+
+  // ─────────────────────────────────────────
+  // HELPER: exclusive claim
+  // Tiap form response (setelah dedup) hanya boleh diklaim
+  // oleh 1 slot host: yang paling dekat form.startLive ke h.start
+  // ─────────────────────────────────────────
+  function buildExclusiveClaims(dedupedResponses, allSlots) {
+    const claims = {}; // rIdx → slotKey
+
+    dedupedResponses.forEach((r, rIdx) => {
+      let bestSlotKey = null;
+      let bestDiff    = Infinity;
+      let bestRatio   = 0;
+
+      allSlots.forEach(({ slotKey, p, h }) => {
+        if (!sessionMatch(r, p, h)) return;
+
+        // Tiebreaker 1: closest form.startLive to h.start
+        const diff = r.startLive
+          ? Math.abs(toMinJS(r.startLive) - toMinJS(h.start || p.startTime))
+          : 9999;
+
+        // Tiebreaker 2: highest overlap ratio
+        const ratio = getOverlapRatio(
+          r.startLive, r.endLive,
+          h.start || p.startTime,
+          h.end && h.end !== '-' ? h.end : null
+        );
+
+        if (diff < bestDiff || (diff === bestDiff && ratio > bestRatio)) {
+          bestDiff    = diff;
+          bestRatio   = ratio;
+          bestSlotKey = slotKey;
+        }
+      });
+
+      if (bestSlotKey !== null) claims[rIdx] = bestSlotKey;
+    });
+
+    return claims;
+  }
+
+  // ─────────────────────────────────────────
+  // PRE-PASS
+  // ─────────────────────────────────────────
+
+  // 1. Dedup
+  const dedupedForms = deduplicateResponses(formResponses);
+
+  // 2. Kumpulkan semua slot dari leaderboard
+  const allSlots = [];
+  data.leaderboard.forEach(r => {
+    (r.rows || []).forEach(p => {
+      const hosts = (p.hosts || []).map(h =>
+        typeof h === 'string' ? { name: h, start: null, end: null } : h
+      );
+      hosts.forEach(h => {
+        allSlots.push({
+          slotKey: `${p.idLine}__${h.start || ''}__${h.name}`,
+          p, h,
+        });
+      });
+    });
+  });
+
+  // 3. Build exclusive claims
+  const exclusiveClaims = buildExclusiveClaims(dedupedForms, allSlots);
+
+  // 4. Helper: ambil forms yang diklaim slot ini
+  function getClaimedForms(slotKey) {
+    return dedupedForms.filter((_, rIdx) => exclusiveClaims[rIdx] === slotKey);
+  }
+
+  // 5. Helper: kandidat untuk ❓ (pakai dedupedForms, tanpa exclusive filter)
   function findSessionCandidates(p, hostObj) {
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
-    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-')
-      ? hostObj.end : null;
-
-    return formResponses.filter(r => {
+    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
+    return dedupedForms.filter(r => {
       const fBrand = r.brand.toLowerCase().trim();
       const sBrand = p.brand.toLowerCase().trim();
       if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
-
       if (r.marketplace && p.mp) {
         const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
           || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
         if (!mpOk) return false;
       }
-
       const ratio = getOverlapRatio(r.startLive, r.endLive, hostStart, hostEnd);
-      if (ratio < 0.15) return false;
-
-      return true;
+      return ratio >= 0.15;
     });
   }
 
+  // ─────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────
   const summaryCard = (bg, border, numColor, num, label) =>
-    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);
-                 padding:10px 6px;text-align:center">
+    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
        <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
-       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;
-                   text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
+       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
 
   let html = `<div style="padding:8px 10px 24px">`;
@@ -1387,10 +1204,7 @@ function renderHariH(data, formResponses = []) {
     </button>`;
 
   if (totalPending === 0) {
-    html += `
-      <div style="text-align:center;padding:28px;color:var(--bs-success);font-size:0.85rem;font-weight:600">
-        ✅ Semua data hari ini sudah diisi!
-      </div>`;
+    html += `<div style="text-align:center;padding:28px;color:var(--bs-success);font-size:0.85rem;font-weight:600">✅ Semua data hari ini sudah diisi!</div>`;
   } else {
     ["pagi","siang","malam"].forEach(shift => {
       const picMap     = shiftGroups[shift];
@@ -1401,13 +1215,10 @@ function renderHariH(data, formResponses = []) {
 
       html += `
         <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
-                    padding:8px 12px;margin-bottom:10px;
-                    display:flex;align-items:center;justify-content:space-between">
+                    padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:0.78rem;font-weight:700;color:${c.text}">${SHIFT_LABEL[shift]}</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">
-              ${totalShift} sesi belum
-            </span>
+            <span style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">${totalShift} sesi belum</span>
             <button onclick="copyShiftPending('${shift}')"
               style="padding:3px 9px;border:1px solid ${c.border};border-radius:var(--bs-radius-pill);
                      background:white;color:${c.text};font-size:0.62rem;font-weight:700;cursor:pointer">
@@ -1422,61 +1233,45 @@ function renderHariH(data, formResponses = []) {
         const safeKey = (picData.pic + "_" + shift).replace(/[^a-zA-Z0-9]/g, '_');
 
         html += `
-          <div style="background:var(--bs-white);border:1px solid var(--bs-border);
-                      border-radius:var(--bs-radius-lg);margin-bottom:10px;
-                      overflow:hidden;box-shadow:var(--bs-shadow-sm)">
-
+          <div style="background:var(--bs-white);border:1px solid var(--bs-border);border-radius:var(--bs-radius-lg);
+                      margin-bottom:10px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
             <div onclick="togglePicDropdown('${safeKey}')"
-              style="padding:9px 12px;background:var(--bs-light);
-                     display:flex;align-items:center;justify-content:space-between;
-                     cursor:pointer;user-select:none;border-bottom:1px solid var(--bs-border)">
+              style="padding:9px 12px;background:var(--bs-light);display:flex;align-items:center;
+                     justify-content:space-between;cursor:pointer;user-select:none;border-bottom:1px solid var(--bs-border)">
               <div style="display:flex;align-items:center;gap:7px">
                 <span id="pic-icon-${safeKey}" style="font-size:0.75rem;color:var(--bs-muted)">▸</span>
-                <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">
-                  ${formatPic(picData.pic)}
-                </span>
-                <span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);
-                             border:1px solid #f1aeb5;font-size:0.6rem;font-weight:700;
-                             padding:1px 7px;border-radius:var(--bs-radius-pill)">
+                <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">${formatPic(picData.pic)}</span>
+                <span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);border:1px solid #f1aeb5;
+                             font-size:0.6rem;font-weight:700;padding:1px 7px;border-radius:var(--bs-radius-pill)">
                   ${rows.length} sesi
                 </span>
               </div>
               <button onclick="event.stopPropagation();copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
                 style="padding:3px 10px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
-                       background:var(--bs-primary-subtle);color:var(--bs-primary-text);
-                       font-size:0.62rem;font-weight:600;cursor:pointer">
+                       background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.62rem;font-weight:600;cursor:pointer">
                 📋 ID
               </button>
             </div>
-
-            <div id="pic-content-${safeKey}"
-              style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px">`;
+            <div id="pic-content-${safeKey}" style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px">`;
 
         rows.forEach((p, pIdx) => {
-          const sessionTime = (p.endTime && p.endTime !== '-')
-            ? `${p.startTime} → ${p.endTime}` : p.startTime;
-
+          const sessionTime = (p.endTime && p.endTime !== '-') ? `${p.startTime} → ${p.endTime}` : p.startTime;
           const typeBadge = p.isMarathon
-            ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;
-                            font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">
-                 🏃 Marathon</span>`
-            : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;
-                            font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">
-                 ⚡ Single</span>`;
+            ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">🏃 Marathon</span>`
+            : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">⚡ Single</span>`;
 
           const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
-          const hosts    = rawHosts.map(h => typeof h === 'string'
-            ? { name: h, start: null, end: null } : h);
+          const hosts    = rawHosts.map(h => typeof h === 'string' ? { name: h, start: null, end: null } : h);
 
-          // ── BARU: filter semua match, split valid vs false ──
+          // ── Matching dengan exclusive claim ──
           const matchedList   = [];
           const unmatchedList = [];
 
           hosts.forEach((h, hIdx) => {
-            const allMatches = formResponses.filter(r => sessionMatch(r, p, h));
+            const slotKey    = `${p.idLine}__${h.start || ''}__${h.name}`;
+            const allMatches = getClaimedForms(slotKey); // ← exclusive, tidak overlap antar slot
 
             if (allMatches.length > 0) {
-              // Hitung endMs untuk host SLOT (bukan session!)
               let endMs = null;
               if (h.end && h.end !== '-' && data.date) {
                 try {
@@ -1490,7 +1285,7 @@ function renderHariH(data, formResponses = []) {
                 ? allMatches.filter(r => !r.submittedAt || r.submittedAt >= endMs)
                 : allMatches;
               const falseMatches = endMs
-                ? allMatches.filter(r => r.submittedAt && r.submittedAt < endMs)
+                ? allMatches.filter(r =>  r.submittedAt && r.submittedAt < endMs)
                 : [];
 
               if (validMatches.length > 0) {
@@ -1512,49 +1307,33 @@ function renderHariH(data, formResponses = []) {
                     ${typeBadge}
                   </div>
                   <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
-                    <span>🕐 ${sessionTime}</span>
-                    <span>📍 ${p.studio} · ${p.mp}</span>
+                    <span>🕐 ${sessionTime}</span><span>📍 ${p.studio} · ${p.mp}</span>
                   </div>
                 </div>
-                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;padding-top:2px">
-                  ${p.idLine}
-                </div>
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;padding-top:2px">${p.idLine}</div>
               </div>
-
               <div style="display:flex;flex-direction:column;gap:6px">`;
 
           if (hosts.length === 0) {
-            html += `
-              <div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">
-                ⚠️ Tidak ada data host
-              </div>`;
+            html += `<div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">⚠️ Tidak ada data host</div>`;
           } else {
 
-            // ── ✅ VALID UPLOAD ──
+            // ✅ Valid uploads
             matchedList.forEach(({ h, match, isValid, falseMatches, endMs }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
                 ? `<span style="color:var(--bs-muted)">${h.start}${h.end ? ' → ' + h.end : ''}</span>`
-                : (match.startLive
-                  ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive ? ' → ' + match.endLive : ''}</span>`
-                  : '');
+                : (match.startLive ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive ? ' → ' + match.endLive : ''}</span>` : '');
 
               if (isValid) {
-                // ✅ Upload valid
                 const prevFalseNote = falseMatches.length > 0
-                  ? `<div style="font-size:0.58rem;color:#856404;margin-top:3px;opacity:0.85">
-                       ⚠️ ${falseMatches.length}x false upload sebelumnya terdeteksi
-                     </div>`
+                  ? `<div style="font-size:0.58rem;color:#856404;margin-top:3px;opacity:0.85">⚠️ ${falseMatches.length}x false upload sebelumnya terdeteksi</div>`
                   : '';
-
                 html += `
-                  <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
-                              border-radius:var(--bs-radius);padding:7px 10px">
+                  <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;border-radius:var(--bs-radius);padding:7px 10px">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                       <div>
-                        <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">
-                          ✅ ${h.name}
-                        </div>
+                        <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">✅ ${h.name}</div>
                         <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
                         ${prevFalseNote}
                       </div>
@@ -1571,7 +1350,7 @@ function renderHariH(data, formResponses = []) {
                   </div>`;
 
               } else {
-                // ⚠️ False upload — belum ada upload valid
+                // ⚠️ False upload — belum ada yang valid
                 let endLabel = '-';
                 if (endMs) {
                   try {
@@ -1580,40 +1359,26 @@ function renderHariH(data, formResponses = []) {
                       + ", " + d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
                   } catch(e) {}
                 }
-
                 html += `
-                  <div style="background:#fee2e2;border:1px solid #fca5a5;
-                              border-radius:var(--bs-radius);padding:7px 10px">
+                  <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:var(--bs-radius);padding:7px 10px">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
                       <div style="flex:1;min-width:0">
                         <div style="font-size:0.72rem;font-weight:700;color:#b91c1c">⚠️ ${h.name}</div>
                         <div style="font-size:0.6rem;margin-top:2px;color:#b91c1c;opacity:0.75">${slotTime}</div>
-
-                        <div style="background:white;border:1px solid #fca5a5;
-                                    border-radius:var(--bs-radius);padding:5px 8px;margin-top:6px">
-                          <div style="font-size:0.62rem;font-weight:700;color:#b91c1c">
-                            ❌ False form upload terdeteksi (${falseMatches.length}x)
-                          </div>
+                        <div style="background:white;border:1px solid #fca5a5;border-radius:var(--bs-radius);padding:5px 8px;margin-top:6px">
+                          <div style="font-size:0.62rem;font-weight:700;color:#b91c1c">❌ False form upload terdeteksi (${falseMatches.length}x)</div>
                           <div style="font-size:0.58rem;color:#b91c1c;opacity:0.8;margin-top:1px">
                             Disubmit ${_fmtSubmitTime(match.submittedAt)} — sesi belum selesai (end: ${endLabel})
                           </div>
                         </div>
-
-                        <div style="background:#fff7ed;border:1px solid #fed7aa;
-                                    border-radius:var(--bs-radius);padding:5px 8px;margin-top:5px;
-                                    display:flex;align-items:center;gap:6px">
+                        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--bs-radius);padding:5px 8px;margin-top:5px;display:flex;align-items:center;gap:6px">
                           <span style="font-size:0.85rem">⏳</span>
                           <div>
-                            <div style="font-size:0.62rem;font-weight:700;color:#c2410c">
-                              Menunggu form upload yang benar
-                            </div>
-                            <div style="font-size:0.58rem;color:#c2410c;opacity:0.85;margin-top:1px">
-                              Hubungi host: <strong>${h.name}</strong>
-                            </div>
+                            <div style="font-size:0.62rem;font-weight:700;color:#c2410c">Menunggu form upload yang benar</div>
+                            <div style="font-size:0.58rem;color:#c2410c;opacity:0.85;margin-top:1px">Hubungi host: <strong>${h.name}</strong></div>
                           </div>
                         </div>
                       </div>
-
                       ${links.length > 0 ? `
                         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;padding-top:2px">
                           ${links.map((lnk, li) => lnk
@@ -1629,7 +1394,7 @@ function renderHariH(data, formResponses = []) {
               }
             });
 
-            // ── ❓ / ⏳ Unmatched ──
+            // ❓ / ⏳ Unmatched
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
               const candidates = findSessionCandidates(p, h);
@@ -1637,48 +1402,32 @@ function renderHariH(data, formResponses = []) {
 
               if (candidates.length > 0) {
                 html += `
-                  <div style="background:#fffbeb;border:1px solid #ffe69c;
-                              border-radius:var(--bs-radius);overflow:hidden">
+                  <div style="background:#fffbeb;border:1px solid #ffe69c;border-radius:var(--bs-radius);overflow:hidden">
                     <div onclick="toggleCandidates('${candId}')"
-                      style="padding:7px 10px;display:flex;align-items:center;
-                             justify-content:space-between;cursor:pointer;gap:8px">
+                      style="padding:7px 10px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:8px">
                       <div>
                         <div style="font-size:0.72rem;font-weight:700;color:#92400e">❓ ${h.name}</div>
-                        ${slotTime
-                          ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>`
-                          : ''}
+                        ${slotTime ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>` : ''}
                       </div>
                       <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-                        <span style="background:#92400e;color:white;font-size:0.58rem;
-                                     padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:700">
-                          ${candidates.length} kandidat
-                        </span>
+                        <span style="background:#92400e;color:white;font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:700">${candidates.length} kandidat</span>
                         <span id="cand-icon-${candId}" style="font-size:0.72rem;color:#92400e">▸</span>
                       </div>
                     </div>
-                    <div id="cand-${candId}"
-                      style="display:none;border-top:1px solid #ffe69c;
-                             background:#fffdf0;padding:6px 10px;
-                             flex-direction:column;gap:5px">
+                    <div id="cand-${candId}" style="display:none;border-top:1px solid #ffe69c;background:#fffdf0;padding:6px 10px;flex-direction:column;gap:5px">
                       ${candidates.map(c => {
                         const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
                         return `
-                          <div style="display:flex;align-items:center;justify-content:space-between;
-                                      padding:5px 8px;background:white;border-radius:var(--bs-radius);
-                                      border:1px solid #ffe69c;gap:8px">
+                          <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:white;border-radius:var(--bs-radius);border:1px solid #ffe69c;gap:8px">
                             <div style="min-width:0">
                               <div style="font-size:0.7rem;font-weight:700;color:#92400e">${c.host}</div>
-                              <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">
-                                ${c.startLive}${c.endLive ? ' → ' + c.endLive : ''} · ${c.typeLive || '-'}
-                              </div>
+                              <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}</div>
                             </div>
                             <div style="display:flex;gap:4px;flex-shrink:0">
-                              ${links.map((lnk, li) => lnk
+                              ${links.map((lnk,li) => lnk
                                 ? `<a href="${lnk}" target="_blank"
-                                     style="padding:3px 8px;background:#fffbeb;border:1px solid #ffe69c;
-                                            border-radius:var(--bs-radius-pill);color:var(--bs-primary);
-                                            font-size:0.62rem;font-weight:700;text-decoration:none">
-                                     📎${links.length > 1 ? li + 1 : ''}
+                                     style="padding:3px 8px;background:#fffbeb;border:1px solid #ffe69c;border-radius:var(--bs-radius-pill);color:var(--bs-primary);font-size:0.62rem;font-weight:700;text-decoration:none">
+                                     📎${links.length>1?li+1:''}
                                    </a>` : '').join('')}
                             </div>
                           </div>`;
@@ -1687,14 +1436,9 @@ function renderHariH(data, formResponses = []) {
                   </div>`;
               } else {
                 html += `
-                  <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;
-                              border-radius:var(--bs-radius);padding:7px 10px">
+                  <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;border-radius:var(--bs-radius);padding:7px 10px">
                     <div style="font-size:0.72rem;font-weight:700;color:var(--bs-danger-text)">⏳ ${h.name}</div>
-                    ${slotTime
-                      ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">
-                           ${slotTime}
-                         </div>`
-                      : ''}
+                    ${slotTime ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">${slotTime}</div>` : ''}
                   </div>`;
               }
             });
@@ -1749,8 +1493,7 @@ function copyShiftPending(shift) {
     const rows = [...picData.rows].sort((a,b) => a.startTime.localeCompare(b.startTime));
     text += `${formatPic(picData.pic)} (${rows.length} sesi)\n`;
     rows.forEach(p => {
-      const timeRange = (p.endTime && p.endTime !== '-')
-        ? `${p.startTime}→${p.endTime}` : p.startTime;
+      const timeRange = (p.endTime && p.endTime !== '-') ? `${p.startTime}→${p.endTime}` : p.startTime;
       text += `• ${p.brand} | ${p.studio} | ${p.mp} | ${timeRange} | ID: ${p.idLine}\n`;
     });
     text += '\n';
@@ -1760,11 +1503,11 @@ function copyShiftPending(shift) {
     .catch(() => showBanner('❌ Gagal copy', 'error'));
 }
 
-function copyIdLines(picName,idLines){
-  if(!idLines||idLines.length===0)return;
+function copyIdLines(picName, idLines) {
+  if (!idLines || idLines.length === 0) return;
   navigator.clipboard.writeText(idLines.join("\n"))
-    .then(()=>showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`,"success"))
-    .catch(()=>showBanner("❌ Gagal copy","error"));
+    .then(() => showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`, "success"))
+    .catch(() => showBanner("❌ Gagal copy", "error"));
 }
 
 // ─────────────────────────────────────────────
@@ -1773,19 +1516,13 @@ function copyIdLines(picName,idLines){
 function copyStandbyText(){
   const dateStr=sessions[0]?.date||"";
   let dateLabel="";
-  try{
-    dateLabel=new Date(dateStr+"T12:00:00+07:00")
-      .toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"})
-      .toUpperCase();
-  }catch(e){}
+  try{dateLabel=new Date(dateStr+"T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase();}catch(e){}
   const picShift=buildPicShiftData(),standbyList=buildStandbyData();
   let text=`REMINDER ${dateLabel}\n\n`;
   ["pagi","siang"].forEach(shift=>{
     const data=picShift[shift];if(!data||!Object.keys(data).length)return;
     text+=`PIC SHIFT ${shift.toUpperCase()}\n`;
-    Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{
-      text+=`${d.name.replace("@","")}\t${[...d.studios].sort((a,b)=>a-b).join(",")}\n`;
-    });
+    Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{text+=`${d.name.replace("@","")}\t${[...d.studios].sort((a,b)=>a-b).join(",")}\n`;});
     text+="\n";
   });
   standbyList.forEach(b=>{
@@ -1808,35 +1545,23 @@ function showNotifPanel(){
   if(panel.style.display!=="none"){panel.style.display="none";return;}
   const now=Date.now(),list=document.getElementById("notif-time-list");
   list.innerHTML="";
-
   const startTimes=new Set(),endTimes=new Set();
   sessions.forEach(s=>{
     if(s.startTime&&s.startTime!=="-")startTimes.add(s.startTime);
     if(s.endTime&&s.endTime!=="-")endTimes.add(s.endTime);
   });
-
   const makeBtn=(time,type)=>{
-    const ms=timeToMs(sessions[0]?.date,time);
-    if(!ms)return;
-    const diff=ms-now;
-    if(diff<-60*60*1000)return;
+    const ms=timeToMs(sessions[0]?.date,time);if(!ms)return;
+    const diff=ms-now;if(diff<-60*60*1000)return;
     const diffMin=Math.round(diff/60000);
     const btn=document.createElement("button");
     btn.className="notif-time-btn";
-    if(type==="start"){
-      btn.style.background="var(--bs-success-subtle)";
-      btn.style.color     ="var(--bs-success-text)";
-      btn.style.border    ="1px solid #a3cfbb";
-    }else{
-      btn.style.background="var(--bs-danger-subtle)";
-      btn.style.color     ="var(--bs-danger-text)";
-      btn.style.border    ="1px solid #f1aeb5";
-    }
+    if(type==="start"){btn.style.background="var(--bs-success-subtle)";btn.style.color="var(--bs-success-text)";btn.style.border="1px solid #a3cfbb";}
+    else{btn.style.background="var(--bs-danger-subtle)";btn.style.color="var(--bs-danger-text)";btn.style.border="1px solid #f1aeb5";}
     btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
     btn.onclick=()=>sendManualNotifFor(time,type);
     list.appendChild(btn);
   };
-
   [...startTimes].sort().forEach(t=>makeBtn(t,"start"));
   [...endTimes].sort().forEach(t=>makeBtn(t,"end"));
   panel.style.display="block";
@@ -1858,19 +1583,16 @@ function sendManualNotifAll(){
   sessions.forEach(s=>{
     const add=(map,time)=>{
       const ms=timeToMs(s.date,time);if(!ms)return;
-      const diff=ms-now;
-      if(diff<-5*60*1000||diff>2*60*60*1000)return;
+      const diff=ms-now;if(diff<-5*60*1000||diff>2*60*60*1000)return;
       if(!map[time])map[time]=[];map[time].push(s);
     };
     if(s.startTime&&s.startTime!=="-")add(upStart,s.startTime);
-    if(s.endTime  &&s.endTime  !=="-")add(upEnd,  s.endTime);
+    if(s.endTime&&s.endTime!=="-")add(upEnd,s.endTime);
   });
-
   const entries=[
     ...Object.entries(upStart).map(([t,g])=>({t,g,type:"start"})),
     ...Object.entries(upEnd).map(([t,g])=>({t,g,type:"end"})),
   ].sort((a,b)=>toMinJS(a.t)-toMinJS(b.t));
-
   if(!entries.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
   entries.forEach(({t,g,type},idx)=>{
     setTimeout(()=>{
@@ -1886,7 +1608,7 @@ function sendManualNotifAll(){
 // STATS & SCHEDULING
 // ─────────────────────────────────────────────
 function updateStats(){
-  const m =sessions.filter(s=>s.isMarathon).length;
+  const m=sessions.filter(s=>s.isMarathon).length;
   const sg=sessions.filter(s=>!s.isMarathon).length;
   document.getElementById("stat-total").textContent   =sessions.length;
   document.getElementById("stat-marathon").textContent=m;
@@ -1897,58 +1619,41 @@ function scheduleAllNotifications(list){
   const now=Date.now();let count=0;
   const startGroups={},endGroups={};
   list.forEach(s=>{
-    if(s.startTime&&s.startTime!=="-"){
-      if(!startGroups[s.startTime])startGroups[s.startTime]=[];
-      startGroups[s.startTime].push(s);
-    }
-    if(s.endTime&&s.endTime!=="-"){
-      if(!endGroups[s.endTime])endGroups[s.endTime]=[];
-      endGroups[s.endTime].push(s);
-    }
+    if(s.startTime&&s.startTime!=="-"){if(!startGroups[s.startTime])startGroups[s.startTime]=[];startGroups[s.startTime].push(s);}
+    if(s.endTime&&s.endTime!=="-"){if(!endGroups[s.endTime])endGroups[s.endTime]=[];endGroups[s.endTime].push(s);}
   });
-
   Object.entries(startGroups).forEach(([time,group])=>{
     const startMs=timeToMs(group[0].date,time);if(!startMs)return;
-    [{min:60,prefix:"🔔 SETUP",urgent:false},
-     {min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
-     {min:5, prefix:"🚨 5 MENIT LAGI",urgent:true}]
+    [{min:60,prefix:"🔔 SETUP",urgent:false},{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},{min:5,prefix:"🚨 5 MENIT LAGI",urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=startMs-min*60*1000;
       if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));count++;}
     });
   });
-
   Object.entries(endGroups).forEach(([time,group])=>{
     const effectiveTime=time==="23:59/00:00"?"23:59":time;
     let endMs=timeToMs(group[0].date,effectiveTime);
     const sMs=timeToMs(group[0].date,group[0].startTime);
     if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000;
     if(!endMs)return;
-    [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},
-     {min:5, prefix:"🚨 5 MENIT LAGI",urgent:true}]
+    [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},{min:5,prefix:"🚨 5 MENIT LAGI",urgent:true}]
     .forEach(({min,prefix,urgent})=>{
       const t=endMs-min*60*1000;
       if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));count++;}
     });
   });
-
   document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal`;
 }
 
 function buildNotifLines(group,type,eventTime){
-  const copies=group.map(s=>({
-    ...s,
-    picForEvent:type==="start"
-      ?(s.hosts?.[0]?.picData||"-")
-      :(s.hosts?.[s.hosts.length-1]?.picData||"-")
-  }));
+  const copies=group.map(s=>({...s,picForEvent:type==="start"?(s.hosts?.[0]?.picData||"-"):(s.hosts?.[s.hosts.length-1]?.picData||"-")}));
   const validPics=eventTime?getAvailableOps(sessions,eventTime):null;
   if(type==="start")assignPics(copies,[],validPics);
   else              assignPics([],copies,validPics);
   return copies.map((s,i)=>{
-    const h   =type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
+    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
     const host=h?.host||"-";
-    const pic =s.assignedPic||"LSC";
+    const pic=s.assignedPic||"LSC";
     return type==="start"
       ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
       :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
@@ -2002,9 +1707,7 @@ function updateClock(){
   if(de)de.textContent=now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"});
 }
 
-function showLoading(show){
-  document.getElementById("loading").style.display=show?"flex":"none";
-}
+function showLoading(show){document.getElementById("loading").style.display=show?"flex":"none";}
 
 function showBanner(msg,type="info"){
   const el=document.getElementById("banner");
@@ -2017,9 +1720,8 @@ function showBanner(msg,type="info"){
 
 async function debugNotif(){
   const lines=[
-    `URL: ${location.href}`,
-    `Permission: ${Notification.permission}`,
-    `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
+    `URL: ${location.href}`,`Permission: ${Notification.permission}`,
+        `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
     `ntfy: ${ntfySource?.readyState===1?"connected":"disconnected"}`,
     `User: ${currentUserEmail||"tidak login"}`,
     `Online: ${Object.keys(onlineUsers).length} users`,
@@ -2031,3 +1733,4 @@ async function debugNotif(){
   }
   sendNotification("🔔 Debug Test","Notif berhasil dari "+location.hostname,"debug-"+Date.now());
 }
+
