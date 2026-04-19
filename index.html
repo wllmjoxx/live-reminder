@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Live Reminder</title>
   <link rel="manifest" href="manifest.json"/>
-  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="https://accounts.google.com/gsi/client" async onload="onGsiLoad()"></script>
+
 
   <style>
     /* ── BOOTSTRAP-INSPIRED VARIABLES ── */
@@ -478,20 +479,12 @@
     
     <div class="navbar-brand">🎬 Live Schedule Reminder</div>
     <!-- Google Sign In wrapper -->
-      <div id="user-login-wrapper" style="display:none;padding:4px 12px 6px;justify-content:center">
-        <div id="g_id_onload"
-          data-client_id="343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com"
-          data-callback="handleGoogleSignIn"
-          data-auto_prompt="false">
-        </div>
-        <div class="g_id_signin"
-          data-type="standard"
-          data-theme="filled_blue"
-          data-text="sign_in_with"
-          data-size="large"
-          data-width="280">
-        </div>
+      <div id="user-login-wrapper" style="display:none;padding:4px 12px 6px;justify-content:center;flex-direction:column;align-items:center;gap:6px">
+        <div style="font-size:0.7rem;color:var(--bs-muted);font-weight:500">Login untuk tracking online users</div>
+        <div id="google-signin-btn"></div>
+        <!-- Hapus g_id_onload dan g_id_signin lama -->
       </div>
+
 
       <!-- Online users display -->
       <div id="online-users" style="font-size:0.62rem;color:#475569;padding:2px 12px 4px">👤 ...</div>
