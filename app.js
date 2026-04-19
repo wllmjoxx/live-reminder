@@ -998,6 +998,72 @@ function getOverlapRatio(formStart, formEnd, hStart, hEnd) {
 }
 
 // ─────────────────────────────────────────────
+// ★ NEW: parseFormHosts
+// "Jonathan (with Agnes)" → ["Jonathan", "Agnes"]
+// "Agnes dan Jonathan"    → ["Agnes", "Jonathan"]
+// Support: with, dan, bareng, sama, &, koma
+// ─────────────────────────────────────────────
+function parseFormHosts(hostStr) {
+  if (!hostStr) return [];
+  // Hilangkan tanda kurung, lalu split berdasarkan separator
+  const cleaned = hostStr.replace(/[()]/g, ' ');
+  const parts   = cleaned
+    .split(/\s*(?:\bwith\b|\bdan\b|\bbareng\b|\bsama\b|&|,)\s*/i)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  return parts.length > 0 ? parts : [hostStr.trim()];
+}
+
+// ─────────────────────────────────────────────
+// ★ NEW: hostNameMatchesSlot
+// Fuzzy word match satu nama host ke slot schedule
+// ─────────────────────────────────────────────
+function hostNameMatchesSlot(formHostName, hostObj) {
+  const hostName   = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
+  const wordsForm  = formHostName.toLowerCase().trim().split(/\s+/);
+  const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
+  return wordsForm.some(wf => {
+    if (wf.length < 3) return false;
+    return wordsSched.some(ws => {
+      if (ws.length < 3) return false;
+      const minLen = Math.min(wf.length, ws.length);
+      return wf.substring(0, minLen) === ws.substring(0, minLen);
+    });
+  });
+}
+
+// ─────────────────────────────────────────────
+// ★ NEW: getTimeMatchScore
+// Scoring-based time matching:
+//   |form.endLive   - h.end|   ≤ 30 min → +3  (anchor terkuat)
+//   |form.startLive - h.start| ≤ 30 min → +2
+//   interval overlap ≥ 50%              → +1  (bonus)
+// Threshold match    : score ≥ 2
+// Threshold kandidat : score ≥ 1 ATAU overlap ≥ 15%
+// ─────────────────────────────────────────────
+function getTimeMatchScore(formResp, hostStart, hostEnd) {
+  let score = 0;
+  const fStart = formResp.startLive;
+  const fEnd   = formResp.endLive;
+
+  // +3: end anchor (paling kuat)
+  if (fEnd && fEnd !== '-' && hostEnd && hostEnd !== '-') {
+    if (Math.abs(toMinJS(fEnd) - toMinJS(hostEnd)) <= 30) score += 3;
+  }
+
+  // +2: start match
+  if (fStart && hostStart) {
+    if (Math.abs(toMinJS(fStart) - toMinJS(hostStart)) <= 30) score += 2;
+  }
+
+  // +1: overlap bonus (≥ 50%)
+  const ratio = getOverlapRatio(fStart, fEnd, hostStart, hostEnd);
+  if (ratio >= 0.5) score += 1;
+
+  return score;
+}
+
+// ─────────────────────────────────────────────
 // RENDER HARI H
 // ─────────────────────────────────────────────
 function renderHariH(data, formResponses = []) {
@@ -1019,43 +1085,40 @@ function renderHariH(data, formResponses = []) {
   window._hariHDate        = data.date;
 
   // ─────────────────────────────────────────
-  // HELPER: session match — interval overlap ≥ 50%
+  // ★ UPDATED: sessionMatch
+  // Pakai parseFormHosts + hostNameMatchesSlot + getTimeMatchScore ≥ 2
   // ─────────────────────────────────────────
   function sessionMatch(formResp, p, hostObj) {
     const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
     const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
 
-    const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
-    const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
-    const anyWordMatch = wordsForm.some(wf => {
-      if (wf.length < 3) return false;
-      return wordsSched.some(ws => {
-        if (ws.length < 3) return false;
-        const minLen = Math.min(wf.length, ws.length);
-        return wf.substring(0, minLen) === ws.substring(0, minLen);
-      });
-    });
-    if (!anyWordMatch) return false;
+    // Multi-host: cek apakah salah satu nama di form cocok dengan slot ini
+    const formHosts    = parseFormHosts(formResp.host);
+    const anyHostMatch = formHosts.some(name => hostNameMatchesSlot(name, hostName));
+    if (!anyHostMatch) return false;
 
+    // Brand fuzzy match (5 char)
     const fBrand = formResp.brand.toLowerCase().trim();
     const sBrand = p.brand.toLowerCase().trim();
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
 
+    // Marketplace fuzzy match (4 char)
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
 
-    const ratio = getOverlapRatio(formResp.startLive, formResp.endLive, hostStart, hostEnd);
-    if (ratio < 0.5) return false;
+    // ★ Scoring-based time match (ganti dari overlap ratio)
+    const score = getTimeMatchScore(formResp, hostStart, hostEnd);
+    if (score < 2) return false;
+
     return true;
   }
 
   // ─────────────────────────────────────────
   // HELPER: dedup form responses
-  // Sama host+brand+mp+startLive+endLive → merge jadi 1, gabung screenshot
   // ─────────────────────────────────────────
   function deduplicateResponses(responses) {
     const groups = {};
@@ -1070,12 +1133,10 @@ function renderHariH(data, formResponses = []) {
       if (!groups[key]) {
         groups[key] = { ...r };
       } else {
-        // Gabung screenshot URL
         const existing = groups[key].screenshot.split(',').map(s => s.trim()).filter(Boolean);
         const incoming = r.screenshot.split(',').map(s => s.trim()).filter(Boolean);
         incoming.forEach(lnk => { if (!existing.includes(lnk)) existing.push(lnk); });
         groups[key].screenshot = existing.join(',');
-        // Pakai submittedAt paling baru (form terakhir yang dikirim)
         if (r.submittedAt && r.submittedAt > (groups[key].submittedAt || 0)) {
           groups[key].submittedAt = r.submittedAt;
         }
@@ -1085,41 +1146,90 @@ function renderHariH(data, formResponses = []) {
   }
 
   // ─────────────────────────────────────────
-  // HELPER: exclusive claim
-  // Tiap form response (setelah dedup) hanya boleh diklaim
-  // oleh 1 slot host: yang paling dekat form.startLive ke h.start
+  // ★ UPDATED: buildExclusiveClaims — multi-host aware
+  // Single-host form → exclusive claim ke 1 slot terbaik
+  // Multi-host form  → tiap nama host klaim slot terbaiknya sendiri
+  // claims[rIdx] = [slotKey, ...] (array)
   // ─────────────────────────────────────────
   function buildExclusiveClaims(dedupedResponses, allSlots) {
-    const claims = {}; // rIdx → slotKey
+    const claims = {}; // rIdx → [slotKey, ...]
 
     dedupedResponses.forEach((r, rIdx) => {
-      let bestSlotKey = null;
-      let bestDiff    = Infinity;
-      let bestRatio   = 0;
+      const formHosts   = parseFormHosts(r.host);
+      const isMultiHost = formHosts.length > 1;
 
-      allSlots.forEach(({ slotKey, p, h }) => {
-        if (!sessionMatch(r, p, h)) return;
+      if (isMultiHost) {
+        // Multi-host: tiap nama cari slot terbaiknya sendiri
+        const claimedKeys = [];
 
-        // Tiebreaker 1: closest form.startLive to h.start
-        const diff = r.startLive
-          ? Math.abs(toMinJS(r.startLive) - toMinJS(h.start || p.startTime))
-          : 9999;
+        formHosts.forEach(formHostName => {
+          let bestSlotKey = null;
+          let bestScore   = -1;
+          let bestDiff    = Infinity;
 
-        // Tiebreaker 2: highest overlap ratio
-        const ratio = getOverlapRatio(
-          r.startLive, r.endLive,
-          h.start || p.startTime,
-          h.end && h.end !== '-' ? h.end : null
-        );
+          allSlots.forEach(({ slotKey, p, h }) => {
+            const hostName  = typeof h === 'string' ? h : (h?.name || '');
+            const hostStart = (typeof h === 'object' && h?.start) ? h.start : p.startTime;
+            const hostEnd   = (typeof h === 'object' && h?.end && h.end !== '-') ? h.end : null;
 
-        if (diff < bestDiff || (diff === bestDiff && ratio > bestRatio)) {
-          bestDiff    = diff;
-          bestRatio   = ratio;
-          bestSlotKey = slotKey;
-        }
-      });
+            // Host name match untuk nama ini saja
+            if (!hostNameMatchesSlot(formHostName, hostName)) return;
 
-      if (bestSlotKey !== null) claims[rIdx] = bestSlotKey;
+            // Brand check
+            const fBrand = r.brand.toLowerCase().trim();
+            const sBrand = p.brand.toLowerCase().trim();
+            if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return;
+
+            // MP check
+            if (r.marketplace && p.mp) {
+              const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
+                || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
+              if (!mpOk) return;
+            }
+
+            // Time score
+            const score = getTimeMatchScore(r, hostStart, hostEnd);
+            if (score < 2) return;
+
+            const diff = r.startLive ? Math.abs(toMinJS(r.startLive) - toMinJS(hostStart)) : 9999;
+
+            if (score > bestScore || (score === bestScore && diff < bestDiff)) {
+              bestScore   = score;
+              bestDiff    = diff;
+              bestSlotKey = slotKey;
+            }
+          });
+
+          if (bestSlotKey && !claimedKeys.includes(bestSlotKey)) {
+            claimedKeys.push(bestSlotKey);
+          }
+        });
+
+        if (claimedKeys.length > 0) claims[rIdx] = claimedKeys;
+
+      } else {
+        // Single-host: exclusive claim ke 1 slot terbaik
+        let bestSlotKey = null;
+        let bestScore   = -1;
+        let bestDiff    = Infinity;
+
+        allSlots.forEach(({ slotKey, p, h }) => {
+          if (!sessionMatch(r, p, h)) return;
+
+          const hostStart = (typeof h === 'object' && h?.start) ? h.start : p.startTime;
+          const hostEnd   = (typeof h === 'object' && h?.end && h.end !== '-') ? h.end : null;
+          const score     = getTimeMatchScore(r, hostStart, hostEnd);
+          const diff      = r.startLive ? Math.abs(toMinJS(r.startLive) - toMinJS(hostStart)) : 9999;
+
+          if (score > bestScore || (score === bestScore && diff < bestDiff)) {
+            bestScore   = score;
+            bestDiff    = diff;
+            bestSlotKey = slotKey;
+          }
+        });
+
+        if (bestSlotKey !== null) claims[rIdx] = [bestSlotKey];
+      }
     });
 
     return claims;
@@ -1151,12 +1261,15 @@ function renderHariH(data, formResponses = []) {
   // 3. Build exclusive claims
   const exclusiveClaims = buildExclusiveClaims(dedupedForms, allSlots);
 
-  // 4. Helper: ambil forms yang diklaim slot ini
+  // 4. ★ UPDATED: ambil forms yang diklaim slot ini (cek array)
   function getClaimedForms(slotKey) {
-    return dedupedForms.filter((_, rIdx) => exclusiveClaims[rIdx] === slotKey);
+    return dedupedForms.filter((_, rIdx) => {
+      const c = exclusiveClaims[rIdx];
+      return Array.isArray(c) && c.includes(slotKey);
+    });
   }
 
-  // 5. Helper: kandidat untuk ❓ (pakai dedupedForms, tanpa exclusive filter)
+  // 5. ★ UPDATED: kandidat untuk ❓ — score ≥ 1 ATAU overlap ≥ 15%
   function findSessionCandidates(p, hostObj) {
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
     const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
@@ -1169,8 +1282,9 @@ function renderHariH(data, formResponses = []) {
           || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
         if (!mpOk) return false;
       }
+      const score = getTimeMatchScore(r, hostStart, hostEnd);
       const ratio = getOverlapRatio(r.startLive, r.endLive, hostStart, hostEnd);
-      return ratio >= 0.15;
+      return score >= 1 || ratio >= 0.15;
     });
   }
 
@@ -1270,7 +1384,7 @@ function renderHariH(data, formResponses = []) {
 
           hosts.forEach((h, hIdx) => {
             const slotKey    = `${p.idLine}__${h.start || ''}__${h.name}`;
-            const allMatches = getClaimedForms(slotKey); // ← exclusive, tidak overlap antar slot
+            const allMatches = getClaimedForms(slotKey);
 
             if (allMatches.length > 0) {
               let endMs = null;
@@ -1319,7 +1433,7 @@ function renderHariH(data, formResponses = []) {
             html += `<div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">⚠️ Tidak ada data host</div>`;
           } else {
 
-            // ✅ Valid uploads
+            // ✅ Valid / ⚠️ False uploads
             matchedList.forEach(({ h, match, isValid, falseMatches, endMs }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
@@ -1349,9 +1463,7 @@ function renderHariH(data, formResponses = []) {
                       </div>
                     </div>
                   </div>`;
-
               } else {
-                // ⚠️ False upload — belum ada yang valid
                 let endLabel = '-';
                 if (endMs) {
                   try {
@@ -1532,7 +1644,8 @@ function copyStandbyText(){
     text+="\n";
   });
   text+=`1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT\n2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG\n3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST\n\n`;
-  text+=`Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6VcZ7\n\nLINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\nBACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\nLINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
+  text+=`Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6V\n
+  LINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\nBACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\nLINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
   navigator.clipboard.writeText(text)
     .then(()=>showBanner("✅ Teks di-copy!","success"))
     .catch(()=>showBanner("❌ Gagal copy","error"));
@@ -1722,7 +1835,7 @@ function showBanner(msg,type="info"){
 async function debugNotif(){
   const lines=[
     `URL: ${location.href}`,`Permission: ${Notification.permission}`,
-        `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
+    `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
     `ntfy: ${ntfySource?.readyState===1?"connected":"disconnected"}`,
     `User: ${currentUserEmail||"tidak login"}`,
     `Online: ${Object.keys(onlineUsers).length} users`,
@@ -1734,4 +1847,3 @@ async function debugNotif(){
   }
   sendNotification("🔔 Debug Test","Notif berhasil dari "+location.hostname,"debug-"+Date.now());
 }
-
