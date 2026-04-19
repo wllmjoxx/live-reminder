@@ -1122,28 +1122,88 @@ function updateTabLabels() {
 // ─────────────────────────────────────────────
 // HARI H
 // ─────────────────────────────────────────────
-async function loadHariH(){
-  if(activeTab!=="hariH")return;
-  const container=document.getElementById("schedule-list");
-  container.innerHTML=_bsLoadingHTML("Memuat data hari ini...");
-  try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),20000);
+// ── Cache data terakhir di memory ──
+let _lastHariHData = null;
+let _lastFormData  = [];
+
+async function loadHariH() {
+  if (activeTab !== "hariH") return;
+  const container = document.getElementById("schedule-list");
+
+  // Tampilkan data lama dulu kalau ada — tidak blank
+  if (_lastHariHData) {
+    renderHariH(_lastHariHData, _lastFormData);
+  } else {
+    // Baru pertama kali → boleh loading
+    container.innerHTML = _bsLoadingHTML("Memuat data hari ini...");
+  }
+
+  // Fetch di background
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
     const [todayRes, formRes] = await Promise.all([
-      fetch(API_URL+"?action=today&t="+Date.now(),    {signal:controller.signal}),
-      fetch(API_URL+"?action=formcheck&t="+Date.now(),{signal:controller.signal}),
+      fetch(API_URL + "?action=today&t="     + Date.now(), { signal: controller.signal }),
+      fetch(API_URL + "?action=formcheck&t=" + Date.now(), { signal: controller.signal }),
     ]);
     clearTimeout(timeout);
+
     const data     = JSON.parse(await todayRes.text());
     const formData = JSON.parse(await formRes.text());
-    if(!data.success) throw new Error(data.error||"Unknown error");
-    if(activeTab!=="hariH")return;
-    renderHariH(data, formData.success ? formData.responses : []);
-  }catch(err){
-    if(activeTab!=="hariH")return;
-    container.innerHTML=`<div class="empty"><span class="empty-icon">❌</span>${err.name==="AbortError"?"Timeout, coba refresh":err.message}</div>`;
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (activeTab !== "hariH") return;
+
+    // Simpan ke cache memory
+    _lastHariHData = data;
+    _lastFormData  = formData.success ? formData.responses : [];
+
+    renderHariH(_lastHariHData, _lastFormData);
+  } catch(err) {
+    if (activeTab !== "hariH") return;
+    if (!_lastHariHData) {
+      // Belum ada data sama sekali → tampilkan error
+      container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+    } else {
+      // Ada data lama → cukup banner, jangan hapus tampilan
+      showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
+    }
   }
 }
+
+async function forceRefreshHariH() {
+  if (activeTab !== "hariH") return;
+  const container = document.getElementById("schedule-list");
+
+  // Force refresh: clear cache dulu, baru loading
+  _lastHariHData = null;
+  _lastFormData  = [];
+  container.innerHTML = _bsLoadingHTML("Force refresh...");
+
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
+    const [todayRes, formRes] = await Promise.all([
+      fetch(API_URL + "?action=today&nocache=1&t="     + Date.now(), { signal: controller.signal }),
+      fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
+    ]);
+    clearTimeout(timeout);
+
+    const data     = JSON.parse(await todayRes.text());
+    const formData = JSON.parse(await formRes.text());
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (activeTab !== "hariH") return;
+
+    _lastHariHData = data;
+    _lastFormData  = formData.success ? formData.responses : [];
+
+    renderHariH(_lastHariHData, _lastFormData);
+    showBanner("✅ Data hari H diperbarui!", "success");
+  } catch(err) {
+    if (activeTab !== "hariH") return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+  }
+}
+
 
 function getHariHShift(endTime) {
   if (!endTime || endTime === "-") return "siang";
@@ -1173,31 +1233,6 @@ function _fmtSubmitTime(ms) {
     const time = d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
     return `${date}, ${time}`;
   } catch(e) { return '-'; }
-}
-
-
-async function forceRefreshHariH() {
-  if (activeTab !== "hariH") return;
-  const container = document.getElementById("schedule-list");
-  container.innerHTML = _bsLoadingHTML("Force refresh...");
-  try {
-    const controller = new AbortController();
-    const timeout    = setTimeout(() => controller.abort(), 20000);
-    const [todayRes, formRes] = await Promise.all([
-      fetch(API_URL + "?action=today&nocache=1&t="     + Date.now(), { signal: controller.signal }),
-      fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
-    ]);
-    clearTimeout(timeout);
-    const data     = JSON.parse(await todayRes.text());
-    const formData = JSON.parse(await formRes.text());
-    if (!data.success) throw new Error(data.error || "Unknown error");
-    if (activeTab !== "hariH") return;
-    renderHariH(data, formData.success ? formData.responses : []);
-    showBanner("✅ Data hari H diperbarui!", "success");
-  } catch(err) {
-    if (activeTab !== "hariH") return;
-    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
-  }
 }
 
 function renderHariH(data, formResponses = []){
