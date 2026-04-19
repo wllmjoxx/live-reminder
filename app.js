@@ -943,20 +943,69 @@ async function loadKlasemen(){
   }
 }
 
-async function forceRefreshKlasemen(){
-  if(activeTab!=="klasemen")return;
-  const container=document.getElementById("schedule-list");
-  container.innerHTML=_bsLoadingHTML("Force refresh...");
-  try{
-    const res=await fetch(API_URL+"?action=leaderboard&nocache=1&t="+Date.now());
-    const data=JSON.parse(await res.text());
-    if(!data.success)throw new Error(data.error);
-    if(activeTab!=="klasemen")return;
-    renderKlasemen(data);
-    showBanner("✅ Klasemen diperbarui!","success");
-  }catch(err){
-    if(activeTab!=="klasemen")return;
-    container.innerHTML=`<div class="empty"><span class="empty-icon">❌</span>${err.message}</div>`;
+// ── Cache data terakhir di memory ──
+let _lastKlasemenData = null;
+
+async function loadKlasemen() {
+  if (activeTab !== "klasemen") return;
+  const container = document.getElementById("schedule-list");
+
+  // Tampilkan data lama dulu kalau ada
+  if (_lastKlasemenData) {
+    renderKlasemen(_lastKlasemenData);
+  } else {
+    container.innerHTML = _bsLoadingHTML("Memuat klasemen...");
+  }
+
+  // Fetch di background
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
+    const res  = await fetch(API_URL + "?action=leaderboard&t=" + Date.now(), { signal: controller.signal });
+    clearTimeout(timeout);
+
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (!data.leaderboard) {
+      if (!_lastKlasemenData && activeTab === "klasemen") {
+        container.innerHTML = `<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
+      }
+      return;
+    }
+    if (activeTab !== "klasemen") return;
+
+    _lastKlasemenData = data;
+    renderKlasemen(_lastKlasemenData);
+  } catch(err) {
+    if (activeTab !== "klasemen") return;
+    if (!_lastKlasemenData) {
+      container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+    } else {
+      showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
+    }
+  }
+}
+
+async function forceRefreshKlasemen() {
+  if (activeTab !== "klasemen") return;
+  const container = document.getElementById("schedule-list");
+
+  // Clear cache, baru loading
+  _lastKlasemenData = null;
+  container.innerHTML = _bsLoadingHTML("Force refresh...");
+
+  try {
+    const res  = await fetch(API_URL + "?action=leaderboard&nocache=1&t=" + Date.now());
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error);
+    if (activeTab !== "klasemen") return;
+
+    _lastKlasemenData = data;
+    renderKlasemen(_lastKlasemenData);
+    showBanner("✅ Klasemen diperbarui!", "success");
+  } catch(err) {
+    if (activeTab !== "klasemen") return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.message}</div>`;
   }
 }
 
