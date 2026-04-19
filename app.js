@@ -1176,6 +1176,30 @@ function _fmtSubmitTime(ms) {
 }
 
 
+async function forceRefreshHariH() {
+  if (activeTab !== "hariH") return;
+  const container = document.getElementById("schedule-list");
+  container.innerHTML = _bsLoadingHTML("Force refresh...");
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
+    const [todayRes, formRes] = await Promise.all([
+      fetch(API_URL + "?action=today&nocache=1&t="     + Date.now(), { signal: controller.signal }),
+      fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
+    ]);
+    clearTimeout(timeout);
+    const data     = JSON.parse(await todayRes.text());
+    const formData = JSON.parse(await formRes.text());
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (activeTab !== "hariH") return;
+    renderHariH(data, formData.success ? formData.responses : []);
+    showBanner("✅ Data hari H diperbarui!", "success");
+  } catch(err) {
+    if (activeTab !== "hariH") return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+  }
+}
+
 function renderHariH(data, formResponses = []){
   const container    = document.getElementById("schedule-list");
   const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
@@ -1257,16 +1281,27 @@ function renderHariH(data, formResponses = []){
      </div>`;
 
   let html = `<div style="padding:8px 10px 24px">`;
+
+  // ── Header ──
   html += `
     <div style="text-align:center;margin-bottom:12px">
       <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Pantau Data Hari H</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
     </div>`;
-  html += `<div style="display:flex;gap:7px;margin-bottom:16px">
+
+  // ── Summary cards ──
+  html += `<div style="display:flex;gap:7px;margin-bottom:12px">
     ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPending,"⏳ Belum Diisi")}
     ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll-totalPending,"✅ Sudah Diisi")}
     ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalAll,"📋 Total Sesi")}
   </div>`;
+
+  // ── Tombol refresh di atas ──
+  html += `
+    <button onclick="forceRefreshHariH()" class="btn btn-outline-primary btn-block"
+      style="margin-bottom:16px;padding:8px;font-size:0.78rem">
+      🔄 Refresh (Clear Cache)
+    </button>`;
 
   if (totalPending === 0) {
     html += `
@@ -1307,6 +1342,7 @@ function renderHariH(data, formResponses = []){
           <div style="background:var(--bs-white);border:1px solid var(--bs-border);
                       border-radius:var(--bs-radius-lg);margin-bottom:10px;
                       overflow:hidden;box-shadow:var(--bs-shadow-sm)">
+
             <div onclick="togglePicDropdown('${safeKey}')"
               style="padding:9px 12px;background:var(--bs-light);
                      display:flex;align-items:center;justify-content:space-between;
@@ -1329,12 +1365,14 @@ function renderHariH(data, formResponses = []){
                 📋 ID
               </button>
             </div>
+
             <div id="pic-content-${safeKey}"
               style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px">`;
 
         rows.forEach((p, pIdx) => {
           const sessionTime = (p.endTime && p.endTime !== '-')
             ? `${p.startTime} → ${p.endTime}` : p.startTime;
+
           const typeBadge = p.isMarathon
             ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;
                             font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">
@@ -1344,7 +1382,8 @@ function renderHariH(data, formResponses = []){
                  ⚡ Single</span>`;
 
           const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
-          const hosts    = rawHosts.map(h => typeof h === 'string' ? { name: h, start: null, end: null } : h);
+          const hosts    = rawHosts.map(h => typeof h === 'string'
+            ? { name: h, start: null, end: null } : h);
 
           const matchedList   = [];
           const unmatchedList = [];
@@ -1371,11 +1410,17 @@ function renderHariH(data, formResponses = []){
                   ${p.idLine}
                 </div>
               </div>
+
               <div style="display:flex;flex-direction:column;gap:6px">`;
 
           if (hosts.length === 0) {
-            html += `<div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">⚠️ Tidak ada data host</div>`;
+            html += `
+              <div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">
+                ⚠️ Tidak ada data host
+              </div>`;
           } else {
+
+            // ✅ Matched hosts
             matchedList.forEach(({ h, match }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
@@ -1429,18 +1474,18 @@ function renderHariH(data, formResponses = []){
                     <div style="display:flex;gap:5px;flex-shrink:0">
                       ${links.map((lnk, li) => lnk
                         ? `<a href="${lnk}" target="_blank"
-                            style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
+                             style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
                                     border-radius:var(--bs-radius-pill);color:var(--bs-primary);
                                     font-size:0.62rem;font-weight:700;text-decoration:none">
-                            📎${links.length > 1 ? li+1 : ''}
-                          </a>` : '').join('')}
+                             📎${links.length > 1 ? li+1 : ''}
+                           </a>` : '').join('')}
                     </div>
                   </div>
                   ${falseUploadHtml}
                 </div>`;
             });
 
-
+            // ❓ / ⏳ Unmatched hosts
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
               const candidates = findSessionCandidates(p, h);
@@ -1455,7 +1500,9 @@ function renderHariH(data, formResponses = []){
                              justify-content:space-between;cursor:pointer;gap:8px">
                       <div>
                         <div style="font-size:0.72rem;font-weight:700;color:#92400e">❓ ${h.name}</div>
-                        ${slotTime ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>` : ''}
+                        ${slotTime
+                          ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>`
+                          : ''}
                       </div>
                       <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
                         <span style="background:#92400e;color:white;font-size:0.58rem;
@@ -1500,7 +1547,9 @@ function renderHariH(data, formResponses = []){
                               border-radius:var(--bs-radius);padding:7px 10px">
                     <div style="font-size:0.72rem;font-weight:700;color:var(--bs-danger-text)">⏳ ${h.name}</div>
                     ${slotTime
-                      ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">${slotTime}</div>`
+                      ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">
+                           ${slotTime}
+                         </div>`
                       : ''}
                   </div>`;
               }
@@ -1517,14 +1566,10 @@ function renderHariH(data, formResponses = []){
     });
   }
 
-  html += `
-    <button onclick="loadHariH()" class="btn btn-outline-primary btn-block"
-      style="margin-top:4px;padding:10px">
-      🔄 Refresh
-    </button>`;
   html += `</div>`;
   container.innerHTML = html;
 }
+
 
 // ─────────────────────────────────────────────
 // TOGGLE HELPERS
