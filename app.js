@@ -6,10 +6,10 @@ const PRESENCE_TOPIC   = "castlive-presence-2026";
 
 let currentUserEmail = localStorage.getItem("userEmail") || null;
 let onlineUsers      = {};
-let presenceStarted  = false; // ← prevent double heartbeat
+let presenceStarted  = false;
 
 // ─────────────────────────────────────────────
-// GSI ONLOAD — dipanggil saat library siap
+// GSI ONLOAD
 // ─────────────────────────────────────────────
 function onGsiLoad() {
   if (!currentUserEmail) {
@@ -116,7 +116,6 @@ function updateOnlineDisplay() {
     return;
   }
 
-  // Pastikan diri sendiri selalu masuk
   onlineUsers[currentUserEmail] = Math.max(onlineUsers[currentUserEmail] || 0, Date.now() - 10000);
 
   const cutoff = Date.now() - 5 * 60 * 1000;
@@ -188,7 +187,7 @@ let sessions=[],scheduledTasks=[],swRegistration=null,activeTab="marathon",ntfyS
 const seenNtfyIds=new Set();
 
 // ─────────────────────────────────────────────
-// DOM CONTENT LOADED — fix: hapus nested load listener
+// DOM CONTENT LOADED
 // ─────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", async () => {
   updateClock();
@@ -200,8 +199,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   await loadSchedule();
   setInterval(loadSchedule, 5 * 120 * 1000);
 
-  // Kalau sudah ada email di localStorage → langsung start presence
-  // tanpa nunggu GSI (onGsiLoad akan skip render button)
   if (currentUserEmail) {
     startPresenceIfNeeded();
     updateOnlineDisplay();
@@ -698,7 +695,7 @@ function renderSingle(){
 }
 
 // ─────────────────────────────────────────────
-// STANDBY DATA BUILDERS
+// STANDBY
 // ─────────────────────────────────────────────
 const STANDBY_BRANDS=[
   {key:"AT Tiktok",       slotFormat:false,showBackup:true,
@@ -815,9 +812,6 @@ function buildStandbyData(){
   }).filter(b=>b.slots.length>0);
 }
 
-// ─────────────────────────────────────────────
-// RENDER STANDBY
-// ─────────────────────────────────────────────
 function renderStandby(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
@@ -919,45 +913,18 @@ function _bsLoadingHTML(msg){
     </div>`;
 }
 
-async function loadKlasemen(){
-  if(activeTab!=="klasemen")return;
-  const container=document.getElementById("schedule-list");
-  container.innerHTML=_bsLoadingHTML("Memuat klasemen...");
-  try{
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),20000);
-    const res=await fetch(API_URL+"?action=leaderboard&t="+Date.now(),{signal:controller.signal});
-    clearTimeout(timeout);
-    const data=JSON.parse(await res.text());
-    if(!data.success)throw new Error(data.error||"Unknown error");
-    if(!data.leaderboard){
-      if(activeTab==="klasemen")
-        container.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
-      return;
-    }
-    if(activeTab!=="klasemen")return;
-    renderKlasemen(data);
-  }catch(err){
-    if(activeTab!=="klasemen")return;
-    container.innerHTML=`<div class="empty"><span class="empty-icon">❌</span>${err.name==="AbortError"?"Timeout, coba refresh":err.message}</div>`;
-  }
-}
-
-// ── Cache data terakhir di memory ──
 let _lastKlasemenData = null;
 
 async function loadKlasemen() {
   if (activeTab !== "klasemen") return;
   const container = document.getElementById("schedule-list");
 
-  // Tampilkan data lama dulu kalau ada
   if (_lastKlasemenData) {
     renderKlasemen(_lastKlasemenData);
   } else {
     container.innerHTML = _bsLoadingHTML("Memuat klasemen...");
   }
 
-  // Fetch di background
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
@@ -989,8 +956,6 @@ async function loadKlasemen() {
 async function forceRefreshKlasemen() {
   if (activeTab !== "klasemen") return;
   const container = document.getElementById("schedule-list");
-
-  // Clear cache, baru loading
   _lastKlasemenData = null;
   container.innerHTML = _bsLoadingHTML("Force refresh...");
 
@@ -1171,7 +1136,6 @@ function updateTabLabels() {
 // ─────────────────────────────────────────────
 // HARI H
 // ─────────────────────────────────────────────
-// ── Cache data terakhir di memory ──
 let _lastHariHData = null;
 let _lastFormData  = [];
 
@@ -1179,15 +1143,12 @@ async function loadHariH() {
   if (activeTab !== "hariH") return;
   const container = document.getElementById("schedule-list");
 
-  // Tampilkan data lama dulu kalau ada — tidak blank
   if (_lastHariHData) {
     renderHariH(_lastHariHData, _lastFormData);
   } else {
-    // Baru pertama kali → boleh loading
     container.innerHTML = _bsLoadingHTML("Memuat data hari ini...");
   }
 
-  // Fetch di background
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
@@ -1202,7 +1163,6 @@ async function loadHariH() {
     if (!data.success) throw new Error(data.error || "Unknown error");
     if (activeTab !== "hariH") return;
 
-    // Simpan ke cache memory
     _lastHariHData = data;
     _lastFormData  = formData.success ? formData.responses : [];
 
@@ -1210,10 +1170,8 @@ async function loadHariH() {
   } catch(err) {
     if (activeTab !== "hariH") return;
     if (!_lastHariHData) {
-      // Belum ada data sama sekali → tampilkan error
       container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
     } else {
-      // Ada data lama → cukup banner, jangan hapus tampilan
       showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
     }
   }
@@ -1222,8 +1180,6 @@ async function loadHariH() {
 async function forceRefreshHariH() {
   if (activeTab !== "hariH") return;
   const container = document.getElementById("schedule-list");
-
-  // Force refresh: clear cache dulu, baru loading
   _lastHariHData = null;
   _lastFormData  = [];
   container.innerHTML = _bsLoadingHTML("Force refresh...");
@@ -1252,7 +1208,6 @@ async function forceRefreshHariH() {
     container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
   }
 }
-
 
 function getHariHShift(endTime) {
   if (!endTime || endTime === "-") return "siang";
@@ -1284,7 +1239,39 @@ function _fmtSubmitTime(ms) {
   } catch(e) { return '-'; }
 }
 
-function renderHariH(data, formResponses = []){
+// ─────────────────────────────────────────────
+// INTERVAL OVERLAP HELPER ← BARU
+// ─────────────────────────────────────────────
+function getOverlapRatio(formStart, formEnd, hStart, hEnd) {
+  if (!formStart || !hStart) return 0;
+  const fsMin = toMinJS(formStart);
+  const hsMin = toMinJS(hStart);
+
+  // Kalau form tidak ada endLive → fallback point-based
+  if (!formEnd || formEnd === '-' || formEnd === '') {
+    return Math.abs(fsMin - hsMin) <= 30 ? 0.6 : 0;
+  }
+
+  let feMin = toMinJS(formEnd);
+  // Kalau hEnd null → JANGAN pakai p.endTime, estimasi dari durasi form
+  let heMin = (hEnd && hEnd !== '-')
+    ? toMinJS(hEnd)
+    : hsMin + (toMinJS(formEnd) - toMinJS(formStart));
+
+  // Handle overnight
+  if (feMin <= fsMin) feMin += 24 * 60;
+  if (heMin <= hsMin) heMin += 24 * 60;
+
+  const overlapMin = Math.max(0, Math.min(feMin, heMin) - Math.max(fsMin, hsMin));
+  const minDur     = Math.min(feMin - fsMin, heMin - hsMin);
+  if (minDur <= 0) return 0;
+  return overlapMin / minDur;
+}
+
+// ─────────────────────────────────────────────
+// RENDER HARI H
+// ─────────────────────────────────────────────
+function renderHariH(data, formResponses = []) {
   const container    = document.getElementById("schedule-list");
   const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
   const totalAll     = data.leaderboard.reduce((s,r) => s + r.total, 0);
@@ -1304,10 +1291,16 @@ function renderHariH(data, formResponses = []){
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
+  // ─────────────────────────────────────────
+  // SESSION MATCH — interval overlap ≥ 50%
+  // ─────────────────────────────────────────
   function sessionMatch(formResp, p, hostObj) {
     const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
+    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-')
+      ? hostObj.end : null; // null, bukan p.endTime!
 
+    // 1. Fuzzy word match host name
     const wordsForm  = formResp.host.toLowerCase().trim().split(/\s+/);
     const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
     const anyWordMatch = wordsForm.some(wf => {
@@ -1320,38 +1313,47 @@ function renderHariH(data, formResponses = []){
     });
     if (!anyWordMatch) return false;
 
+    // 2. Brand match
     const fBrand = formResp.brand.toLowerCase().trim();
     const sBrand = p.brand.toLowerCase().trim();
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
 
+    // 3. Marketplace match
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
 
-    if (formResp.startLive && hostStart) {
-      const diff = Math.abs(toMinJS(formResp.startLive) - toMinJS(hostStart));
-      if (diff > 90) return false;
-    }
+    // 4. Interval overlap ≥ 50% (ganti ±90 menit)
+    const ratio = getOverlapRatio(formResp.startLive, formResp.endLive, hostStart, hostEnd);
+    if (ratio < 0.5) return false;
 
     return true;
   }
 
+  // ─────────────────────────────────────────
+  // FIND CANDIDATES — overlap ≥ 15%
+  // ─────────────────────────────────────────
   function findSessionCandidates(p, hostObj) {
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
+    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-')
+      ? hostObj.end : null;
+
     return formResponses.filter(r => {
       const fBrand = r.brand.toLowerCase().trim();
       const sBrand = p.brand.toLowerCase().trim();
       if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+
       if (r.marketplace && p.mp) {
         const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
           || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
         if (!mpOk) return false;
       }
-      if (r.startLive && hostStart) {
-        if (Math.abs(toMinJS(r.startLive) - toMinJS(hostStart)) > 90) return false;
-      }
+
+      const ratio = getOverlapRatio(r.startLive, r.endLive, hostStart, hostEnd);
+      if (ratio < 0.15) return false;
+
       return true;
     });
   }
@@ -1366,21 +1368,18 @@ function renderHariH(data, formResponses = []){
 
   let html = `<div style="padding:8px 10px 24px">`;
 
-  // ── Header ──
   html += `
     <div style="text-align:center;margin-bottom:12px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Data Hari H(Belum diisi)</div>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Data Hari H (Belum diisi)</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
     </div>`;
 
-  // ── Summary cards ──
   html += `<div style="display:flex;gap:7px;margin-bottom:12px">
     ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPending,"⏳ Belum Diisi")}
     ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll-totalPending,"✅ Sudah Diisi")}
     ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalAll,"📋 Total Sesi")}
   </div>`;
 
-  // ── Tombol refresh di atas ──
   html += `
     <button onclick="forceRefreshHariH()" class="btn btn-outline-primary btn-block"
       style="margin-bottom:16px;padding:8px;font-size:0.78rem">
@@ -1469,12 +1468,39 @@ function renderHariH(data, formResponses = []){
           const hosts    = rawHosts.map(h => typeof h === 'string'
             ? { name: h, start: null, end: null } : h);
 
+          // ── BARU: filter semua match, split valid vs false ──
           const matchedList   = [];
           const unmatchedList = [];
+
           hosts.forEach((h, hIdx) => {
-            const match = formResponses.find(r => sessionMatch(r, p, h));
-            if (match) matchedList.push({ h, match });
-            else       unmatchedList.push({ h, hIdx });
+            const allMatches = formResponses.filter(r => sessionMatch(r, p, h));
+
+            if (allMatches.length > 0) {
+              // Hitung endMs untuk host SLOT (bukan session!)
+              let endMs = null;
+              if (h.end && h.end !== '-' && data.date) {
+                try {
+                  const startMs = h.start ? new Date(`${data.date}T${h.start}:00+07:00`).getTime() : 0;
+                  endMs = new Date(`${data.date}T${h.end}:00+07:00`).getTime();
+                  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
+                } catch(e) {}
+              }
+
+              const validMatches = endMs
+                ? allMatches.filter(r => !r.submittedAt || r.submittedAt >= endMs)
+                : allMatches;
+              const falseMatches = endMs
+                ? allMatches.filter(r => r.submittedAt && r.submittedAt < endMs)
+                : [];
+
+              if (validMatches.length > 0) {
+                matchedList.push({ h, match: validMatches[0], isValid: true,  falseMatches, endMs });
+              } else {
+                matchedList.push({ h, match: falseMatches[0], isValid: false, falseMatches, endMs });
+              }
+            } else {
+              unmatchedList.push({ h, hIdx });
+            }
           });
 
           html += `
@@ -1504,76 +1530,110 @@ function renderHariH(data, formResponses = []){
               </div>`;
           } else {
 
-            // ✅ Matched hosts
-            matchedList.forEach(({ h, match }) => {
+            // ── ✅ VALID UPLOAD ──
+            matchedList.forEach(({ h, match, isValid, falseMatches, endMs }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
-                ? `<span style="color:var(--bs-muted)">${h.start}${h.end?' → '+h.end:''}</span>`
+                ? `<span style="color:var(--bs-muted)">${h.start}${h.end ? ' → ' + h.end : ''}</span>`
                 : (match.startLive
-                  ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive?' → '+match.endLive:''}</span>`
+                  ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive ? ' → ' + match.endLive : ''}</span>`
                   : '');
 
-              // ── Cek false upload ──
-              let falseUploadHtml = '';
-              if (match.submittedAt && h.end && h.end !== '-' && data.date) {
-                try {
-                  const startMs = h.start ? new Date(`${data.date}T${h.start}:00+07:00`).getTime() : 0;
-                  let endMs     = new Date(`${data.date}T${h.end}:00+07:00`).getTime();
-                  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000; // overnight
+              if (isValid) {
+                // ✅ Upload valid
+                const prevFalseNote = falseMatches.length > 0
+                  ? `<div style="font-size:0.58rem;color:#856404;margin-top:3px;opacity:0.85">
+                       ⚠️ ${falseMatches.length}x false upload sebelumnya terdeteksi
+                     </div>`
+                  : '';
 
-                  if (match.submittedAt < endMs) {
-                    const endDateObj = new Date(endMs);
-                    const endLabel   = endDateObj.toLocaleDateString("id-ID", {
-                      day: "numeric", month: "short", timeZone: "Asia/Jakarta"
-                    }) + ", " + endDateObj.toLocaleTimeString("id-ID", {
-                      hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta"
-                    });
+                html += `
+                  <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
+                              border-radius:var(--bs-radius);padding:7px 10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                      <div>
+                        <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">
+                          ✅ ${h.name}
+                        </div>
+                        <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
+                        ${prevFalseNote}
+                      </div>
+                      <div style="display:flex;gap:5px;flex-shrink:0">
+                        ${links.map((lnk, li) => lnk
+                          ? `<a href="${lnk}" target="_blank"
+                               style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
+                                      border-radius:var(--bs-radius-pill);color:var(--bs-primary);
+                                      font-size:0.62rem;font-weight:700;text-decoration:none">
+                               📎${links.length > 1 ? li + 1 : ''}
+                             </a>` : '').join('')}
+                      </div>
+                    </div>
+                  </div>`;
 
-                    falseUploadHtml = `
-                      <div style="background:#fee2e2;border:1px solid #fca5a5;
-                                  border-radius:var(--bs-radius);padding:5px 8px;margin-top:5px;
-                                  display:flex;align-items:center;gap:5px">
-                        <span style="font-size:0.75rem">⚠️</span>
-                        <div>
+              } else {
+                // ⚠️ False upload — belum ada upload valid
+                let endLabel = '-';
+                if (endMs) {
+                  try {
+                    const d = new Date(endMs);
+                    endLabel = d.toLocaleDateString("id-ID", { day:"numeric", month:"short", timeZone:"Asia/Jakarta" })
+                      + ", " + d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
+                  } catch(e) {}
+                }
+
+                html += `
+                  <div style="background:#fee2e2;border:1px solid #fca5a5;
+                              border-radius:var(--bs-radius);padding:7px 10px">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:0.72rem;font-weight:700;color:#b91c1c">⚠️ ${h.name}</div>
+                        <div style="font-size:0.6rem;margin-top:2px;color:#b91c1c;opacity:0.75">${slotTime}</div>
+
+                        <div style="background:white;border:1px solid #fca5a5;
+                                    border-radius:var(--bs-radius);padding:5px 8px;margin-top:6px">
                           <div style="font-size:0.62rem;font-weight:700;color:#b91c1c">
-                            False form upload detected
+                            ❌ False form upload terdeteksi (${falseMatches.length}x)
                           </div>
                           <div style="font-size:0.58rem;color:#b91c1c;opacity:0.8;margin-top:1px">
-                            Form disubmit ${_fmtSubmitTime(match.submittedAt)} — sesi belum selesai (end: ${endLabel})
+                            Disubmit ${_fmtSubmitTime(match.submittedAt)} — sesi belum selesai (end: ${endLabel})
                           </div>
                         </div>
-                      </div>`;
-                  }
-                } catch(e) {}
-              }
 
-              html += `
-                <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
-                            border-radius:var(--bs-radius);padding:7px 10px">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                    <div>
-                      <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">✅ ${h.name}</div>
-                      <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
+                        <div style="background:#fff7ed;border:1px solid #fed7aa;
+                                    border-radius:var(--bs-radius);padding:5px 8px;margin-top:5px;
+                                    display:flex;align-items:center;gap:6px">
+                          <span style="font-size:0.85rem">⏳</span>
+                          <div>
+                            <div style="font-size:0.62rem;font-weight:700;color:#c2410c">
+                              Menunggu form upload yang benar
+                            </div>
+                            <div style="font-size:0.58rem;color:#c2410c;opacity:0.85;margin-top:1px">
+                              Hubungi host: <strong>${h.name}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      ${links.length > 0 ? `
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;padding-top:2px">
+                          ${links.map((lnk, li) => lnk
+                            ? `<a href="${lnk}" target="_blank"
+                                 style="padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;
+                                        border-radius:var(--bs-radius-pill);color:#b91c1c;
+                                        font-size:0.62rem;font-weight:700;text-decoration:none;opacity:0.75">
+                                 📎${links.length > 1 ? li + 1 : ''}
+                               </a>` : '').join('')}
+                        </div>` : ''}
                     </div>
-                    <div style="display:flex;gap:5px;flex-shrink:0">
-                      ${links.map((lnk, li) => lnk
-                        ? `<a href="${lnk}" target="_blank"
-                             style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
-                                    border-radius:var(--bs-radius-pill);color:var(--bs-primary);
-                                    font-size:0.62rem;font-weight:700;text-decoration:none">
-                             📎${links.length > 1 ? li+1 : ''}
-                           </a>` : '').join('')}
-                    </div>
-                  </div>
-                  ${falseUploadHtml}
-                </div>`;
+                  </div>`;
+              }
             });
 
-            // ❓ / ⏳ Unmatched hosts
+            // ── ❓ / ⏳ Unmatched ──
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
               const candidates = findSessionCandidates(p, h);
-              const slotTime   = h.start ? `${h.start}${h.end?' → '+h.end:''}` : null;
+              const slotTime   = h.start ? `${h.start}${h.end ? ' → ' + h.end : ''}` : null;
 
               if (candidates.length > 0) {
                 html += `
@@ -1609,7 +1669,7 @@ function renderHariH(data, formResponses = []){
                             <div style="min-width:0">
                               <div style="font-size:0.7rem;font-weight:700;color:#92400e">${c.host}</div>
                               <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">
-                                ${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}
+                                ${c.startLive}${c.endLive ? ' → ' + c.endLive : ''} · ${c.typeLive || '-'}
                               </div>
                             </div>
                             <div style="display:flex;gap:4px;flex-shrink:0">
@@ -1618,7 +1678,7 @@ function renderHariH(data, formResponses = []){
                                      style="padding:3px 8px;background:#fffbeb;border:1px solid #ffe69c;
                                             border-radius:var(--bs-radius-pill);color:var(--bs-primary);
                                             font-size:0.62rem;font-weight:700;text-decoration:none">
-                                     📎${links.length > 1 ? li+1 : ''}
+                                     📎${links.length > 1 ? li + 1 : ''}
                                    </a>` : '').join('')}
                             </div>
                           </div>`;
@@ -1653,7 +1713,6 @@ function renderHariH(data, formResponses = []){
   html += `</div>`;
   container.innerHTML = html;
 }
-
 
 // ─────────────────────────────────────────────
 // TOGGLE HELPERS
