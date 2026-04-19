@@ -1165,6 +1165,17 @@ const SHIFT_COLOR = {
   malam: { bg: "var(--bs-secondary-subtle)", border: "var(--bs-border)", text: "var(--bs-secondary)" },
 };
 
+function _fmtSubmitTime(ms) {
+  if (!ms) return '-';
+  try {
+    const d    = new Date(ms);
+    const date = d.toLocaleDateString("id-ID", { day:"numeric", month:"short", timeZone:"Asia/Jakarta" });
+    const time = d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
+    return `${date}, ${time}`;
+  } catch(e) { return '-'; }
+}
+
+
 function renderHariH(data, formResponses = []){
   const container    = document.getElementById("schedule-list");
   const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
@@ -1372,25 +1383,63 @@ function renderHariH(data, formResponses = []){
                 : (match.startLive
                   ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive?' → '+match.endLive:''}</span>`
                   : '');
+
+              // ── Cek false upload ──
+              let falseUploadHtml = '';
+              if (match.submittedAt && h.end && h.end !== '-' && data.date) {
+                try {
+                  const startMs = h.start ? new Date(`${data.date}T${h.start}:00+07:00`).getTime() : 0;
+                  let endMs     = new Date(`${data.date}T${h.end}:00+07:00`).getTime();
+                  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000; // overnight
+
+                  if (match.submittedAt < endMs) {
+                    const endDateObj = new Date(endMs);
+                    const endLabel   = endDateObj.toLocaleDateString("id-ID", {
+                      day: "numeric", month: "short", timeZone: "Asia/Jakarta"
+                    }) + ", " + endDateObj.toLocaleTimeString("id-ID", {
+                      hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta"
+                    });
+
+                    falseUploadHtml = `
+                      <div style="background:#fee2e2;border:1px solid #fca5a5;
+                                  border-radius:var(--bs-radius);padding:5px 8px;margin-top:5px;
+                                  display:flex;align-items:center;gap:5px">
+                        <span style="font-size:0.75rem">⚠️</span>
+                        <div>
+                          <div style="font-size:0.62rem;font-weight:700;color:#b91c1c">
+                            False form upload detected
+                          </div>
+                          <div style="font-size:0.58rem;color:#b91c1c;opacity:0.8;margin-top:1px">
+                            Form disubmit ${_fmtSubmitTime(match.submittedAt)} — sesi belum selesai (end: ${endLabel})
+                          </div>
+                        </div>
+                      </div>`;
+                  }
+                } catch(e) {}
+              }
+
               html += `
                 <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;
-                            border-radius:var(--bs-radius);padding:7px 10px;
-                            display:flex;align-items:center;justify-content:space-between;gap:8px">
-                  <div>
-                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">✅ ${h.name}</div>
-                    <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
+                            border-radius:var(--bs-radius);padding:7px 10px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <div>
+                      <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">✅ ${h.name}</div>
+                      <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
+                    </div>
+                    <div style="display:flex;gap:5px;flex-shrink:0">
+                      ${links.map((lnk, li) => lnk
+                        ? `<a href="${lnk}" target="_blank"
+                            style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
+                                    border-radius:var(--bs-radius-pill);color:var(--bs-primary);
+                                    font-size:0.62rem;font-weight:700;text-decoration:none">
+                            📎${links.length > 1 ? li+1 : ''}
+                          </a>` : '').join('')}
+                    </div>
                   </div>
-                  <div style="display:flex;gap:5px;flex-shrink:0">
-                    ${links.map((lnk, li) => lnk
-                      ? `<a href="${lnk}" target="_blank"
-                           style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
-                                  border-radius:var(--bs-radius-pill);color:var(--bs-primary);
-                                  font-size:0.62rem;font-weight:700;text-decoration:none">
-                           📎${links.length > 1 ? li+1 : ''}
-                         </a>` : '').join('')}
-                  </div>
+                  ${falseUploadHtml}
                 </div>`;
             });
+
 
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
