@@ -984,7 +984,7 @@ function renderKlasemen(data){
 
   html+=`
     <div style="text-align:center;margin-bottom:12px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Upload</div>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Data Input</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">
         ${data.dateFrom||""} → ${data.dateTo||""}
       </div>
@@ -1285,7 +1285,7 @@ function renderHariH(data, formResponses = []){
   // ── Header ──
   html += `
     <div style="text-align:center;margin-bottom:12px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Pantau Data Hari H</div>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Data Hari H(Belum diisi)</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
     </div>`;
 
