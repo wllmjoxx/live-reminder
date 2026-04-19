@@ -1188,7 +1188,7 @@ function renderHariH(data, formResponses = []) {
   html += `
     <div style="text-align:center;margin-bottom:12px">
       <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Data Hari H (Belum diisi)</div>
-      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">!Harap selalu cek manual jam pada foto file GMV host!</div>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">!Harap selalu cek manual TANGGAL, MP, JAM & DLL pada foto file GMV host di sheet responses!</div>
       <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
     </div>`;
 
