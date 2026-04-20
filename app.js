@@ -1906,6 +1906,12 @@ async function forceRefreshBuktiTayang() {
 function renderBuktiTayang(data) {
   const container = document.getElementById('schedule-list');
 
+  // ★ Hitung dari sessions langsung sebagai fallback jika backend tidak kirim total
+  const sessions       = data.sessions || [];
+  const totalUploaded  = data.totalUploaded ?? sessions.filter(s => s.status === 'uploaded').length;
+  const totalPending   = data.totalPending  ?? sessions.filter(s => s.status === 'pending').length;
+  const totalMissing   = data.totalMissing  ?? sessions.filter(s => s.status === 'missing').length;
+
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
        <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
@@ -1917,13 +1923,13 @@ function renderBuktiTayang(data) {
   html += `
     <div style="text-align:center;margin-bottom:12px">
       <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📸 Bukti Tayang</div>
-      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
+      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date || '-'}</div>
     </div>`;
 
   html += `<div style="display:flex;gap:7px;margin-bottom:12px">
-    ${summaryCard('var(--bs-success-subtle)', '#a3cfbb', 'var(--bs-success)', data.totalUploaded, '✅ Uploaded')}
-    ${summaryCard('var(--bs-warning-subtle)', '#ffe69c', '#856404',           data.totalPending,  '⏳ Link Kosong')}
-    ${summaryCard('var(--bs-danger-subtle)',  '#f1aeb5', 'var(--bs-danger)',  data.totalMissing,  '❌ Belum Upload')}
+    ${summaryCard('var(--bs-success-subtle)', '#a3cfbb', 'var(--bs-success)', totalUploaded, '✅ Uploaded')}
+    ${summaryCard('var(--bs-warning-subtle)', '#ffe69c', '#856404',           totalPending,  '⏳ Link Kosong')}
+    ${summaryCard('var(--bs-danger-subtle)',  '#f1aeb5', 'var(--bs-danger)',  totalMissing,  '❌ Belum Upload')}
   </div>`;
 
   html += `
@@ -1932,61 +1938,62 @@ function renderBuktiTayang(data) {
       🔄 Refresh (Clear Cache)
     </button>`;
 
-  if (!data.sessions || data.sessions.length === 0) {
+  if (!sessions.length) {
     html += `<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi hari ini</div>`;
   } else {
-    data.sessions.forEach(s => {
-      const sessionTime = (s.endTime && s.endTime !== '-')
-        ? `${s.startTime} → ${s.endTime}` : s.startTime;
+    sessions.forEach(s => {
+      // Defensive: semua field pakai fallback
+      const brand     = s.brand   || '-';
+      const mp        = s.mp      || '-';
+      const studio    = s.studio  || '-';
+      const idLine    = s.idLine  || '-';
+      const startTime = s.startTime || '-';
+      const endTime   = s.endTime   || '-';
+      const sessionTime = (endTime && endTime !== '-')
+        ? `${startTime} → ${endTime}` : startTime;
+
       const typeBadge = s.isMarathon
         ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">🏃 Marathon</span>`
         : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">⚡ Single</span>`;
 
-      let statusBg, statusBorder, statusIcon, statusText;
+      let statusBg, statusBorder, statusIcon, statusText, statusColor;
       if (s.status === 'uploaded') {
         statusBg = 'var(--bs-success-subtle)'; statusBorder = '#a3cfbb';
-        statusIcon = '✅'; statusText = 'Uploaded';
+        statusIcon = '✅'; statusText = 'Uploaded'; statusColor = 'var(--bs-success-text)';
       } else if (s.status === 'pending') {
         statusBg = 'var(--bs-warning-subtle)'; statusBorder = '#ffe69c';
-        statusIcon = '⏳'; statusText = 'Link kosong';
+        statusIcon = '⏳'; statusText = 'Link kosong'; statusColor = '#856404';
       } else {
         statusBg = 'var(--bs-danger-subtle)'; statusBorder = '#f1aeb5';
-        statusIcon = '❌'; statusText = 'Belum upload';
+        statusIcon = '❌'; statusText = 'Belum upload'; statusColor = 'var(--bs-danger-text)';
       }
+
+      const links = Array.isArray(s.links) ? s.links.filter(Boolean) : [];
+      const pics  = Array.isArray(s.pics)  ? s.pics.filter(Boolean)  : [];
 
       html += `
         <div style="background:var(--bs-white);border:1px solid var(--bs-border);border-radius:var(--bs-radius-lg);
                     margin-bottom:10px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
 
-          <!-- Header session -->
+          <!-- Header -->
           <div style="padding:10px 14px;background:${statusBg};border-bottom:1px solid ${statusBorder}">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
               <div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-                  <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">${statusIcon} ${s.brand}</span>
+                  <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">${statusIcon} ${brand}</span>
                   ${typeBadge}
                 </div>
                 <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
                   <span>🕐 ${sessionTime}</span>
-                  <span>📍 ${s.studio} · ${s.mp}</span>
+                  <span>📍 ${studio} · ${mp}</span>
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-                <span style="font-size:0.6rem;color:#adb5bd;font-family:monospace">${s.idLine}</span>
+                <span style="font-size:0.6rem;color:#adb5bd;font-family:monospace">${idLine}</span>
                 <span style="font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:var(--bs-radius-pill);
-                             background:white;border:1px solid ${statusBorder}">${statusText}</span>
+                             background:white;border:1px solid ${statusBorder};color:${statusColor}">${statusText}</span>
               </div>
             </div>
-          </div>
-
-          <!-- Host list -->
-          <div style="padding:8px 14px;border-bottom:1px solid var(--bs-border-subtle)">
-            ${s.hosts.map(h =>
-              `<div style="font-size:0.68rem;color:var(--bs-muted);padding:2px 0">
-                👤 ${h.name}
-                <span style="color:#adb5bd;margin-left:4px">${h.start}${h.end ? ' → ' + h.end : ''}</span>
-              </div>`
-            ).join('')}
           </div>
 
           <!-- Upload status -->
@@ -1994,24 +2001,28 @@ function renderBuktiTayang(data) {
             ${s.status === 'uploaded' ? `
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                 <span style="font-size:0.68rem;color:var(--bs-success);font-weight:600">
-                  📎 ${s.links.length} file diupload
-                  ${s.pics.length > 0 ? `<span style="color:var(--bs-muted);font-weight:400">oleh ${s.pics.join(', ')}</span>` : ''}
+                  📎 ${links.length} file diupload
+                  ${pics.length > 0 ? `<span style="color:var(--bs-muted);font-weight:400"> oleh ${pics.join(', ')}</span>` : ''}
                 </span>
                 <div style="display:flex;gap:4px;flex-wrap:wrap">
-                  ${s.links.map((lnk, li) => lnk
+                  ${links.map((lnk, li) => lnk
                     ? `<a href="${lnk}" target="_blank"
                          style="padding:3px 9px;background:var(--bs-success-subtle);border:1px solid #a3cfbb;
                                 border-radius:var(--bs-radius-pill);color:var(--bs-success-text);
                                 font-size:0.62rem;font-weight:700;text-decoration:none">
-                         📎${s.links.length > 1 ? ' ' + (li + 1) : ''}
+                         📎${links.length > 1 ? ' ' + (li + 1) : ''}
                        </a>` : ''
                   ).join('')}
                 </div>
-              </div>` : s.status === 'pending' ? `
+              </div>`
+
+            : s.status === 'pending' ? `
               <div style="font-size:0.68rem;color:#856404;font-weight:600">
-                ⚠️ Ada ${s.matchCount} entri tapi belum ada link yang diisi
-                ${s.pics.length > 0 ? `<span style="font-weight:400"> — PIC: ${s.pics.join(', ')}</span>` : ''}
-              </div>` : `
+                ⚠️ Ada ${s.matchCount || 0} entri di form tapi link belum diisi
+                ${pics.length > 0 ? `<span style="font-weight:400"> — PIC: ${pics.join(', ')}</span>` : ''}
+              </div>`
+
+            : `
               <div style="font-size:0.68rem;color:var(--bs-danger);font-weight:600">
                 ❌ Belum ada form upload yang masuk untuk sesi ini
               </div>`}
@@ -2023,3 +2034,4 @@ function renderBuktiTayang(data) {
   html += `</div>`;
   container.innerHTML = html;
 }
+
