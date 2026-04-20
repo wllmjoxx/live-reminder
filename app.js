@@ -950,7 +950,8 @@ async function forceRefreshHariH() {
   container.innerHTML = _bsLoadingHTML("Force refresh...");
   try {
     const controller = new AbortController();
-    const timeout    = setTimeout(() => controller.abort(), 20000);
+    // FIX: timeout 30000ms (dari 20000ms)
+    const timeout = setTimeout(() => controller.abort(), 30000);
     const [todayResult, formResult] = await Promise.allSettled([
       fetch(API_URL + "?action=today&nocache=1&t="     + Date.now(), { signal: controller.signal }),
       fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
@@ -972,6 +973,7 @@ async function forceRefreshHariH() {
     container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
   }
 }
+
 
 // ✅ FINAL — tidak perlu startTime, tidak perlu override
 function getHariHShift(endTime) {
