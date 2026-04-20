@@ -948,13 +948,16 @@ async function forceRefreshHariH() {
   }
 }
 
+// ✅ FINAL — tidak perlu startTime, tidak perlu override
 function getHariHShift(endTime) {
   if (!endTime || endTime === "-") return "siang";
-  const [h] = endTime.split(":").map(Number);
+  const [h, m] = endTime.split(":").map(Number);
+  if (h === 0 && m === 0) return "siang";  // 00:00 = akhir shift siang
   if (h >= 8  && h < 16) return "pagi";
   if (h >= 16)            return "siang";
-  return "malam";
+  return "malam";                           // 00:01–07:59 genuinely overnight
 }
+
 
 const SHIFT_ORDER = { pagi: 0, siang: 1, malam: 2 };
 const SHIFT_LABEL = {
