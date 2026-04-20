@@ -1096,9 +1096,6 @@ function renderHariH(data, formResponses = []) {
   window._hariHShiftGroups = shiftGroups;
   window._hariHDate        = data.date;
 
-  // ─────────────────────────────────────────
-  // sessionMatch — pakai normalizeBrand (FIX He!!o dll)
-  // ─────────────────────────────────────────
   function sessionMatch(formResp, p, hostObj) {
     const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
@@ -1108,7 +1105,6 @@ function renderHariH(data, formResponses = []) {
     const anyHostMatch = formHosts.some(name => hostNameMatchesSlot(name, hostName));
     if (!anyHostMatch) return false;
 
-    // FIX: normalizeBrand sebelum fuzzy match
     const fBrand = normalizeBrand(formResp.brand);
     const sBrand = normalizeBrand(p.brand);
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
@@ -1125,9 +1121,6 @@ function renderHariH(data, formResponses = []) {
     return true;
   }
 
-  // ─────────────────────────────────────────
-  // deduplicateResponses
-  // ─────────────────────────────────────────
   function deduplicateResponses(responses) {
     const groups = {};
     responses.forEach(r => {
@@ -1153,10 +1146,6 @@ function renderHariH(data, formResponses = []) {
     return Object.values(groups);
   }
 
-  // ─────────────────────────────────────────
-  // buildExclusiveClaims — multi-host aware
-  // FIX: pakai normalizeBrand di brand check
-  // ─────────────────────────────────────────
   function buildExclusiveClaims(dedupedResponses, allSlots) {
     const claims = {};
 
@@ -1179,7 +1168,6 @@ function renderHariH(data, formResponses = []) {
 
             if (!hostNameMatchesSlot(formHostName, hostName)) return;
 
-            // FIX: normalizeBrand
             const fBrand = normalizeBrand(r.brand);
             const sBrand = normalizeBrand(p.brand);
             if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return;
@@ -1236,9 +1224,7 @@ function renderHariH(data, formResponses = []) {
     return claims;
   }
 
-  // ─────────────────────────────────────────
-  // PRE-PASS
-  // ─────────────────────────────────────────
+  // ─── PRE-PASS ───────────────────────────────────────────────────────────────
   const dedupedForms = deduplicateResponses(formResponses);
 
   const allSlots = [];
@@ -1265,7 +1251,6 @@ function renderHariH(data, formResponses = []) {
     });
   }
 
-  // FIX: normalizeBrand di findSessionCandidates
   function findSessionCandidates(p, hostObj) {
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
     const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
@@ -1284,9 +1269,7 @@ function renderHariH(data, formResponses = []) {
     });
   }
 
-  // ─────────────────────────────────────────
-  // RENDER HTML
-  // ─────────────────────────────────────────
+  // ─── RENDER HTML ────────────────────────────────────────────────────────────
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
        <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
@@ -1367,9 +1350,18 @@ function renderHariH(data, formResponses = []) {
 
         rows.forEach((p, pIdx) => {
           const sessionTime = (p.endTime && p.endTime !== '-') ? `${p.startTime} → ${p.endTime}` : p.startTime;
+
           const typeBadge = p.isMarathon
             ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">🏃 Marathon</span>`
             : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">⚡ Single</span>`;
+
+          // ← HOLD: badge merah jika row.isHold === true
+          const holdBadge = p.isHold
+            ? `<span style="background:#ef4444;color:#fff;font-size:0.55rem;font-weight:700;
+                            padding:2px 6px;border-radius:var(--bs-radius-pill);letter-spacing:.5px">
+                HOLD
+               </span>`
+            : '';
 
           const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
           const hosts    = rawHosts.map(h => typeof h === 'string' ? { name: h, start: null, end: null } : h);
@@ -1414,6 +1406,7 @@ function renderHariH(data, formResponses = []) {
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
                     <span style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${p.brand}</span>
                     ${typeBadge}
+                    ${holdBadge}
                   </div>
                   <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
                     <span>🕐 ${sessionTime}</span><span>📍 ${p.studio} · ${p.mp}</span>
@@ -1561,6 +1554,7 @@ function renderHariH(data, formResponses = []) {
   html += `</div>`;
   container.innerHTML = html;
 }
+
 
 // ─────────────────────────────────────────────
 // TOGGLE HELPERS
