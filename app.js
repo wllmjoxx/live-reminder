@@ -1903,14 +1903,66 @@ async function forceRefreshBuktiTayang() {
   }
 }
 
+// ─────────────────────────────────────────────
+// COPY BUKTI TAYANG → WA
+// ─────────────────────────────────────────────
+function copyBuktiTayangWA() {
+  if (!_lastBuktiTayangData) { showBanner('Data belum dimuat', 'warning'); return; }
+
+  const sessions = _lastBuktiTayangData.sessions || [];
+  const date     = _lastBuktiTayangData.date || '';
+
+  let dateLabel = date;
+  try {
+    dateLabel = new Date(date + 'T12:00:00+07:00')
+      .toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Asia/Jakarta' })
+      .toUpperCase();
+  } catch(e) {}
+
+  const missing  = sessions.filter(s => s.status === 'missing');
+  const pending  = sessions.filter(s => s.status === 'pending');
+  const total    = missing.length + pending.length;
+
+  if (total === 0) {
+    showBanner('✅ Semua sesi sudah upload bukti tayang!', 'success');
+    return;
+  }
+
+  const fmtRow = s => {
+    const time = (s.endTime && s.endTime !== '-')
+      ? `${s.startTime} → ${s.endTime}` : s.startTime;
+    return `• ${s.brand} | ${s.studio} · ${s.mp || '-'} | ${time} | ID: ${s.idLine}`;
+  };
+
+  let text = `📸 TAGIHAN BUKTI TAYANG\n${dateLabel}\n`;
+
+  if (missing.length > 0) {
+    text += `\n❌ Belum Upload (${missing.length} sesi):\n`;
+    text += missing.map(fmtRow).join('\n');
+  }
+
+  if (pending.length > 0) {
+    text += `\n\n⏳ Link Kosong di Form (${pending.length} sesi):\n`;
+    text += pending.map(fmtRow).join('\n');
+  }
+
+  text += `\n\nTotal belum lengkap: ${total} sesi`;
+
+  navigator.clipboard.writeText(text)
+    .then(() => showBanner(`✅ Teks tagihan (${total} sesi) di-copy!`, 'success'))
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
+
+// ─────────────────────────────────────────────
+// RENDER BUKTI TAYANG
+// ─────────────────────────────────────────────
 function renderBuktiTayang(data) {
   const container = document.getElementById('schedule-list');
 
-  // ★ Hitung dari sessions langsung sebagai fallback jika backend tidak kirim total
-  const sessions       = data.sessions || [];
-  const totalUploaded  = data.totalUploaded ?? sessions.filter(s => s.status === 'uploaded').length;
-  const totalPending   = data.totalPending  ?? sessions.filter(s => s.status === 'pending').length;
-  const totalMissing   = data.totalMissing  ?? sessions.filter(s => s.status === 'missing').length;
+  const sessions      = data.sessions || [];
+  const totalUploaded = data.totalUploaded ?? sessions.filter(s => s.status === 'uploaded').length;
+  const totalPending  = data.totalPending  ?? sessions.filter(s => s.status === 'pending').length;
+  const totalMissing  = data.totalMissing  ?? sessions.filter(s => s.status === 'missing').length;
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
@@ -1932,21 +1984,30 @@ function renderBuktiTayang(data) {
     ${summaryCard('var(--bs-danger-subtle)',  '#f1aeb5', 'var(--bs-danger)',  totalMissing,  '❌ Belum Upload')}
   </div>`;
 
+  // ── Tombol Refresh + Copy WA ──────────────────────────────────────────────
   html += `
-    <button onclick="forceRefreshBuktiTayang()" class="btn btn-outline-primary btn-block"
-      style="margin-bottom:16px;padding:8px;font-size:0.78rem">
-      🔄 Refresh (Clear Cache)
-    </button>`;
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button onclick="forceRefreshBuktiTayang()"
+        class="btn btn-outline-primary"
+        style="flex:1;padding:8px;font-size:0.78rem">
+        🔄 Refresh
+      </button>
+      <button onclick="copyBuktiTayangWA()"
+        style="flex:1;padding:8px;font-size:0.78rem;font-weight:700;cursor:pointer;
+               border:1px solid #a3cfbb;border-radius:var(--bs-radius);
+               background:var(--bs-success-subtle);color:var(--bs-success-text)">
+        📋 Copy Tagihan WA
+      </button>
+    </div>`;
 
   if (!sessions.length) {
     html += `<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi hari ini</div>`;
   } else {
     sessions.forEach(s => {
-      // Defensive: semua field pakai fallback
-      const brand     = s.brand   || '-';
-      const mp        = s.mp      || '-';
-      const studio    = s.studio  || '-';
-      const idLine    = s.idLine  || '-';
+      const brand     = s.brand     || '-';
+      const mp        = s.mp        || '-';
+      const studio    = s.studio    || '-';
+      const idLine    = s.idLine    || '-';
       const startTime = s.startTime || '-';
       const endTime   = s.endTime   || '-';
       const sessionTime = (endTime && endTime !== '-')
@@ -1973,14 +2034,12 @@ function renderBuktiTayang(data) {
 
       html += `
         <div style="background:var(--bs-white);border:1px solid var(--bs-border);border-radius:var(--bs-radius-lg);
-                    margin-bottom:10px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
-
-          <!-- Header -->
+                    margin-bottom:8px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
           <div style="padding:10px 14px;background:${statusBg};border-bottom:1px solid ${statusBorder}">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
               <div>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-                  <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">${statusIcon} ${brand}</span>
+                  <span style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${statusIcon} ${brand}</span>
                   ${typeBadge}
                 </div>
                 <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
@@ -1996,7 +2055,6 @@ function renderBuktiTayang(data) {
             </div>
           </div>
 
-          <!-- Upload status -->
           <div style="padding:8px 14px">
             ${s.status === 'uploaded' ? `
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2015,16 +2073,14 @@ function renderBuktiTayang(data) {
                   ).join('')}
                 </div>
               </div>`
-
             : s.status === 'pending' ? `
               <div style="font-size:0.68rem;color:#856404;font-weight:600">
-                ⚠️ Ada ${s.matchCount || 0} entri di form tapi link belum diisi
+                ⚠️ Ada di form tapi link belum diisi
                 ${pics.length > 0 ? `<span style="font-weight:400"> — PIC: ${pics.join(', ')}</span>` : ''}
               </div>`
-
             : `
               <div style="font-size:0.68rem;color:var(--bs-danger);font-weight:600">
-                ❌ Belum ada form upload yang masuk untuk sesi ini
+                ❌ Belum ada form upload yang masuk
               </div>`}
           </div>
         </div>`;
@@ -2034,4 +2090,3 @@ function renderBuktiTayang(data) {
   html += `</div>`;
   container.innerHTML = html;
 }
-
