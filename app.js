@@ -986,21 +986,18 @@ function _fmtSubmitTime(ms) {
 // INTERVAL OVERLAP HELPER
 // ─────────────────────────────────────────────
 function getOverlapRatio(formStart, formEnd, hStart, hEnd) {
-  if (!formStart || !hStart) return 0;
-  const fsMin = toMinJS(formStart);
-  const hsMin = toMinJS(hStart);
-  if (!formEnd || formEnd === '-' || formEnd === '') {
-    return Math.abs(fsMin - hsMin) <= 30 ? 0.6 : 0;
-  }
-  let feMin = toMinJS(formEnd);
-  let heMin = (hEnd && hEnd !== '-') ? toMinJS(hEnd) : hsMin + (toMinJS(formEnd) - toMinJS(formStart));
-  if (feMin <= fsMin) feMin += 24 * 60;
-  if (heMin <= hsMin) heMin += 24 * 60;
-  const overlapMin = Math.max(0, Math.min(feMin, heMin) - Math.max(fsMin, hsMin));
-  const minDur     = Math.min(feMin - fsMin, heMin - hsMin);
-  if (minDur <= 0) return 0;
-  return overlapMin / minDur;
+  let fS = toMin(formStart), fE = toMin(formEnd);
+  let hS = toMin(hStart),    hE = toMin(hEnd);
+
+  // Normalize 00:00 end time → 1440
+  if (fE === 0) fE = 1440;
+  if (hE === 0) hE = 1440;
+
+  const overlap = Math.max(0, Math.min(fE, hE) - Math.max(fS, hS));
+  const dur = fE - fS;
+  return dur > 0 ? overlap / dur : 0;
 }
+
 
 // ─────────────────────────────────────────────
 // ★ NEW: parseFormHosts
@@ -1047,26 +1044,28 @@ function hostNameMatchesSlot(formHostName, hostObj) {
 // Threshold kandidat : score ≥ 1 ATAU overlap ≥ 15%
 // ─────────────────────────────────────────────
 function getTimeMatchScore(formResp, hostStart, hostEnd) {
+  let formStartMin = toMin(formResp.startLive);
+  let formEndMin   = toMin(formResp.endLive);
+  let hStartMin    = toMin(hostStart);
+  let hEndMin      = toMin(hostEnd);
+
+  // Normalize 00:00 end time → 1440
+  if (formEndMin === 0) formEndMin = 1440;
+  if (hEndMin === 0)    hEndMin    = 1440;
+
   let score = 0;
-  const fStart = formResp.startLive;
-  const fEnd   = formResp.endLive;
+  if (Math.abs(formEndMin - hEndMin) <= 30)     score += 3;
+  if (Math.abs(formStartMin - hStartMin) <= 30) score += 2;
 
-  // +3: end anchor (paling kuat)
-  if (fEnd && fEnd !== '-' && hostEnd && hostEnd !== '-') {
-    if (Math.abs(toMinJS(fEnd) - toMinJS(hostEnd)) <= 30) score += 3;
-  }
-
-  // +2: start match
-  if (fStart && hostStart) {
-    if (Math.abs(toMinJS(fStart) - toMinJS(hostStart)) <= 30) score += 2;
-  }
-
-  // +1: overlap bonus (≥ 50%)
-  const ratio = getOverlapRatio(fStart, fEnd, hostStart, hostEnd);
-  if (ratio >= 0.5) score += 1;
+  // overlap bonus
+  const overlapStart = Math.max(formStartMin, hStartMin);
+  const overlapEnd   = Math.min(formEndMin, hEndMin);
+  const formDur      = formEndMin - formStartMin;
+  if (formDur > 0 && (overlapEnd - overlapStart) / formDur >= 0.5) score += 1;
 
   return score;
 }
+
 
 // ─────────────────────────────────────────────
 // RENDER HARI H
