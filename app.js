@@ -308,9 +308,8 @@ function renderTab(tab) {
   if(tab==="standby")     renderStandby();
   if(tab==="klasemen")    loadKlasemen();
   if(tab==="hariH")       loadHariH();
-  if(tab==="buktiTayang") loadBuktiTayang(); // ← tambah ini
+  if(tab==="buktiTayang") loadBuktiTayang();
 }
-
 
 function formatPic(rawName){
   if(!rawName||rawName==="-"||rawName==="")return"LSC";
@@ -501,6 +500,22 @@ function renderMarathon(){
       hc.appendChild(row);
     });
   });
+}
+
+// ─── Helper: parse "HH:mm" → total menit ───────────────────────────────────
+function toMin(t) {
+  if (!t) return 0;
+  const str = (typeof t === 'string') ? t : String(t);
+  const parts = str.split(':');
+  if (parts.length < 2) return 0;
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+// ─── Helper: normalize brand string (hapus special chars) ──────────────────
+// FIX: supaya "He!!o by Paseo" bisa match "Hello by Paseo"
+function normalizeBrand(str) {
+  if (!str) return '';
+  return str.replace(/[^a-zA-Z0-9\s]/g, '').toLowerCase().trim();
 }
 
 // ─────────────────────────────────────────────
@@ -894,6 +909,7 @@ function updateTabLabels() {
 let _lastHariHData = null;
 let _lastFormData  = [];
 
+// FIX: Promise.allSettled supaya kalau formcheck gagal, today data tetap muncul
 async function loadHariH() {
   if (activeTab !== "hariH") return;
   const container = document.getElementById("schedule-list");
@@ -902,13 +918,16 @@ async function loadHariH() {
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
-    const [todayRes, formRes] = await Promise.all([
+    const [todayResult, formResult] = await Promise.allSettled([
       fetch(API_URL + "?action=today&t="     + Date.now(), { signal: controller.signal }),
       fetch(API_URL + "?action=formcheck&t=" + Date.now(), { signal: controller.signal }),
     ]);
     clearTimeout(timeout);
-    const data     = JSON.parse(await todayRes.text());
-    const formData = JSON.parse(await formRes.text());
+    if (todayResult.status === "rejected") throw todayResult.reason;
+    const data     = JSON.parse(await todayResult.value.text());
+    const formData = formResult.status === "fulfilled"
+      ? JSON.parse(await formResult.value.text())
+      : { success: false };
     if (!data.success) throw new Error(data.error || "Unknown error");
     if (activeTab !== "hariH") return;
     _lastHariHData = data;
@@ -923,6 +942,7 @@ async function loadHariH() {
   }
 }
 
+// FIX: Promise.allSettled juga untuk forceRefresh
 async function forceRefreshHariH() {
   if (activeTab !== "hariH") return;
   const container = document.getElementById("schedule-list");
@@ -931,13 +951,16 @@ async function forceRefreshHariH() {
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
-    const [todayRes, formRes] = await Promise.all([
+    const [todayResult, formResult] = await Promise.allSettled([
       fetch(API_URL + "?action=today&nocache=1&t="     + Date.now(), { signal: controller.signal }),
       fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
     ]);
     clearTimeout(timeout);
-    const data     = JSON.parse(await todayRes.text());
-    const formData = JSON.parse(await formRes.text());
+    if (todayResult.status === "rejected") throw todayResult.reason;
+    const data     = JSON.parse(await todayResult.value.text());
+    const formData = formResult.status === "fulfilled"
+      ? JSON.parse(await formResult.value.text())
+      : { success: false };
     if (!data.success) throw new Error(data.error || "Unknown error");
     if (activeTab !== "hariH") return;
     _lastHariHData = data;
@@ -959,7 +982,6 @@ function getHariHShift(endTime) {
   if (h >= 16)            return "siang";
   return "malam";                           // 00:01–07:59 genuinely overnight
 }
-
 
 const SHIFT_ORDER = { pagi: 0, siang: 1, malam: 2 };
 const SHIFT_LABEL = {
@@ -988,26 +1010,20 @@ function _fmtSubmitTime(ms) {
 function getOverlapRatio(formStart, formEnd, hStart, hEnd) {
   let fS = toMin(formStart), fE = toMin(formEnd);
   let hS = toMin(hStart),    hE = toMin(hEnd);
-
-  // Normalize 00:00 end time → 1440
+  // FIX: Normalize 00:00 end time → 1440
   if (fE === 0) fE = 1440;
   if (hE === 0) hE = 1440;
-
   const overlap = Math.max(0, Math.min(fE, hE) - Math.max(fS, hS));
   const dur = fE - fS;
   return dur > 0 ? overlap / dur : 0;
 }
 
-
 // ─────────────────────────────────────────────
-// ★ NEW: parseFormHosts
+// ★ parseFormHosts
 // "Jonathan (with Agnes)" → ["Jonathan", "Agnes"]
-// "Agnes dan Jonathan"    → ["Agnes", "Jonathan"]
-// Support: with, dan, bareng, sama, &, koma
 // ─────────────────────────────────────────────
 function parseFormHosts(hostStr) {
   if (!hostStr) return [];
-  // Hilangkan tanda kurung, lalu split berdasarkan separator
   const cleaned = hostStr.replace(/[()]/g, ' ');
   const parts   = cleaned
     .split(/\s*(?:\bwith\b|\bdan\b|\bbareng\b|\bsama\b|&|,)\s*/i)
@@ -1017,8 +1033,7 @@ function parseFormHosts(hostStr) {
 }
 
 // ─────────────────────────────────────────────
-// ★ NEW: hostNameMatchesSlot
-// Fuzzy word match satu nama host ke slot schedule
+// ★ hostNameMatchesSlot — fuzzy word match
 // ─────────────────────────────────────────────
 function hostNameMatchesSlot(formHostName, hostObj) {
   const hostName   = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
@@ -1035,48 +1050,39 @@ function hostNameMatchesSlot(formHostName, hostObj) {
 }
 
 // ─────────────────────────────────────────────
-// ★ NEW: getTimeMatchScore
-// Scoring-based time matching:
-//   |form.endLive   - h.end|   ≤ 30 min → +3  (anchor terkuat)
-//   |form.startLive - h.start| ≤ 30 min → +2
-//   interval overlap ≥ 50%              → +1  (bonus)
-// Threshold match    : score ≥ 2
-// Threshold kandidat : score ≥ 1 ATAU overlap ≥ 15%
+// ★ getTimeMatchScore — scoring-based time matching
+//   end ±30m → +3 | start ±30m → +2 | overlap≥50% → +1
+//   threshold match: ≥2 | kandidat: ≥1 atau overlap≥15%
 // ─────────────────────────────────────────────
 function getTimeMatchScore(formResp, hostStart, hostEnd) {
   let formStartMin = toMin(formResp.startLive);
   let formEndMin   = toMin(formResp.endLive);
   let hStartMin    = toMin(hostStart);
   let hEndMin      = toMin(hostEnd);
-
-  // Normalize 00:00 end time → 1440
+  // FIX: Normalize 00:00 end time → 1440
   if (formEndMin === 0) formEndMin = 1440;
   if (hEndMin === 0)    hEndMin    = 1440;
-
   let score = 0;
   if (Math.abs(formEndMin - hEndMin) <= 30)     score += 3;
   if (Math.abs(formStartMin - hStartMin) <= 30) score += 2;
-
-  // overlap bonus
   const overlapStart = Math.max(formStartMin, hStartMin);
   const overlapEnd   = Math.min(formEndMin, hEndMin);
   const formDur      = formEndMin - formStartMin;
   if (formDur > 0 && (overlapEnd - overlapStart) / formDur >= 0.5) score += 1;
-
   return score;
 }
-
 
 // ─────────────────────────────────────────────
 // RENDER HARI H
 // ─────────────────────────────────────────────
 function renderHariH(data, formResponses = []) {
   const container    = document.getElementById("schedule-list");
-  const totalPending = data.leaderboard.reduce((s,r) => s + r.pending, 0);
-  const totalAll     = data.leaderboard.reduce((s,r) => s + r.total, 0);
+  const leaderboard  = data.leaderboard || [];
+  const totalPending = leaderboard.reduce((s,r) => s + r.pending, 0);
+  const totalAll     = leaderboard.reduce((s,r) => s + r.total, 0);
 
   const shiftGroups = { pagi: {}, siang: {}, malam: {} };
-  data.leaderboard.forEach(r => {
+  leaderboard.forEach(r => {
     if (!r.rows || !r.rows.length) return;
     r.rows.forEach(row => {
       const shift = getHariHShift(row.endTime);
@@ -1089,32 +1095,28 @@ function renderHariH(data, formResponses = []) {
   window._hariHDate        = data.date;
 
   // ─────────────────────────────────────────
-  // ★ UPDATED: sessionMatch
-  // Pakai parseFormHosts + hostNameMatchesSlot + getTimeMatchScore ≥ 2
+  // sessionMatch — pakai normalizeBrand (FIX He!!o dll)
   // ─────────────────────────────────────────
   function sessionMatch(formResp, p, hostObj) {
     const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
     const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
 
-    // Multi-host: cek apakah salah satu nama di form cocok dengan slot ini
     const formHosts    = parseFormHosts(formResp.host);
     const anyHostMatch = formHosts.some(name => hostNameMatchesSlot(name, hostName));
     if (!anyHostMatch) return false;
 
-    // Brand fuzzy match (5 char)
-    const fBrand = formResp.brand.toLowerCase().trim();
-    const sBrand = p.brand.toLowerCase().trim();
+    // FIX: normalizeBrand sebelum fuzzy match
+    const fBrand = normalizeBrand(formResp.brand);
+    const sBrand = normalizeBrand(p.brand);
     if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
 
-    // Marketplace fuzzy match (4 char)
     if (formResp.marketplace && p.mp) {
       const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
         || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
       if (!mpOk) return false;
     }
 
-    // ★ Scoring-based time match (ganti dari overlap ratio)
     const score = getTimeMatchScore(formResp, hostStart, hostEnd);
     if (score < 2) return false;
 
@@ -1122,7 +1124,7 @@ function renderHariH(data, formResponses = []) {
   }
 
   // ─────────────────────────────────────────
-  // HELPER: dedup form responses
+  // deduplicateResponses
   // ─────────────────────────────────────────
   function deduplicateResponses(responses) {
     const groups = {};
@@ -1150,20 +1152,17 @@ function renderHariH(data, formResponses = []) {
   }
 
   // ─────────────────────────────────────────
-  // ★ UPDATED: buildExclusiveClaims — multi-host aware
-  // Single-host form → exclusive claim ke 1 slot terbaik
-  // Multi-host form  → tiap nama host klaim slot terbaiknya sendiri
-  // claims[rIdx] = [slotKey, ...] (array)
+  // buildExclusiveClaims — multi-host aware
+  // FIX: pakai normalizeBrand di brand check
   // ─────────────────────────────────────────
   function buildExclusiveClaims(dedupedResponses, allSlots) {
-    const claims = {}; // rIdx → [slotKey, ...]
+    const claims = {};
 
     dedupedResponses.forEach((r, rIdx) => {
       const formHosts   = parseFormHosts(r.host);
       const isMultiHost = formHosts.length > 1;
 
       if (isMultiHost) {
-        // Multi-host: tiap nama cari slot terbaiknya sendiri
         const claimedKeys = [];
 
         formHosts.forEach(formHostName => {
@@ -1176,22 +1175,19 @@ function renderHariH(data, formResponses = []) {
             const hostStart = (typeof h === 'object' && h?.start) ? h.start : p.startTime;
             const hostEnd   = (typeof h === 'object' && h?.end && h.end !== '-') ? h.end : null;
 
-            // Host name match untuk nama ini saja
             if (!hostNameMatchesSlot(formHostName, hostName)) return;
 
-            // Brand check
-            const fBrand = r.brand.toLowerCase().trim();
-            const sBrand = p.brand.toLowerCase().trim();
+            // FIX: normalizeBrand
+            const fBrand = normalizeBrand(r.brand);
+            const sBrand = normalizeBrand(p.brand);
             if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return;
 
-            // MP check
             if (r.marketplace && p.mp) {
               const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
                 || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
               if (!mpOk) return;
             }
 
-            // Time score
             const score = getTimeMatchScore(r, hostStart, hostEnd);
             if (score < 2) return;
 
@@ -1212,7 +1208,6 @@ function renderHariH(data, formResponses = []) {
         if (claimedKeys.length > 0) claims[rIdx] = claimedKeys;
 
       } else {
-        // Single-host: exclusive claim ke 1 slot terbaik
         let bestSlotKey = null;
         let bestScore   = -1;
         let bestDiff    = Infinity;
@@ -1242,13 +1237,10 @@ function renderHariH(data, formResponses = []) {
   // ─────────────────────────────────────────
   // PRE-PASS
   // ─────────────────────────────────────────
-
-  // 1. Dedup
   const dedupedForms = deduplicateResponses(formResponses);
 
-  // 2. Kumpulkan semua slot dari leaderboard
   const allSlots = [];
-  data.leaderboard.forEach(r => {
+  leaderboard.forEach(r => {
     (r.rows || []).forEach(p => {
       const hosts = (p.hosts || []).map(h =>
         typeof h === 'string' ? { name: h, start: null, end: null } : h
@@ -1262,10 +1254,8 @@ function renderHariH(data, formResponses = []) {
     });
   });
 
-  // 3. Build exclusive claims
   const exclusiveClaims = buildExclusiveClaims(dedupedForms, allSlots);
 
-  // 4. ★ UPDATED: ambil forms yang diklaim slot ini (cek array)
   function getClaimedForms(slotKey) {
     return dedupedForms.filter((_, rIdx) => {
       const c = exclusiveClaims[rIdx];
@@ -1273,13 +1263,13 @@ function renderHariH(data, formResponses = []) {
     });
   }
 
-  // 5. ★ UPDATED: kandidat untuk ❓ — score ≥ 1 ATAU overlap ≥ 15%
+  // FIX: normalizeBrand di findSessionCandidates
   function findSessionCandidates(p, hostObj) {
     const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
     const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
     return dedupedForms.filter(r => {
-      const fBrand = r.brand.toLowerCase().trim();
-      const sBrand = p.brand.toLowerCase().trim();
+      const fBrand = normalizeBrand(r.brand);
+      const sBrand = normalizeBrand(p.brand);
       if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
       if (r.marketplace && p.mp) {
         const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
@@ -1293,7 +1283,7 @@ function renderHariH(data, formResponses = []) {
   }
 
   // ─────────────────────────────────────────
-  // RENDER
+  // RENDER HTML
   // ─────────────────────────────────────────
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
@@ -1382,7 +1372,6 @@ function renderHariH(data, formResponses = []) {
           const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
           const hosts    = rawHosts.map(h => typeof h === 'string' ? { name: h, start: null, end: null } : h);
 
-          // ── Matching dengan exclusive claim ──
           const matchedList   = [];
           const unmatchedList = [];
 
@@ -1399,7 +1388,6 @@ function renderHariH(data, formResponses = []) {
                   if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
                 } catch(e) {}
               }
-
               const validMatches = endMs
                 ? allMatches.filter(r => !r.submittedAt || r.submittedAt >= endMs)
                 : allMatches;
@@ -1436,8 +1424,6 @@ function renderHariH(data, formResponses = []) {
           if (hosts.length === 0) {
             html += `<div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">⚠️ Tidak ada data host</div>`;
           } else {
-
-            // ✅ Valid / ⚠️ False uploads
             matchedList.forEach(({ h, match, isValid, falseMatches, endMs }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
@@ -1511,7 +1497,6 @@ function renderHariH(data, formResponses = []) {
               }
             });
 
-            // ❓ / ⏳ Unmatched
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
               const candidates = findSessionCandidates(p, h);
@@ -1852,7 +1837,6 @@ async function debugNotif(){
   sendNotification("🔔 Debug Test","Notif berhasil dari "+location.hostname,"debug-"+Date.now());
 }
 
-
 // ─────────────────────────────────────────────
 // BUKTI TAYANG
 // ─────────────────────────────────────────────
@@ -1863,7 +1847,6 @@ async function loadBuktiTayang() {
   const container = document.getElementById('schedule-list');
   if (_lastBuktiTayangData) { renderBuktiTayang(_lastBuktiTayangData); }
   else { container.innerHTML = _bsLoadingHTML('Memuat bukti tayang...'); }
-
   try {
     const controller = new AbortController();
     const timeout    = setTimeout(() => controller.abort(), 20000);
@@ -1983,7 +1966,6 @@ function renderBuktiTayang(data) {
     ${summaryCard('var(--bs-danger-subtle)',  '#f1aeb5', 'var(--bs-danger)',  totalMissing,  '❌ Belum Upload')}
   </div>`;
 
-  // ── Tombol Refresh + Copy WA ──────────────────────────────────────────────
   html += `
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <button onclick="forceRefreshBuktiTayang()"
