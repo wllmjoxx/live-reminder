@@ -301,14 +301,16 @@ function switchTab(tab){
   renderTab(tab);
 }
 
-function renderTab(tab){
-  if(tab==="marathon") renderMarathon();
-  if(tab==="timeline") renderTimeline();
-  if(tab==="single")   renderSingle();
-  if(tab==="standby")  renderStandby();
-  if(tab==="klasemen") loadKlasemen();
-  if(tab==="hariH")    loadHariH();
+function renderTab(tab) {
+  if(tab==="marathon")    renderMarathon();
+  if(tab==="timeline")    renderTimeline();
+  if(tab==="single")      renderSingle();
+  if(tab==="standby")     renderStandby();
+  if(tab==="klasemen")    loadKlasemen();
+  if(tab==="hariH")       loadHariH();
+  if(tab==="buktiTayang") loadBuktiTayang(); // ← tambah ini
 }
+
 
 function formatPic(rawName){
   if(!rawName||rawName==="-"||rawName==="")return"LSC";
@@ -1849,4 +1851,175 @@ async function debugNotif(){
     if(r!=="granted")return;
   }
   sendNotification("🔔 Debug Test","Notif berhasil dari "+location.hostname,"debug-"+Date.now());
+}
+
+
+// ─────────────────────────────────────────────
+// BUKTI TAYANG
+// ─────────────────────────────────────────────
+let _lastBuktiTayangData = null;
+
+async function loadBuktiTayang() {
+  if (activeTab !== 'buktiTayang') return;
+  const container = document.getElementById('schedule-list');
+  if (_lastBuktiTayangData) { renderBuktiTayang(_lastBuktiTayangData); }
+  else { container.innerHTML = _bsLoadingHTML('Memuat bukti tayang...'); }
+
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
+    const res        = await fetch(API_URL + '?action=buktitayang&t=' + Date.now(), { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error || 'Unknown error');
+    if (activeTab !== 'buktiTayang') return;
+    _lastBuktiTayangData = data;
+    renderBuktiTayang(data);
+  } catch(err) {
+    if (activeTab !== 'buktiTayang') return;
+    if (!_lastBuktiTayangData)
+      container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === 'AbortError' ? 'Timeout, coba refresh' : err.message}</div>`;
+    else
+      showBanner(err.name === 'AbortError' ? '⚠️ Timeout — menampilkan data terakhir' : '⚠️ Gagal update: ' + err.message, 'warning');
+  }
+}
+
+async function forceRefreshBuktiTayang() {
+  if (activeTab !== 'buktiTayang') return;
+  const container = document.getElementById('schedule-list');
+  _lastBuktiTayangData = null;
+  container.innerHTML = _bsLoadingHTML('Force refresh...');
+  try {
+    const res  = await fetch(API_URL + '?action=buktitayang&nocache=1&t=' + Date.now());
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error);
+    if (activeTab !== 'buktiTayang') return;
+    _lastBuktiTayangData = data;
+    renderBuktiTayang(data);
+    showBanner('✅ Bukti tayang diperbarui!', 'success');
+  } catch(err) {
+    if (activeTab !== 'buktiTayang') return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.message}</div>`;
+  }
+}
+
+function renderBuktiTayang(data) {
+  const container = document.getElementById('schedule-list');
+
+  const summaryCard = (bg, border, numColor, num, label) =>
+    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
+       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
+       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
+     </div>`;
+
+  let html = `<div style="padding:8px 10px 24px">`;
+
+  html += `
+    <div style="text-align:center;margin-bottom:12px">
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📸 Bukti Tayang</div>
+      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
+    </div>`;
+
+  html += `<div style="display:flex;gap:7px;margin-bottom:12px">
+    ${summaryCard('var(--bs-success-subtle)', '#a3cfbb', 'var(--bs-success)', data.totalUploaded, '✅ Uploaded')}
+    ${summaryCard('var(--bs-warning-subtle)', '#ffe69c', '#856404',           data.totalPending,  '⏳ Link Kosong')}
+    ${summaryCard('var(--bs-danger-subtle)',  '#f1aeb5', 'var(--bs-danger)',  data.totalMissing,  '❌ Belum Upload')}
+  </div>`;
+
+  html += `
+    <button onclick="forceRefreshBuktiTayang()" class="btn btn-outline-primary btn-block"
+      style="margin-bottom:16px;padding:8px;font-size:0.78rem">
+      🔄 Refresh (Clear Cache)
+    </button>`;
+
+  if (!data.sessions || data.sessions.length === 0) {
+    html += `<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi hari ini</div>`;
+  } else {
+    data.sessions.forEach(s => {
+      const sessionTime = (s.endTime && s.endTime !== '-')
+        ? `${s.startTime} → ${s.endTime}` : s.startTime;
+      const typeBadge = s.isMarathon
+        ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">🏃 Marathon</span>`
+        : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">⚡ Single</span>`;
+
+      let statusBg, statusBorder, statusIcon, statusText;
+      if (s.status === 'uploaded') {
+        statusBg = 'var(--bs-success-subtle)'; statusBorder = '#a3cfbb';
+        statusIcon = '✅'; statusText = 'Uploaded';
+      } else if (s.status === 'pending') {
+        statusBg = 'var(--bs-warning-subtle)'; statusBorder = '#ffe69c';
+        statusIcon = '⏳'; statusText = 'Link kosong';
+      } else {
+        statusBg = 'var(--bs-danger-subtle)'; statusBorder = '#f1aeb5';
+        statusIcon = '❌'; statusText = 'Belum upload';
+      }
+
+      html += `
+        <div style="background:var(--bs-white);border:1px solid var(--bs-border);border-radius:var(--bs-radius-lg);
+                    margin-bottom:10px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
+
+          <!-- Header session -->
+          <div style="padding:10px 14px;background:${statusBg};border-bottom:1px solid ${statusBorder}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+                  <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">${statusIcon} ${s.brand}</span>
+                  ${typeBadge}
+                </div>
+                <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
+                  <span>🕐 ${sessionTime}</span>
+                  <span>📍 ${s.studio} · ${s.mp}</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+                <span style="font-size:0.6rem;color:#adb5bd;font-family:monospace">${s.idLine}</span>
+                <span style="font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:var(--bs-radius-pill);
+                             background:white;border:1px solid ${statusBorder}">${statusText}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Host list -->
+          <div style="padding:8px 14px;border-bottom:1px solid var(--bs-border-subtle)">
+            ${s.hosts.map(h =>
+              `<div style="font-size:0.68rem;color:var(--bs-muted);padding:2px 0">
+                👤 ${h.name}
+                <span style="color:#adb5bd;margin-left:4px">${h.start}${h.end ? ' → ' + h.end : ''}</span>
+              </div>`
+            ).join('')}
+          </div>
+
+          <!-- Upload status -->
+          <div style="padding:8px 14px">
+            ${s.status === 'uploaded' ? `
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:0.68rem;color:var(--bs-success);font-weight:600">
+                  📎 ${s.links.length} file diupload
+                  ${s.pics.length > 0 ? `<span style="color:var(--bs-muted);font-weight:400">oleh ${s.pics.join(', ')}</span>` : ''}
+                </span>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${s.links.map((lnk, li) => lnk
+                    ? `<a href="${lnk}" target="_blank"
+                         style="padding:3px 9px;background:var(--bs-success-subtle);border:1px solid #a3cfbb;
+                                border-radius:var(--bs-radius-pill);color:var(--bs-success-text);
+                                font-size:0.62rem;font-weight:700;text-decoration:none">
+                         📎${s.links.length > 1 ? ' ' + (li + 1) : ''}
+                       </a>` : ''
+                  ).join('')}
+                </div>
+              </div>` : s.status === 'pending' ? `
+              <div style="font-size:0.68rem;color:#856404;font-weight:600">
+                ⚠️ Ada ${s.matchCount} entri tapi belum ada link yang diisi
+                ${s.pics.length > 0 ? `<span style="font-weight:400"> — PIC: ${s.pics.join(', ')}</span>` : ''}
+              </div>` : `
+              <div style="font-size:0.68rem;color:var(--bs-danger);font-weight:600">
+                ❌ Belum ada form upload yang masuk untuk sesi ini
+              </div>`}
+          </div>
+        </div>`;
+    });
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
 }
