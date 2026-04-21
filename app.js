@@ -2116,7 +2116,7 @@ function renderBuktiTayang(data) {
       </button>
     </div>
 
-    ${renderShiftGroup('pagi',  'Shift Pagi',  '🌅', shifts.pagi)}
-    ${renderShiftGroup('siang', 'Shift Siang', '☀️', shifts.siang)}
+    ${renderShiftGroup('pagi',  'Shift Pagi',  '', shifts.pagi)}
+    ${renderShiftGroup('siang', 'Shift Siang', '', shifts.siang)}
   `;
 }
