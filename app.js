@@ -16,6 +16,17 @@ function getShiftBT(startTime) {
   return m < 12 * 60 ? 'pagi' : 'siang';
 }
 
+function formatPicForCopy(assignedPic) {
+  if (!assignedPic || assignedPic === 'LSC') return 'LSC';
+  const lower = assignedPic.replace('@', '').toLowerCase().trim();
+  // LSC coordinator (jonathan, hamzah, tyo, hanif) → @jonathan (lowercase, no Sirclo)
+  if (LSC_NAMES_SET.has(lower)) return `@${lower}`;
+  // Unknown name (sudah ada @ dari formatPic) → @Velind Sirclo
+  if (assignedPic.startsWith('@')) return `${assignedPic} Sirclo`;
+  // Regular PIC → @Maul Sirclo, @Arbi Sirclo, dll
+  return `@${assignedPic} Sirclo`;
+}
+
 
 function toggleBtShift(shift) {
   const body    = document.getElementById('bt-shift-body-' + shift);
@@ -2453,26 +2464,19 @@ function copyTimeBlock(time, type, items, btn) {
   const display = time === '23:59/00:00' ? '23:59 / 00:00' : time;
   const lines   = [];
 
-  // Header — START / END uppercase
   lines.push(`${type.toUpperCase()} ${display}`);
-  lines.push('');
 
   items.forEach((s, i) => {
-    // Ambil host sesuai type
-    const host = type === 'start'
-      ? (s.hosts?.[0]?.host || '-')
-      : (s.hosts?.[s.hosts.length - 1]?.host || '-');
+    const picStr = formatPicForCopy(s.assignedPic || 'LSC');
 
-    // Format pic: "Maul" → "@Maul Sirclo" | "@Arbi Intern" → "@Arbi Intern Sirclo" | "LSC" → "LSC"
-    const rawPic = s.assignedPic || 'LSC';
-    const picStr = rawPic === 'LSC'
-      ? 'LSC'
-      : rawPic.startsWith('@')
-        ? `${rawPic} Sirclo`
-        : `@${rawPic} Sirclo`;
-
-    lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio}`);
-    lines.push(`${host} ${picStr}`);
+    if (type === 'start') {
+      // START: brand | mp | studio  host  @pic
+      const host = s.hosts?.[0]?.host || '-';
+      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${host} ${picStr}`);
+    } else {
+      // END: brand | mp | studio  @pic  (no host)
+      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${picStr}`);
+    }
   });
 
   navigator.clipboard.writeText(lines.join('\n'))
@@ -2486,3 +2490,4 @@ function copyTimeBlock(time, type, items, btn) {
     })
     .catch(() => showBanner('❌ Gagal copy', 'error'));
 }
+
