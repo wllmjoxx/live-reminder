@@ -1914,6 +1914,7 @@ function copyBuktiTayangWA() {
   const data = _lastBuktiTayangData;
   if (!data || !data.sessions) { alert('Data belum loaded.'); return; }
 
+  // FIX: status !== 'uploaded'
   const belum = data.sessions.filter(s => s.status !== 'uploaded');
   if (belum.length === 0) { alert('Semua sudah upload! 🎉'); return; }
 
@@ -1928,11 +1929,12 @@ function copyBuktiTayangWA() {
 
   if (pagi.length > 0) {
     text += `\n\n🌅 *Shift Pagi*\n`;
-    text += pagi.map(s => `• ${s.brand} - ${s.marketplace} (${s.startTime}–${s.endTime})`).join('\n');
+    // FIX: s.mp bukan s.marketplace
+    text += pagi.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
   if (siang.length > 0) {
     text += `\n\n☀️ *Shift Siang*\n`;
-    text += siang.map(s => `• ${s.brand} - ${s.marketplace} (${s.startTime}–${s.endTime})`).join('\n');
+    text += siang.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
 
   navigator.clipboard.writeText(text.trim())
@@ -1948,6 +1950,7 @@ function copyBuktiTayangWA() {
 }
 
 
+
 // ─────────────────────────────────────────────
 // RENDER BUKTI TAYANG
 // ─────────────────────────────────────────────
@@ -1956,7 +1959,7 @@ function renderBuktiTayang(data) {
   if (!container) return;
 
   if (!data || !data.sessions || data.sessions.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:#888;">Tidak ada data Bukti Tayang hari ini.</div>';
+    container.innerHTML = '<div class="empty"><span class="empty-icon">🎬</span>Tidak ada data Bukti Tayang hari ini.</div>';
     return;
   }
 
@@ -1976,7 +1979,7 @@ function renderBuktiTayang(data) {
     }
   };
 
-  // ── Card ──────────────────────────────────────────────
+  // ── Card ─────────────────────────────────────────────
   function renderCard(s) {
     const isUploaded = s.status === 'uploaded';
     const isPending  = s.status === 'pending';
@@ -1985,20 +1988,23 @@ function renderBuktiTayang(data) {
     const borderColor = isUploaded ? '#28a745' : isPending ? '#ffc107' : '#dc3545';
     const statusIcon  = isUploaded ? '✅' : '✖';
 
-    const typeBadge = s.type === 'Marathon'
+    // FIX: pakai s.isMarathon (boolean)
+    const typeBadge = s.isMarathon
       ? `<span style="background:#fff3cd;color:#856404;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">👤 Marathon</span>`
       : `<span style="background:#ffe5d9;color:#c77700;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">⚡ Single</span>`;
 
-    let statusBadge = isUploaded
+    const statusBadge = isUploaded
       ? `<span style="background:#d4edda;color:#155724;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Uploaded</span>`
       : isPending
       ? `<span style="background:#fff3cd;color:#856404;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Link Kosong</span>`
       : `<span style="background:#f8d7da;color:#721c24;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Belum Upload</span>`;
 
+    // FIX: s.pics (array), s.links (array)
     let uploadInfo = '';
-    if (isUploaded && s.uploadedBy) {
-      const links = (s.screenshotLinks || []).map(l => `<a href="${l}" target="_blank" style="color:#1a73e8;">👁</a>`).join(' ');
-      uploadInfo = `<div style="font-size:12px;color:#555;margin-top:4px;">📎 ${s.screenshotLinks?.length || 1} file diupload oleh ${s.uploadedBy} ${links}</div>`;
+    if (isUploaded) {
+      const picNames = (s.pics || []).join(', ') || '-';
+      const linkHtml = (s.links || []).map(l => `<a href="${l}" target="_blank" style="color:#1a73e8;">👁</a>`).join(' ');
+      uploadInfo = `<div style="font-size:12px;color:#555;margin-top:4px;">📎 ${s.links?.length || 0} file diupload oleh ${picNames} ${linkHtml}</div>`;
     } else if (isPending) {
       uploadInfo = `<div style="font-size:12px;color:#856404;margin-top:4px;">⏳ Form masuk tapi link kosong</div>`;
     } else {
@@ -2017,12 +2023,13 @@ function renderBuktiTayang(data) {
             ${statusBadge}
           </div>
         </div>
-        <div style="font-size:12px;color:#666;margin-top:4px;">🕐 ${s.startTime} → ${s.endTime} · 📍 Studio ${s.studio} · ${s.marketplace}</div>
+        <!-- FIX: s.studio sudah ada prefix "Studio", s.mp bukan s.marketplace -->
+        <div style="font-size:12px;color:#666;margin-top:4px;">🕐 ${s.startTime} → ${s.endTime} · 📍 ${s.studio} · ${s.mp}</div>
         ${uploadInfo}
       </div>`;
   }
 
-  // ── Done Section ──────────────────────────────────────
+  // ── Done Section (default OPEN) ───────────────────────
   function renderDoneSection(shiftKey, done) {
     if (done.length === 0) return '';
     return `
@@ -2033,13 +2040,14 @@ function renderBuktiTayang(data) {
           <span style="background:rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px;font-size:12px;">${done.length}</span>
           <span id="bt-status-chevron-${shiftKey}-done" style="margin-left:auto;">▾</span>
         </button>
-        <div id="bt-status-body-${shiftKey}-done" style="display:none;padding:4px 0;">
+        <!-- FIX: hapus display:none → default OPEN -->
+        <div id="bt-status-body-${shiftKey}-done" style="padding:4px 0;">
           ${done.map(renderCard).join('')}
         </div>
       </div>`;
   }
 
-  // ── Not Done Section ──────────────────────────────────
+  // ── Not Done Section (default OPEN) ──────────────────
   function renderNotDoneSection(shiftKey, notDone) {
     if (notDone.length === 0) return '';
     return `
@@ -2056,7 +2064,7 @@ function renderBuktiTayang(data) {
       </div>`;
   }
 
-  // ── Shift Group ───────────────────────────────────────
+  // ── Shift Group (default OPEN) ────────────────────────
   function renderShiftGroup(shiftKey, label, emoji, shiftData) {
     const { done, notDone } = shiftData;
     if (done.length === 0 && notDone.length === 0) return '';
@@ -2076,6 +2084,7 @@ function renderBuktiTayang(data) {
             <span id="bt-shift-chevron-${shiftKey}">▾</span>
           </span>
         </button>
+        <!-- default OPEN -->
         <div id="bt-shift-body-${shiftKey}" style="padding:8px 12px 12px;background:#fafafa;">
           ${renderDoneSection(shiftKey, done)}
           ${renderNotDoneSection(shiftKey, notDone)}
@@ -2085,38 +2094,41 @@ function renderBuktiTayang(data) {
 
   // ── Assemble ──────────────────────────────────────────
   container.innerHTML = `
-    <div style="text-align:center;margin-bottom:12px;">
-      <strong style="font-size:16px;">🎬 Bukti Tayang</strong><br>
-      <span style="color:#888;font-size:13px;">${data.date || ''}</span>
-    </div>
-
-    <div style="display:flex;gap:10px;margin-bottom:12px;">
-      <div style="flex:1;background:#d4edda;border-radius:8px;padding:12px;text-align:center;">
-        <div style="font-size:22px;font-weight:700;color:#155724;">${uploaded.length}</div>
-        <div style="font-size:11px;color:#155724;">✅ UPLOADED</div>
+    <div style="padding:0 10px 24px;">
+      <div style="text-align:center;margin-bottom:12px;padding-top:8px;">
+        <strong style="font-size:16px;">🎬 Bukti Tayang</strong><br>
+        <span style="color:#888;font-size:13px;">${data.date || ''}</span>
       </div>
-      <div style="flex:1;background:#fff3cd;border-radius:8px;padding:12px;text-align:center;">
-        <div style="font-size:22px;font-weight:700;color:#856404;">${linkKosong.length}</div>
-        <div style="font-size:11px;color:#856404;">⏳ LINK KOSONG</div>
-      </div>
-      <div style="flex:1;background:#f8d7da;border-radius:8px;padding:12px;text-align:center;">
-        <div style="font-size:22px;font-weight:700;color:#721c24;">${missing.length}</div>
-        <div style="font-size:11px;color:#721c24;">✖ BELUM UPLOAD</div>
-      </div>
-    </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:4px;">
-      <button onclick="forceRefreshBuktiTayang()"
-        style="flex:1;padding:9px;background:#e8f0fe;border:1px solid #4285f4;border-radius:6px;cursor:pointer;font-weight:600;color:#1a73e8;font-size:13px;">
-        🔄 Refresh
-      </button>
-      <button id="btn-copy-wa" onclick="copyBuktiTayangWA()"
-        style="flex:1;padding:9px;background:#f0fff4;border:1px solid #28a745;border-radius:6px;cursor:pointer;font-weight:600;color:#155724;font-size:13px;">
-        📋 Copy Tagihan WA
-      </button>
-    </div>
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <div style="flex:1;background:#d4edda;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:#155724;">${uploaded.length}</div>
+          <div style="font-size:11px;color:#155724;">✅ UPLOADED</div>
+        </div>
+        <div style="flex:1;background:#fff3cd;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:#856404;">${linkKosong.length}</div>
+          <div style="font-size:11px;color:#856404;">⏳ LINK KOSONG</div>
+        </div>
+        <div style="flex:1;background:#f8d7da;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:#721c24;">${missing.length}</div>
+          <div style="font-size:11px;color:#721c24;">✖ BELUM UPLOAD</div>
+        </div>
+      </div>
 
-    ${renderShiftGroup('pagi',  'Shift Pagi',  '', shifts.pagi)}
-    ${renderShiftGroup('siang', 'Shift Siang', '', shifts.siang)}
+      <div style="display:flex;gap:8px;margin-bottom:4px;">
+        <button onclick="forceRefreshBuktiTayang()"
+          style="flex:1;padding:9px;background:#e8f0fe;border:1px solid #4285f4;border-radius:6px;cursor:pointer;font-weight:600;color:#1a73e8;font-size:13px;">
+          🔄 Refresh
+        </button>
+        <button id="btn-copy-wa" onclick="copyBuktiTayangWA()"
+          style="flex:1;padding:9px;background:#f0fff4;border:1px solid #28a745;border-radius:6px;cursor:pointer;font-weight:600;color:#155724;font-size:13px;">
+          📋 Copy Tagihan WA
+        </button>
+      </div>
+
+      ${renderShiftGroup('pagi',  'Shift Pagi',  '🌅', shifts.pagi)}
+      ${renderShiftGroup('siang', 'Shift Siang', '☀️', shifts.siang)}
+    </div>
   `;
 }
+
