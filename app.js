@@ -2472,7 +2472,7 @@ function copyTimeBlock(time, type, items, btn) {
         : `@${rawPic} Sirclo`;
 
     lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio}`);
-    lines.push(`👤 ${host} ${picStr}`);
+    lines.push(`${host} ${picStr}`);
   });
 
   navigator.clipboard.writeText(lines.join('\n'))
