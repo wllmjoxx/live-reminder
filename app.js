@@ -2003,8 +2003,8 @@ function renderBuktiTayang(data) {
     let uploadInfo = '';
     if (isUploaded) {
       const picNames = (s.pics || []).join(', ') || '-';
-      const linkHtml = (s.links || []).map(l => `<a href="${l}" target="_blank" style="color:#1a73e8;">👁</a>`).join(' ');
-      uploadInfo = `<div style="font-size:12px;color:#555;margin-top:4px;">📎 ${s.links?.length || 0} file diupload oleh ${picNames} ${linkHtml}</div>`;
+      const linkHtml = (s.links || []).map(l => `<a href="${l}" target="_blank" style="color:#1a73e8;">Lihat File</a>`).join(' ');
+      uploadInfo = `<div style="font-size:12px;color:#555;margin-top:4px;"> ${s.links?.length || 0} file diupload oleh ${picNames} ${linkHtml}</div>`;
     } else if (isPending) {
       uploadInfo = `<div style="font-size:12px;color:#856404;margin-top:4px;">⏳ Form masuk tapi link kosong</div>`;
     } else {
