@@ -552,6 +552,18 @@ function normalizeBrand(str) {
 function renderTimeline(){
   const container=document.getElementById("schedule-list");
   container.innerHTML="";
+    // ── Copy Button ──────────────────────────────────────
+  const copyBar = document.createElement('div');
+  copyBar.style.cssText = 'padding:8px 10px 2px;';
+  copyBar.innerHTML = `<button id="btn-copy-timeline" onclick="copyTimeline()"
+    style="width:100%;padding:9px;background:#f0f4ff;border:1px solid #9ec5fe;
+           border-radius:6px;cursor:pointer;font-weight:600;
+           color:var(--bs-primary-text);font-size:13px;">
+    📋 Copy Timeline
+  </button>`;
+  container.appendChild(copyBar);
+  // ────────────────────────────────────────────────────
+
   if(!sessions.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada jadwal</div>`;return;}
   const events={};
   sessions.forEach(s=>{
@@ -2338,3 +2350,66 @@ function renderBuktiTayang(data) {
   `;
 }
 
+// ─────────────────────────────────────────────
+// COPY TIMELINE
+// ─────────────────────────────────────────────
+function copyTimeline() {
+  if (!sessions.length) { showBanner('Data belum loaded', 'warning'); return; }
+
+  // Build events — sama persis dengan renderTimeline()
+  const events = {};
+  sessions.forEach(s => {
+    if (s.startTime && s.startTime !== '-') {
+      if (!events[s.startTime]) events[s.startTime] = { starts: [], ends: [] };
+      events[s.startTime].starts.push(s);
+    }
+    if (s.endTime && s.endTime !== '-') {
+      const endKey = (s.endTime === '00:00' || s.endTime === '23:59') ? '23:59/00:00' : s.endTime;
+      if (!events[endKey]) events[endKey] = { starts: [], ends: [] };
+      events[endKey].ends.push(s);
+    }
+  });
+
+  // Sort waktu
+  const sorted = Object.keys(events).sort((a, b) => {
+    const f = t => t === '23:59/00:00' ? 1441 : (([h, m]) => h * 60 + m)(t.split(':').map(Number));
+    return f(a) - f(b);
+  });
+
+  const lines = [];
+
+  sorted.forEach(time => {
+    const ev      = events[time];
+    const display = time === '23:59/00:00' ? '23:59 / 00:00' : time;
+
+    if (ev.starts.length > 0) {
+      lines.push(`start ${display}`);
+      ev.starts.forEach(s => {
+        lines.push(`${s.brand}\t${s.marketplace}\t\t\t\t${s.studio}`);
+      });
+      lines.push('');
+    }
+
+    if (ev.ends.length > 0) {
+      lines.push(`end ${display}`);
+      ev.ends.forEach(s => {
+        lines.push(`${s.brand}\t${s.marketplace}\t\t\t\t${s.studio}`);
+      });
+      lines.push('');
+    }
+  });
+
+  const text = lines.join('\n').trim();
+
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      const btn = document.getElementById('btn-copy-timeline');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copied!';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+      }
+      showBanner('✅ Timeline di-copy!', 'success');
+    })
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
