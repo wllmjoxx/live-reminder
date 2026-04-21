@@ -8,6 +8,32 @@ let currentUserEmail = localStorage.getItem("userEmail") || null;
 let onlineUsers      = {};
 let presenceStarted  = false;
 
+// ─── BUKTI TAYANG HELPERS ─────────────────────────────
+
+function getShiftBT(startTime) {
+  if (!startTime) return 'pagi';
+  return toMin(startTime) < 12 * 60 ? 'pagi' : 'siang';
+}
+
+function toggleBtShift(shift) {
+  const body    = document.getElementById('bt-shift-body-' + shift);
+  const chevron = document.getElementById('bt-shift-chevron-' + shift);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+}
+
+function toggleBtStatus(shift, status) {
+  const body    = document.getElementById(`bt-status-body-${shift}-${status}`);
+  const chevron = document.getElementById(`bt-status-chevron-${shift}-${status}`);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+}
+
+
 function onGsiLoad() {
   if (!currentUserEmail) {
     google.accounts.id.initialize({
@@ -1885,185 +1911,212 @@ async function forceRefreshBuktiTayang() {
 // COPY BUKTI TAYANG → WA
 // ─────────────────────────────────────────────
 function copyBuktiTayangWA() {
-  if (!_lastBuktiTayangData) { showBanner('Data belum dimuat', 'warning'); return; }
+  const data = _lastBuktiTayangData;
+  if (!data || !data.sessions) { alert('Data belum loaded.'); return; }
 
-  const sessions = _lastBuktiTayangData.sessions || [];
-  const date     = _lastBuktiTayangData.date || '';
+  const belum = data.sessions.filter(s => s.status !== 'uploaded');
+  if (belum.length === 0) { alert('Semua sudah upload! 🎉'); return; }
 
-  let dateLabel = date;
-  try {
-    dateLabel = new Date(date + 'T12:00:00+07:00')
-      .toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric', timeZone:'Asia/Jakarta' })
-      .toUpperCase();
-  } catch(e) {}
+  const pagi  = belum.filter(s => getShiftBT(s.startTime) === 'pagi');
+  const siang = belum.filter(s => getShiftBT(s.startTime) === 'siang');
 
-  const missing  = sessions.filter(s => s.status === 'missing');
-  const pending  = sessions.filter(s => s.status === 'pending');
-  const total    = missing.length + pending.length;
+  const d = new Date();
+  const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const dateStr = `${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
 
-  if (total === 0) {
-    showBanner('✅ Semua sesi sudah upload bukti tayang!', 'success');
-    return;
+  let text = `📋 *Bukti Tayang ${dateStr} — ${belum.length} Belum Upload*`;
+
+  if (pagi.length > 0) {
+    text += `\n\n🌅 *Shift Pagi*\n`;
+    text += pagi.map(s => `• ${s.brand} - ${s.marketplace} (${s.startTime}–${s.endTime})`).join('\n');
+  }
+  if (siang.length > 0) {
+    text += `\n\n☀️ *Shift Siang*\n`;
+    text += siang.map(s => `• ${s.brand} - ${s.marketplace} (${s.startTime}–${s.endTime})`).join('\n');
   }
 
-  const fmtRow = s => {
-    const time = (s.endTime && s.endTime !== '-')
-      ? `${s.startTime} → ${s.endTime}` : s.startTime;
-    return `• ${s.brand} | ${s.studio} · ${s.mp || '-'} | ${time} | ID: ${s.idLine}`;
-  };
-
-  let text = `📸 TAGIHAN BUKTI TAYANG\n${dateLabel}\n`;
-
-  if (missing.length > 0) {
-    text += `\n❌ Belum Upload (${missing.length} sesi):\n`;
-    text += missing.map(fmtRow).join('\n');
-  }
-
-  if (pending.length > 0) {
-    text += `\n\n⏳ Link Kosong di Form (${pending.length} sesi):\n`;
-    text += pending.map(fmtRow).join('\n');
-  }
-
-  text += `\n\nTotal belum lengkap: ${total} sesi`;
-
-  navigator.clipboard.writeText(text)
-    .then(() => showBanner(`✅ Teks tagihan (${total} sesi) di-copy!`, 'success'))
-    .catch(() => showBanner('❌ Gagal copy', 'error'));
+  navigator.clipboard.writeText(text.trim())
+    .then(() => {
+      const btn = document.getElementById('btn-copy-wa');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copied!';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+      }
+    })
+    .catch(() => alert('Gagal copy. Coba lagi.'));
 }
+
 
 // ─────────────────────────────────────────────
 // RENDER BUKTI TAYANG
 // ─────────────────────────────────────────────
 function renderBuktiTayang(data) {
-  const container = document.getElementById('schedule-list');
+  const container = document.getElementById('bukti-tayang-container');
+  if (!container) return;
 
-  const sessions      = data.sessions || [];
-  const totalUploaded = data.totalUploaded ?? sessions.filter(s => s.status === 'uploaded').length;
-  const totalPending  = data.totalPending  ?? sessions.filter(s => s.status === 'pending').length;
-  const totalMissing  = data.totalMissing  ?? sessions.filter(s => s.status === 'missing').length;
-
-  const summaryCard = (bg, border, numColor, num, label) =>
-    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
-       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
-       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
-     </div>`;
-
-  let html = `<div style="padding:8px 10px 24px">`;
-
-  html += `
-    <div style="text-align:center;margin-bottom:12px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📸 Bukti Tayang</div>
-      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date || '-'}</div>
-    </div>`;
-
-  html += `<div style="display:flex;gap:7px;margin-bottom:12px">
-    ${summaryCard('var(--bs-success-subtle)', '#a3cfbb', 'var(--bs-success)', totalUploaded, '✅ Uploaded')}
-    ${summaryCard('var(--bs-warning-subtle)', '#ffe69c', '#856404',           totalPending,  '⏳ Link Kosong')}
-    ${summaryCard('var(--bs-danger-subtle)',  '#f1aeb5', 'var(--bs-danger)',  totalMissing,  '❌ Belum Upload')}
-  </div>`;
-
-  html += `
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button onclick="forceRefreshBuktiTayang()"
-        class="btn btn-outline-primary"
-        style="flex:1;padding:8px;font-size:0.78rem">
-        🔄 Refresh
-      </button>
-      <button onclick="copyBuktiTayangWA()"
-        style="flex:1;padding:8px;font-size:0.78rem;font-weight:700;cursor:pointer;
-               border:1px solid #a3cfbb;border-radius:var(--bs-radius);
-               background:var(--bs-success-subtle);color:var(--bs-success-text)">
-        📋 Copy Tagihan WA
-      </button>
-    </div>`;
-
-  if (!sessions.length) {
-    html += `<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi hari ini</div>`;
-  } else {
-    sessions.forEach(s => {
-      const brand     = s.brand     || '-';
-      const mp        = s.mp        || '-';
-      const studio    = s.studio    || '-';
-      const idLine    = s.idLine    || '-';
-      const startTime = s.startTime || '-';
-      const endTime   = s.endTime   || '-';
-      const sessionTime = (endTime && endTime !== '-')
-        ? `${startTime} → ${endTime}` : startTime;
-
-      const typeBadge = s.isMarathon
-        ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">🏃 Marathon</span>`
-        : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">⚡ Single</span>`;
-
-      let statusBg, statusBorder, statusIcon, statusText, statusColor;
-      if (s.status === 'uploaded') {
-        statusBg = 'var(--bs-success-subtle)'; statusBorder = '#a3cfbb';
-        statusIcon = '✅'; statusText = 'Uploaded'; statusColor = 'var(--bs-success-text)';
-      } else if (s.status === 'pending') {
-        statusBg = 'var(--bs-warning-subtle)'; statusBorder = '#ffe69c';
-        statusIcon = '⏳'; statusText = 'Link kosong'; statusColor = '#856404';
-      } else {
-        statusBg = 'var(--bs-danger-subtle)'; statusBorder = '#f1aeb5';
-        statusIcon = '❌'; statusText = 'Belum upload'; statusColor = 'var(--bs-danger-text)';
-      }
-
-      const links = Array.isArray(s.links) ? s.links.filter(Boolean) : [];
-      const pics  = Array.isArray(s.pics)  ? s.pics.filter(Boolean)  : [];
-
-      html += `
-        <div style="background:var(--bs-white);border:1px solid var(--bs-border);border-radius:var(--bs-radius-lg);
-                    margin-bottom:8px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
-          <div style="padding:10px 14px;background:${statusBg};border-bottom:1px solid ${statusBorder}">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-              <div>
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-                  <span style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${statusIcon} ${brand}</span>
-                  ${typeBadge}
-                </div>
-                <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
-                  <span>🕐 ${sessionTime}</span>
-                  <span>📍 ${studio} · ${mp}</span>
-                </div>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-                <span style="font-size:0.6rem;color:#adb5bd;font-family:monospace">${idLine}</span>
-                <span style="font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:var(--bs-radius-pill);
-                             background:white;border:1px solid ${statusBorder};color:${statusColor}">${statusText}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style="padding:8px 14px">
-            ${s.status === 'uploaded' ? `
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <span style="font-size:0.68rem;color:var(--bs-success);font-weight:600">
-                  📎 ${links.length} file diupload
-                  ${pics.length > 0 ? `<span style="color:var(--bs-muted);font-weight:400"> oleh ${pics.join(', ')}</span>` : ''}
-                </span>
-                <div style="display:flex;gap:4px;flex-wrap:wrap">
-                  ${links.map((lnk, li) => lnk
-                    ? `<a href="${lnk}" target="_blank"
-                         style="padding:3px 9px;background:var(--bs-success-subtle);border:1px solid #a3cfbb;
-                                border-radius:var(--bs-radius-pill);color:var(--bs-success-text);
-                                font-size:0.62rem;font-weight:700;text-decoration:none">
-                         📎${links.length > 1 ? ' ' + (li + 1) : ''}
-                       </a>` : ''
-                  ).join('')}
-                </div>
-              </div>`
-            : s.status === 'pending' ? `
-              <div style="font-size:0.68rem;color:#856404;font-weight:600">
-                ⚠️ Ada di form tapi link belum diisi
-                ${pics.length > 0 ? `<span style="font-weight:400"> — PIC: ${pics.join(', ')}</span>` : ''}
-              </div>`
-            : `
-              <div style="font-size:0.68rem;color:var(--bs-danger);font-weight:600">
-                ❌ Belum ada form upload yang masuk
-              </div>`}
-          </div>
-        </div>`;
-    });
+  if (!data || !data.sessions || data.sessions.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:#888;">Tidak ada data Bukti Tayang hari ini.</div>';
+    return;
   }
 
-  html += `</div>`;
-  container.innerHTML = html;
+  const sessions   = data.sessions;
+  const uploaded   = sessions.filter(s => s.status === 'uploaded');
+  const linkKosong = sessions.filter(s => s.status === 'pending');
+  const missing    = sessions.filter(s => s.status === 'missing');
+
+  const shifts = {
+    pagi: {
+      done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'pagi'),
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'pagi')
+    },
+    siang: {
+      done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'siang'),
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'siang')
+    }
+  };
+
+  // ── Card ──────────────────────────────────────────────
+  function renderCard(s) {
+    const isUploaded = s.status === 'uploaded';
+    const isPending  = s.status === 'pending';
+
+    const cardBg      = isUploaded ? '#f0fff4' : isPending ? '#fffef0' : '#fff5f5';
+    const borderColor = isUploaded ? '#28a745' : isPending ? '#ffc107' : '#dc3545';
+    const statusIcon  = isUploaded ? '✅' : '✖';
+
+    const typeBadge = s.type === 'Marathon'
+      ? `<span style="background:#fff3cd;color:#856404;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">👤 Marathon</span>`
+      : `<span style="background:#ffe5d9;color:#c77700;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">⚡ Single</span>`;
+
+    let statusBadge = isUploaded
+      ? `<span style="background:#d4edda;color:#155724;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Uploaded</span>`
+      : isPending
+      ? `<span style="background:#fff3cd;color:#856404;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Link Kosong</span>`
+      : `<span style="background:#f8d7da;color:#721c24;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Belum Upload</span>`;
+
+    let uploadInfo = '';
+    if (isUploaded && s.uploadedBy) {
+      const links = (s.screenshotLinks || []).map(l => `<a href="${l}" target="_blank" style="color:#1a73e8;">👁</a>`).join(' ');
+      uploadInfo = `<div style="font-size:12px;color:#555;margin-top:4px;">📎 ${s.screenshotLinks?.length || 1} file diupload oleh ${s.uploadedBy} ${links}</div>`;
+    } else if (isPending) {
+      uploadInfo = `<div style="font-size:12px;color:#856404;margin-top:4px;">⏳ Form masuk tapi link kosong</div>`;
+    } else {
+      uploadInfo = `<div style="font-size:12px;color:#dc3545;margin-top:4px;">✖ Belum ada form upload yang masuk</div>`;
+    }
+
+    return `
+      <div style="background:${cardBg};border-left:4px solid ${borderColor};border-radius:6px;padding:10px 14px;margin:6px 0;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:700;font-size:14px;">${statusIcon} ${s.brand}</span>
+            ${typeBadge}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:#aaa;">${s.idLine || ''}</span>
+            ${statusBadge}
+          </div>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:4px;">🕐 ${s.startTime} → ${s.endTime} · 📍 Studio ${s.studio} · ${s.marketplace}</div>
+        ${uploadInfo}
+      </div>`;
+  }
+
+  // ── Done Section ──────────────────────────────────────
+  function renderDoneSection(shiftKey, done) {
+    if (done.length === 0) return '';
+    return `
+      <div style="margin:8px 0;">
+        <button onclick="toggleBtStatus('${shiftKey}','done')"
+          style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#d4edda;color:#155724;font-weight:600;font-size:13px;cursor:pointer;border:none;border-radius:6px;text-align:left;">
+          ✅ Done
+          <span style="background:rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px;font-size:12px;">${done.length}</span>
+          <span id="bt-status-chevron-${shiftKey}-done" style="margin-left:auto;">▾</span>
+        </button>
+        <div id="bt-status-body-${shiftKey}-done" style="display:none;padding:4px 0;">
+          ${done.map(renderCard).join('')}
+        </div>
+      </div>`;
+  }
+
+  // ── Not Done Section ──────────────────────────────────
+  function renderNotDoneSection(shiftKey, notDone) {
+    if (notDone.length === 0) return '';
+    return `
+      <div style="margin:8px 0;">
+        <button onclick="toggleBtStatus('${shiftKey}','notdone')"
+          style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f8d7da;color:#721c24;font-weight:600;font-size:13px;cursor:pointer;border:none;border-radius:6px;text-align:left;">
+          ✖ Belum Upload / Link Kosong
+          <span style="background:rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px;font-size:12px;">${notDone.length}</span>
+          <span id="bt-status-chevron-${shiftKey}-notdone" style="margin-left:auto;">▾</span>
+        </button>
+        <div id="bt-status-body-${shiftKey}-notdone" style="padding:4px 0;">
+          ${notDone.map(renderCard).join('')}
+        </div>
+      </div>`;
+  }
+
+  // ── Shift Group ───────────────────────────────────────
+  function renderShiftGroup(shiftKey, label, emoji, shiftData) {
+    const { done, notDone } = shiftData;
+    if (done.length === 0 && notDone.length === 0) return '';
+
+    const pillDone    = done.length > 0
+      ? `<span style="background:#28a745;color:white;border-radius:12px;padding:2px 8px;font-size:12px;">${done.length} uploaded</span>` : '';
+    const pillNotDone = notDone.length > 0
+      ? `<span style="background:#dc3545;color:white;border-radius:12px;padding:2px 8px;font-size:12px;">${notDone.length} belum</span>` : '';
+
+    return `
+      <div style="margin:12px 0;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">
+        <button onclick="toggleBtShift('${shiftKey}')"
+          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f0f4ff;font-weight:700;font-size:15px;cursor:pointer;border:none;text-align:left;">
+          ${emoji} ${label}
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+            ${pillDone}${pillNotDone}
+            <span id="bt-shift-chevron-${shiftKey}">▾</span>
+          </span>
+        </button>
+        <div id="bt-shift-body-${shiftKey}" style="padding:8px 12px 12px;background:#fafafa;">
+          ${renderDoneSection(shiftKey, done)}
+          ${renderNotDoneSection(shiftKey, notDone)}
+        </div>
+      </div>`;
+  }
+
+  // ── Assemble ──────────────────────────────────────────
+  container.innerHTML = `
+    <div style="text-align:center;margin-bottom:12px;">
+      <strong style="font-size:16px;">🎬 Bukti Tayang</strong><br>
+      <span style="color:#888;font-size:13px;">${data.date || ''}</span>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <div style="flex:1;background:#d4edda;border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:#155724;">${uploaded.length}</div>
+        <div style="font-size:11px;color:#155724;">✅ UPLOADED</div>
+      </div>
+      <div style="flex:1;background:#fff3cd;border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:#856404;">${linkKosong.length}</div>
+        <div style="font-size:11px;color:#856404;">⏳ LINK KOSONG</div>
+      </div>
+      <div style="flex:1;background:#f8d7da;border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:#721c24;">${missing.length}</div>
+        <div style="font-size:11px;color:#721c24;">✖ BELUM UPLOAD</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:4px;">
+      <button onclick="forceRefreshBuktiTayang()"
+        style="flex:1;padding:9px;background:#e8f0fe;border:1px solid #4285f4;border-radius:6px;cursor:pointer;font-weight:600;color:#1a73e8;font-size:13px;">
+        🔄 Refresh
+      </button>
+      <button id="btn-copy-wa" onclick="copyBuktiTayangWA()"
+        style="flex:1;padding:9px;background:#f0fff4;border:1px solid #28a745;border-radius:6px;cursor:pointer;font-weight:600;color:#155724;font-size:13px;">
+        📋 Copy Tagihan WA
+      </button>
+    </div>
+
+    ${renderShiftGroup('pagi',  'Shift Pagi',  '🌅', shifts.pagi)}
+    ${renderShiftGroup('siang', 'Shift Siang', '☀️', shifts.siang)}
+  `;
 }
