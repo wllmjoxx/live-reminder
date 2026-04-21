@@ -586,38 +586,70 @@ function renderTimeline(){
     return f(a)-f(b);
   });
   let firstUpcoming=null;
-  function makeBlock(ev,time,type){
-    const items=type==="start"?ev.starts:ev.ends;
-    if(!items.length)return null;
-    const display=time==="23:59/00:00"?"23:59 / 00:00":time;
-    const checkTime=time==="23:59/00:00"?"23:59":time;
-    const eventMs=timeToMs(sessions[0]?.date,checkTime);
-    const isPast=eventMs&&eventMs<now;
-    const block=document.createElement("div");
-    block.className=`time-block${isPast?" collapsed":""}`;
-    const header=document.createElement("div");
-    header.className=`time-header ${type==="start"?"start":"end"}-header`;
-    if(isPast){
-      header.style.opacity="0.55";
-      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"Start":"End"} ${display}<span class="count-badge">▸ ${items.length}</span>`;
-      header.onclick=()=>{
-        const wasCollapsed=block.classList.contains("collapsed");
-        block.classList.toggle("collapsed");
-        const cnt=block.querySelector(".sessions-container");
-        cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
-      };
-    }else{
-      header.innerHTML=`<span class="dot ${type==="start"?"start":"end"}-dot"></span>${type==="start"?"▶ Start":"⏹ End"} ${display}<span class="toggle-icon">▾</span>`;
-    }
-    const content=document.createElement("div");
-    content.className="sessions-container";
-    content.style.maxHeight=isPast?"0px":"none";
-    items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
-    block.appendChild(header);
-    block.appendChild(content);
-    if(!isPast&&!firstUpcoming)firstUpcoming=block;
-    return block;
+function makeBlock(ev,time,type){
+  const items=type==="start"?ev.starts:ev.ends;
+  if(!items.length)return null;
+  const display=time==="23:59/00:00"?"23:59 / 00:00":time;
+  const checkTime=time==="23:59/00:00"?"23:59":time;
+  const eventMs=timeToMs(sessions[0]?.date,checkTime);
+  const isPast=eventMs&&eventMs<now;
+  const block=document.createElement("div");
+  block.className=`time-block${isPast?" collapsed":""}`;
+
+  const header=document.createElement("div");
+  header.className=`time-header ${type==="start"?"start":"end"}-header`;
+  header.style.cssText="display:flex;align-items:center;gap:6px;justify-content:space-between;";
+
+  // ── Copy button (stop propagation supaya tidak trigger toggle) ──
+  const copyBtn = document.createElement("button");
+  copyBtn.textContent = "📋";
+  copyBtn.title = `Copy ${type} ${display}`;
+  copyBtn.style.cssText = `
+    padding:2px 8px;border-radius:4px;font-size:0.65rem;font-weight:700;cursor:pointer;
+    border:1px solid rgba(0,0,0,0.15);background:rgba(255,255,255,0.6);
+    color:inherit;flex-shrink:0;line-height:1.4;
+  `;
+  copyBtn.onclick = (e) => {
+    e.stopPropagation();
+    copyTimeBlock(time, type, items, copyBtn);
+  };
+
+  if(isPast){
+    header.style.opacity="0.55";
+    header.innerHTML=`
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
+        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
+        <span>${type==="start"?"Start":"End"} ${display}</span>
+        <span class="count-badge">▸ ${items.length}</span>
+      </div>`;
+    header.appendChild(copyBtn);
+    header.onclick=(e)=>{
+      if(e.target===copyBtn)return;
+      const wasCollapsed=block.classList.contains("collapsed");
+      block.classList.toggle("collapsed");
+      const cnt=block.querySelector(".sessions-container");
+      cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
+    };
+  }else{
+    header.innerHTML=`
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
+        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
+        <span>${type==="start"?"▶ Start":"⏹ End"} ${display}</span>
+        <span class="toggle-icon">▾</span>
+      </div>`;
+    header.appendChild(copyBtn);
   }
+
+  const content=document.createElement("div");
+  content.className="sessions-container";
+  content.style.maxHeight=isPast?"0px":"none";
+  items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
+  block.appendChild(header);
+  block.appendChild(content);
+  if(!isPast&&!firstUpcoming)firstUpcoming=block;
+  return block;
+}
+
   sorted.forEach(time=>{
     const ev=events[time];
     const sb=makeBlock(ev,time,"start");
@@ -2410,6 +2442,47 @@ function copyTimeline() {
         setTimeout(() => btn.innerHTML = orig, 2000);
       }
       showBanner('✅ Timeline di-copy!', 'success');
+    })
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
+
+
+function copyTimeBlock(time, type, items, btn) {
+  if (!items || !items.length) return;
+
+  const display = time === '23:59/00:00' ? '23:59 / 00:00' : time;
+  const lines   = [];
+
+  // Header — START / END uppercase
+  lines.push(`${type.toUpperCase()} ${display}`);
+  lines.push('');
+
+  items.forEach((s, i) => {
+    // Ambil host sesuai type
+    const host = type === 'start'
+      ? (s.hosts?.[0]?.host || '-')
+      : (s.hosts?.[s.hosts.length - 1]?.host || '-');
+
+    // Format pic: "Maul" → "@Maul Sirclo" | "@Arbi Intern" → "@Arbi Intern Sirclo" | "LSC" → "LSC"
+    const rawPic = s.assignedPic || 'LSC';
+    const picStr = rawPic === 'LSC'
+      ? 'LSC'
+      : rawPic.startsWith('@')
+        ? `${rawPic} Sirclo`
+        : `@${rawPic} Sirclo`;
+
+    lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio}`);
+    lines.push(`👤 ${host} ${picStr}`);
+  });
+
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(() => {
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✅';
+        setTimeout(() => btn.textContent = orig, 2000);
+      }
+      showBanner(`✅ ${type === 'start' ? 'Start' : 'End'} ${display} di-copy!`, 'success');
     })
     .catch(() => showBanner('❌ Gagal copy', 'error'));
 }
