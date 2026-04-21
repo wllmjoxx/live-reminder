@@ -1952,7 +1952,7 @@ function copyBuktiTayangWA() {
 // RENDER BUKTI TAYANG
 // ─────────────────────────────────────────────
 function renderBuktiTayang(data) {
-  const container = document.getElementById('bukti-tayang-container');
+  const container = document.getElementById('schedule-list');
   if (!container) return;
 
   if (!data || !data.sessions || data.sessions.length === 0) {
