@@ -2472,10 +2472,10 @@ function copyTimeBlock(time, type, items, btn) {
     if (type === 'start') {
       // START: brand | mp | studio  host  @pic
       const host = s.hosts?.[0]?.host || '-';
-      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${host} ${picStr}`);
+      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${host}`);
     } else {
       // END: brand | mp | studio  @pic  (no host)
-      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${picStr}`);
+      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio}`);
     }
   });
 
