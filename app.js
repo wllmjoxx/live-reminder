@@ -2986,13 +2986,20 @@ function getStandbyShiftCoverage(slots) {
 
 let _mcrInitialized = false;
 let _mcrStudios = {}; 
+let _indoVoice = null; // Menyimpan jenis suara Indonesia
 
-// Konfigurasi 1 Studio untuk Testing Local
+// Memuat suara Indonesia saat pertama kali web dibuka
+window.speechSynthesis.onvoiceschanged = () => {
+    let voices = window.speechSynthesis.getVoices();
+    // Cari suara yang ada kata "Indonesia" atau kode "id-ID"
+    _indoVoice = voices.find(v => v.lang === 'id-ID' || v.name.includes('Indonesia'));
+};
+
 const MCR_CONFIG = [
     {
         id: 1,
-        ip: "ws://127.0.0.1:4455", // Pastikan tidak ada "s" setelah ws jika localhost
-        pw: "123456"               // Password dari OBS
+        ip: "ws://127.0.0.1:4455", 
+        pw: "123456"               
     }
 ];
 
@@ -3000,7 +3007,6 @@ function renderMCR() {
     const el = document.getElementById('schedule-list');
     if (!el) return;
     
-    // Header & Controls dengan UI yang disempurnakan (Grid Flexbox Menyamping)
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
@@ -3018,7 +3024,7 @@ function renderMCR() {
                     <div id="mcr-status-${s.id}" style="font-size: 0.75rem; color: gray; margin-bottom: 10px;">⚫ Offline</div>
                     <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 5px;">
                         <div>🔈 <span id="mcr-audio-${s.id}" style="font-weight: bold;">-60.0 dB</span></div>
-                        <div>📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold;">0 kbps</span></div>
+                        <div>📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold; color: gray;">0 kbps</span></div>
                     </div>
                 </div>
             </div>
@@ -3050,12 +3056,9 @@ async function initMCRConnections() {
         const obs = _mcrStudios[studio.id].obs;
 
         try {
-            // [KUNCI]: Kirim eventSubscriptions 66559 agar OBS mengirim Data Volume Meter
             await obs.connect(studio.ip, studio.pw, {
                 eventSubscriptions: 66559 
             });
-            
-            console.log(`BERHASIL KONEK ke Studio ${studio.id}!`);
             
             const statusEl = document.getElementById(`mcr-status-${studio.id}`);
             const cardEl = document.getElementById(`mcr-card-${studio.id}`);
@@ -3064,24 +3067,20 @@ async function initMCRConnections() {
 
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
-                let currentDb = -60; // Batas bawah
+                let currentDb = -60;
                 
                 if (data && data.inputs && data.inputs.length > 0) {
-                    let maxLinear = 0; // Mulai dari Linear 0 (sunyi)
+                    let maxLinear = 0;
                     
-                    // Loop semua sumber suara (Mic/Desktop) cari yang paling kencang
                     data.inputs.forEach(input => {
                         if (input.inputLevelsMul && input.inputLevelsMul[0] && input.inputLevelsMul[0].length >= 2) {
-                            // Index 1 pada OBS v5 adalah angka Linear (0.0 - 1.0)
                             let linearValue = input.inputLevelsMul[0][1]; 
                             if (linearValue > maxLinear) {
-                                maxVolumeName = input.inputName;
                                 maxLinear = linearValue;
                             }
                         }
                     });
 
-                    // RUMUS KONVERSI LINEAR KE DESIBEL (dB)
                     if (maxLinear > 0.0001) { 
                         currentDb = 20 * Math.log10(maxLinear);
                     } else {
@@ -3089,14 +3088,12 @@ async function initMCRConnections() {
                     }
                 }
                 
-                // Batasi agar tidak lebih rendah dari -60
                 if (currentDb < -60 || currentDb === -Infinity) currentDb = -60;
 
-                // Logika Timer & Alarm (Di-cek terus-menerus)
                 if (currentDb < -40) {
                     _mcrStudios[studio.id].silentCount += 0.05; 
                     if (_mcrStudios[studio.id].silentCount >= 15 && !_mcrStudios[studio.id].alarmPlayed) { 
-                        triggerMCRAlarm(studio.id, "Audio hilang");
+                        triggerMCRAlarm(studio.id, "Audio hilang.");
                         _mcrStudios[studio.id].alarmPlayed = true;
                     }
                 } else {
@@ -3104,7 +3101,6 @@ async function initMCRConnections() {
                     _mcrStudios[studio.id].alarmPlayed = false;
                 }
 
-                // Update UI Layar (Dibatasi tiap 500 milidetik agar performa ringan)
                 let now = Date.now();
                 if (now - _mcrStudios[studio.id].lastUiUpdate > 500) { 
                     _mcrStudios[studio.id].lastUiUpdate = now;
@@ -3114,22 +3110,21 @@ async function initMCRConnections() {
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
                         if (audioEl && cardElement) {
-                            // Sekarang angkanya pasti -20.5 dB, -5.2 dB, dll
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
                             if (currentDb < -40) {
-                                audioEl.classList.add("text-danger");
-                                cardElement.style.borderLeftColor = "#dc3545"; // Merah
+                                audioEl.style.color = "#dc3545"; // Merah
+                                cardElement.style.borderLeftColor = "#dc3545"; 
                             } else {
-                                audioEl.classList.remove("text-danger");
-                                cardElement.style.borderLeftColor = "#198754"; // Hijau
+                                audioEl.style.color = "#198754"; // Hijau
+                                cardElement.style.borderLeftColor = "#198754"; 
                             }
                         }
                     }
                 }
             });
 
-            // 2. PANTAU BITRATE (Berjalan tiap 2 Detik)
+            // 2. PANTAU BITRATE
             setInterval(async () => {
                 try {
                     const status = await obs.call('GetStreamStatus');
@@ -3139,29 +3134,31 @@ async function initMCRConnections() {
                         let currentBytes = status.outputBytes;
                         if (_mcrStudios[studio.id].lastBytes > 0) {
                             let byteDiff = currentBytes - _mcrStudios[studio.id].lastBytes;
-                            kbps = (byteDiff * 8) / 1000 / 2; // (Bytes ke bits) / 1000 / 2 dtk
+                            kbps = (byteDiff * 8) / 1000 / 2; 
                         }
                         _mcrStudios[studio.id].lastBytes = currentBytes;
                     } else {
                         _mcrStudios[studio.id].lastBytes = 0;
                     }
 
-                    // Logika Alarm Bitrate
                     if (status.outputActive && kbps < 1500) {
-                        if (Math.random() > 0.8) triggerMCRAlarm(studio.id, "Drop Bitrate");
+                        if (Math.random() > 0.8) triggerMCRAlarm(studio.id, "Jaringan internet drop.");
                     }
 
-                    // Update UI
                     if (activeTab === "mcr") {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
+                        
                         if (bitEl && cardElement) {
                             bitEl.innerText = Math.round(kbps) + " kbps";
-                            if (status.outputActive && kbps < 1500) {
-                                bitEl.classList.add("text-danger");
-                                cardElement.style.borderLeftColor = "#ffc107"; // Kuning
+                            
+                            if (!status.outputActive) {
+                                bitEl.style.color = "gray"; // Tidak streaming
+                            } else if (kbps < 1500) {
+                                bitEl.style.color = "#ffc107"; // Kuning (Drop)
+                                cardElement.style.borderLeftColor = "#ffc107"; 
                             } else {
-                                bitEl.classList.remove("text-danger");
+                                bitEl.style.color = "#198754"; // Hijau (Aman)
                             }
                         }
                     }
@@ -3181,14 +3178,19 @@ async function initMCRConnections() {
 }
 
 function triggerMCRAlarm(studioId, masalah) {
-    console.log(`ALARM Studio ${studioId}: ${masalah}`);
-    
-    // 1. Banner Atas
-    showBanner(`⚠️ Studio ${studioId}: ${masalah}!`, "danger");
+    showBanner(`⚠️ Studio ${studioId}: ${masalah}`, "danger");
 
-    // 2. Teks To Speech (Suara Robot Laptop)
-    let speech = new SpeechSynthesisUtterance(`Peringatan. Studio ${studioId} mengalami ${masalah}.`);
+    // Pelafalan Bahasa Indonesia yang lebih jelas
+    let speech = new SpeechSynthesisUtterance(`Perhatian. Studio ${studioId}, mengalami masalah. ${masalah}`);
     speech.lang = "id-ID";
-    speech.rate = 1.0;
+    
+    // Gunakan voice Indonesia asli jika tersedia di Windows/Chrome
+    if (_indoVoice) {
+        speech.voice = _indoVoice;
+    }
+    
+    // Diperlambat sedikit agar intonasi jelas
+    speech.rate = 0.9;
+    
     window.speechSynthesis.speak(speech);
 }
