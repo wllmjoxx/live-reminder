@@ -3027,11 +3027,22 @@ function renderMCR() {
                         <span id="mcr-mp-${s.id}" style="font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; background: #e9ecef; color: #6c757d; display: none; font-weight: bold;">UNKNOWN</span>
                     </div>
 
-                    <div style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 10px;">
+                        <!-- BAGIAN AUDIO DENGAN PROGRESS BAR -->
                         <div>
-                            🔈 <span id="mcr-audio-${s.id}" style="font-weight: bold;">-60.0 dB</span>
-                            <div id="mcr-audio-warn-${s.id}" style="font-size: 0.7rem; color: #dc3545; display: none; margin-top: 2px;">⚠️ Mic Mati / No Audio</div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                <span>🔈</span>
+                                <span id="mcr-audio-${s.id}" style="font-weight: bold; font-size: 0.8rem; color: gray;">-60.0 dB</span>
+                            </div>
+                            <!-- Background Bar (Abu-abu) -->
+                            <div style="height: 6px; width: 100%; background-color: #e9ecef; border-radius: 3px; overflow: hidden;">
+                                <!-- Isi Bar (Akan bergerak dan berubah warna) -->
+                                <div id="mcr-audio-bar-${s.id}" style="height: 100%; width: 0%; background-color: #198754; transition: width 0.1s ease-out, background-color 0.2s;"></div>
+                            </div>
+                            <div id="mcr-audio-warn-${s.id}" style="font-size: 0.7rem; color: #dc3545; display: none; margin-top: 4px;">⚠️ Mic Mati / No Audio</div>
                         </div>
+
+                        <!-- BAGIAN BITRATE -->
                         <div>
                             📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold; color: gray;">0 kbps</span>
                             <div id="mcr-net-warn-${s.id}" style="font-size: 0.7rem; color: #ffc107; display: none; margin-top: 2px;">⚠️ Tidak Stabil</div>
@@ -3046,7 +3057,6 @@ function renderMCR() {
     el.innerHTML = html;
 }
 
-// Fungsi bantu mendeteksi nama MP dari URL RTMP
 function detectMarketplace(serverUrl) {
     if (!serverUrl) return { name: "CUSTOM", color: "#6c757d", bg: "#e9ecef" };
     let url = serverUrl.toLowerCase();
@@ -3061,14 +3071,12 @@ function detectMarketplace(serverUrl) {
     return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
 }
 
-// Handler Alt+Tab (VisibilityChange) agar UI tidak bengong status Offline & MP tidak hilang
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized) {
         MCR_CONFIG.forEach(async (studio) => {
             const obsState = _mcrStudios[studio.id];
             
             if (obsState && obsState.isConnected) {
-                // 1. Kembalikan status Online
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                 const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 
@@ -3077,7 +3085,6 @@ document.addEventListener("visibilitychange", () => {
                     cardEl.style.borderLeftColor = "var(--bs-success)";
                 }
 
-                // 2. Kembalikan Badge Marketplace
                 try {
                     const streamSettings = await obsState.obs.call('GetStreamServiceSettings');
                     const serverUrl = streamSettings.streamServiceSettings?.server || "";
@@ -3146,7 +3153,6 @@ async function initMCRConnections() {
             if(statusEl) statusEl.innerText = "🟢 Online";
             if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
 
-            // AMBIL DATA MARKETPLACE PERTAMA KALI
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
@@ -3196,7 +3202,7 @@ async function initMCRConnections() {
 
                 let audioProblem = null;
 
-                // A. Deteksi Mic Mati (90 Detik)
+                // A. Deteksi Mic Mati (Lebih sensitif: di bawah -55dB dianggap mati)
                 if (currentDb < -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) { 
@@ -3234,25 +3240,47 @@ async function initMCRConnections() {
                     studioState.alarmPlayed = false;
                 }
 
-                let now = Date.now();
-                if (now - studioState.lastUiUpdate > 500) { 
+                // UPDATE UI (Dipercepat menjadi 100ms agar pergerakan bar mulus seperti OBS)
+                if (now - studioState.lastUiUpdate > 100) { 
                     studioState.lastUiUpdate = now;
                     
                     if (activeTab === "mcr") {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
+                        const audioBar = document.getElementById(`mcr-audio-bar-${studio.id}`);
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
-                        if (audioEl && cardElement && warnEl) {
+                        if (audioEl && audioBar && cardElement && warnEl) {
+                            // Teks Angka
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
+                            // Hitung Lebar Bar (Persentase 0 - 100%)
+                            // Range di OBS: -60 dB (0%) sampai 0 dB (100%)
+                            let barPercent = ((currentDb + 60) / 60) * 100;
+                            if (barPercent < 0) barPercent = 0;
+                            if (barPercent > 100) barPercent = 100;
+                            
+                            audioBar.style.width = `${barPercent}%`;
+
+                            // Tentukan Warna Bar persis seperti OBS
+                            // < -20 dB = Hijau, -20 s/d -9 dB = Kuning, > -9 dB = Merah (Keras)
+                            if (currentDb > -9) {
+                                audioBar.style.backgroundColor = "#dc3545"; // Merah
+                                audioEl.style.color = "#dc3545";
+                            } else if (currentDb > -20) {
+                                audioBar.style.backgroundColor = "#ffc107"; // Kuning
+                                audioEl.style.color = "#ffc107";
+                            } else {
+                                audioBar.style.backgroundColor = "#198754"; // Hijau Normal
+                                audioEl.style.color = "gray"; 
+                            }
+                            
+                            // Tampilkan Warning Jika Ada Masalah
                             if (audioProblem) {
-                                audioEl.style.color = "#dc3545"; 
                                 warnEl.innerText = `⚠️ ${audioProblem}`;
                                 warnEl.style.display = "block";
                                 cardElement.style.borderLeftColor = "#dc3545"; 
                             } else {
-                                audioEl.style.color = "#198754"; 
                                 warnEl.style.display = "none";
                                 if(cardElement.style.borderLeftColor !== "rgb(220, 53, 69)") {
                                     cardElement.style.borderLeftColor = "#198754"; 
