@@ -3142,10 +3142,7 @@ async function initMCRConnections() {
         });
 
         try {
-            // [PERBAIKAN KRUSIAL] - Menggunakan nama Event Enum bawaan library
-            // Kita wajib berlangganan General (1) dan InputVolumeMeters (65536)
             await obs.connect(studio.ip, studio.pw, {
-                // Menggunakan operasi OR pada bitmask OBS
                 eventSubscriptions: (1 | 65536) 
             });
             
@@ -3160,6 +3157,7 @@ async function initMCRConnections() {
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
+                
                 const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
                 if (mpBadge) {
                     let mpInfo = detectMarketplace(serverUrl);
@@ -3174,7 +3172,6 @@ async function initMCRConnections() {
 
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
-                console.log("DATA AUDIO DARI OBS:", data);
                 let nowTime = Date.now();
                 let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
                 lastAudioCheckTime = nowTime; 
@@ -3191,21 +3188,21 @@ async function initMCRConnections() {
                 let currentDb = -60;
                 let studioState = _mcrStudios[studio.id];
                 
-                // Cari suara terkuat
+                // Cari volume puncak
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
                     data.inputs.forEach(input => {
-                        // Perbaikan pembacaan array: kadang OBS versi lama pakai index [0], v5 pakai [0][1]
-                        let linearValue = 0;
-                        if (input.inputLevelsMul) {
+                        if (input.inputLevelsMul && input.inputLevelsMul[0]) {
+                            let linearValue = 0;
+                            // Fix struktur array OBS terbaru
                             if (Array.isArray(input.inputLevelsMul[0])) {
-                                linearValue = input.inputLevelsMul[0][1]; // Format OBS v5 (Array 2D: [ [L_peak, L_rms], [R_peak, R_rms] ])
+                                linearValue = input.inputLevelsMul[0][0]; // Ambil nilai Peak
                             } else if (typeof input.inputLevelsMul[0] === "number") {
-                                linearValue = input.inputLevelsMul[0];    // Format transisi OBS v28
+                                linearValue = input.inputLevelsMul[0];
                             }
+                            
+                            if (linearValue > maxLinear) maxLinear = linearValue;
                         }
-                        
-                        if (linearValue > maxLinear) maxLinear = linearValue;
                     });
 
                     if (maxLinear > 0.0001) currentDb = 20 * Math.log10(maxLinear);
@@ -3266,7 +3263,7 @@ async function initMCRConnections() {
                         if (audioEl && audioBar && cardElement && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
-                            // Konversi -60 sampai 0 menjadi lebar 0% sampai 100%
+                            // Konversi range
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
@@ -3274,13 +3271,13 @@ async function initMCRConnections() {
                             audioBar.style.width = `${barPercent}%`;
 
                             if (currentDb > -9) {
-                                audioBar.style.backgroundColor = "#dc3545"; // Merah
+                                audioBar.style.backgroundColor = "#dc3545"; 
                                 audioEl.style.color = "#dc3545";
                             } else if (currentDb > -20) {
-                                audioBar.style.backgroundColor = "#ffc107"; // Kuning
+                                audioBar.style.backgroundColor = "#ffc107"; 
                                 audioEl.style.color = "#ffc107";
                             } else {
-                                audioBar.style.backgroundColor = "#198754"; // Hijau
+                                audioBar.style.backgroundColor = "#198754"; 
                                 audioEl.style.color = "gray"; 
                             }
                             
@@ -3378,6 +3375,7 @@ async function initMCRConnections() {
         }
     });
 }
+
 
 
 function triggerMCRAlarm(studioId, masalah) {
