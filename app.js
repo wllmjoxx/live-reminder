@@ -2548,6 +2548,29 @@ async function loadStandby(force = false) {
       fetch(`${base}?action=picschedule${ts}`).then(r => r.json()),
     ]);
 
+    // ✅ Normalize schedResp: fix field names + fix session.start ke host pertama
+    if (schedResp && schedResp.sessions) {
+      schedResp.sessions = schedResp.sessions.map(s => {
+        if (!s.hosts || !s.hosts.length) return s;
+
+        // 1. Normalize field names tiap host (support lama & baru dari API)
+        s.hosts = s.hosts.map(h => ({
+          host:      h.host      ?? h.name  ?? '-',
+          startTime: h.startTime ?? h.start ?? '-',
+          endTime:   h.endTime   ?? h.end   ?? '-',
+          picData:   h.picData   ?? h.pic   ?? '-',
+        }));
+
+        // 2. Fix session.start = startTime host pertama (biar chaining akurat)
+        const firstStart = s.hosts[0].startTime;
+        if (firstStart && firstStart !== '-') {
+          s.start    = firstStart;
+          s.startTime = firstStart;
+        }
+        return s;
+      });
+    }
+
     // GANTI:
     if (picResp && picResp.pics) {
       // ✅ Swap pagi↔siang karena API label-nya kebalik
@@ -2591,54 +2614,20 @@ function renderStandby(schedData, picData) {
   _lastStandbySchedData = schedData;
   _standbyRrIndex = {};
 
-  const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
-  const SHIFTS   = ['pagi', 'siang', 'malam'];
-
-  // ── Helpers ──────────────────────────────────────────────────
-  function getBrandHostSlots(brandSessions) {
-    const slots = [];
-    for (const s of brandSessions) {
-      const hs = (s.hosts && s.hosts.length)
-        ? s.hosts
-        : [{ startTime: s.start, endTime: s.end }];
-      for (const h of hs) {
-        const st = h.startTime ?? h.start ?? null;
-        const en = h.endTime   ?? h.end   ?? null;
-        if (st && en && st !== '-' && en !== '-') slots.push({ start: st, end: en });
-      }
-    }
-    // Deduplikasi slot yang sama (misal 2 studio dengan waktu identik)
-    const seen = new Set();
-    return slots
-      .filter(s => { const k = `${s.start}|${s.end}`; if (seen.has(k)) return false; seen.add(k); return true; })
-      .sort((a, b) => toMin(a.start) - toMin(b.start));
-  }
-
-  function getShiftCoverage(slots) {
-    const cov = {};
-    for (const slot of slots) {
-      for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
-        if (!cov[seg.shift]) {
-          cov[seg.shift] = { start: seg.start, end: seg.end };
-        } else {
-          if (toMin(seg.start) < toMin(cov[seg.shift].start)) cov[seg.shift].start = seg.start;
-          if (toMin(seg.end)   > toMin(cov[seg.shift].end))   cov[seg.shift].end   = seg.end;
-        }
-      }
-    }
-    return cov;
-  }
+  const sessions        = (schedData && schedData.sessions) ? schedData.sessions : [];
+  const SHIFTS          = ['pagi', 'siang', 'malam'];
+  const globalAssigned  = { pagi: new Set(), siang: new Set(), malam: new Set() };
 
   let html = '';
 
-  // ── SECTION 1: PIC SHIFT ─────────────────────────────────────
+  // ── SECTION 1: PIC SHIFT ──────────────────────────────────────
   html += `<div class="standby-section"><h3>👤 PIC SHIFT</h3>`;
   for (const shift of SHIFTS) {
     const ops = picData.filter(p => p.shift === shift);
     if (!ops.length) continue;
-    const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+    const lbl = shift.charAt(0).toUpperCase() + shift.slice(1);
     html += `<div class="shift-block shift-${shift}">`;
-    html += `<div class="shift-header">${shiftEmoji(shift)} Shift ${shiftLabel}</div><ul>`;
+    html += `<div class="shift-header">${shiftEmoji(shift)} Shift ${lbl}</div><ul>`;
     for (const op of ops) {
       const st = op.studios && op.studios.length
         ? ` <span class="studio-badge">Studio ${op.studios.join(', ')}</span>` : '';
@@ -2661,25 +2650,33 @@ function renderStandby(schedData, picData) {
       html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
 
     } else if (cfg.type === 'dedicated') {
-      // ── DEDICATED: per shift, fallback ke floating jika no section op ──
+      // ── DEDICATED: per shift, fallback floating jika no section op ──
       const sectionOps = picData.filter(p => p.section === cfg.section);
-      const shiftCov   = getShiftCoverage(getBrandHostSlots(brandSessions));
-      let anyRow = false;
+      const shiftCov   = getStandbyShiftCoverage(getStandbyHostSlots(brandSessions));
+      if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
+      const rrState    = _standbyRrIndex[cfg.label];
+      let anyRow       = false;
 
       for (const shift of SHIFTS) {
         const cov = shiftCov[shift];
         if (!cov) continue;
 
         let ops = sectionOps.filter(p => p.shift === shift);
-        if (!ops.length) {
-          const fp = getPoolForShift(picData, ['floating', 'intern'], shift);
-          if (fp.length) ops = [fp[0]];
+        if (ops.length) {
+          // Dedicated section op → track di globalAssigned
+          ops.forEach(o => globalAssigned[shift].add(o.name));
+        } else {
+          // Fallback: ambil 1 dari floating pool (prefer belum dipakai)
+          const pool = getPoolForShift(picData, ['floating', 'intern'], shift);
+          if (!pool.length) continue;
+          const picked = pickStandbyOp(pool, shift, globalAssigned, rrState);
+          if (picked) ops = [picked];
         }
         if (!ops.length) continue;
 
-        const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+        const lbl = shift.charAt(0).toUpperCase() + shift.slice(1);
         html += `<div class="standby-row">`;
-        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel} (${cov.start}–${cov.end})</span>`;
+        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${lbl} (${cov.start}–${cov.end})</span>`;
         html += `<span class="ops-list">${ops.map(o => o.name).join(', ')}</span>`;
         html += `</div>`;
         anyRow = true;
@@ -2687,33 +2684,25 @@ function renderStandby(schedData, picData) {
       if (!anyRow) html += `<p class="empty-ops">Tidak ada data shift hari ini.</p>`;
 
     } else if (cfg.type === 'floating') {
-      // ── FLOATING: per individual host slot (deduplicated + sorted) ──
+      // ── FLOATING: per host slot (chaining), 1 op (prefer belum dipakai) ──
       if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
       const rrState  = _standbyRrIndex[cfg.label];
-      const allSlots = getBrandHostSlots(brandSessions);
+      const allSlots = getStandbyHostSlots(brandSessions);
 
       if (!allSlots.length) {
         html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
       } else {
         for (const slot of allSlots) {
-          const segs = splitAtShiftBoundary(slot.start, slot.end);
-          for (const seg of segs) {
+          for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
             const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
-            if (!pool.length) {
-              html += `<div class="standby-row">`;
-              html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-              html += `<span class="ops-list">—</span>`;
-              html += `</div>`;
-              continue;
-            }
-            const rrKey = seg.shift;
-            if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
-            const assigned = pool[rrState[rrKey] % pool.length];
-            rrState[rrKey]++;
-
             html += `<div class="standby-row">`;
             html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-            html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+            if (!pool.length) {
+              html += `<span class="ops-list">—</span>`;
+            } else {
+              const assigned = pickStandbyOp(pool, seg.shift, globalAssigned, rrState);
+              html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+            }
             html += `</div>`;
           }
         }
@@ -2732,6 +2721,7 @@ function renderStandby(schedData, picData) {
 
   el.innerHTML = html;
 }
+
 
 
 
@@ -2849,43 +2839,18 @@ async function copyAllStandby() {
   const schedData = _lastStandbySchedData;
   if (!picData || !picData.length) { showBanner('⚠️ Data PIC belum tersedia', 'warning'); return; }
 
-  const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
-  const SHIFTS   = ['pagi', 'siang', 'malam'];
-  const fmtT     = t => (t && t !== '-') ? t.replace(/:00$/, '') : '-';
-
-  function getBrandHostSlots(brandSessions) {
-    const slots = [];
-    for (const s of brandSessions) {
-      const hs = (s.hosts && s.hosts.length)
-        ? s.hosts : [{ startTime: s.start, endTime: s.end }];
-      for (const h of hs) {
-        const st = h.startTime ?? h.start ?? null;
-        const en = h.endTime   ?? h.end   ?? null;
-        if (st && en && st !== '-' && en !== '-') slots.push({ start: st, end: en });
-      }
-    }
-    const seen = new Set();
-    return slots
-      .filter(s => { const k=`${s.start}|${s.end}`; if(seen.has(k)) return false; seen.add(k); return true; })
-      .sort((a, b) => toMin(a.start) - toMin(b.start));
-  }
-
-  function getShiftCoverage(slots) {
-    const cov = {};
-    for (const slot of slots) {
-      for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
-        if (!cov[seg.shift]) { cov[seg.shift] = true; }
-      }
-    }
-    return cov;
-  }
+  const sessions       = (schedData && schedData.sessions) ? schedData.sessions : [];
+  const SHIFTS         = ['pagi', 'siang', 'malam'];
+  const globalAssigned = { pagi: new Set(), siang: new Set(), malam: new Set() };
+  const rrCopy         = {};
+  const fmtT           = t => (t && t !== '-') ? t.replace(/:00$/, '') : '-';
 
   const today   = new Date();
   const dateStr = today.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }).toUpperCase();
 
   let lines = [`REMINDER ${dateStr}`, ''];
 
-  // ── PIC SHIFT ─────────────────────────────────────────────────
+  // ── PIC SHIFT ──────────────────────────────────────────────────
   for (const shift of SHIFTS) {
     const ops = picData.filter(p => p.shift === shift && p.studios && p.studios.length > 0);
     if (!ops.length) continue;
@@ -2894,23 +2859,28 @@ async function copyAllStandby() {
     lines.push('');
   }
 
-  // ── STANDBY BRAND ─────────────────────────────────────────────
-  const rrCopy = {};
-
+  // ── STANDBY BRAND ──────────────────────────────────────────────
   for (const cfg of STANDBY_BRANDS_CFG) {
     const brandSessions = sessions.filter(s => matchBrandConfig(s, cfg));
     const brandLines    = [];
 
+    if (!rrCopy[cfg.label]) rrCopy[cfg.label] = {};
+    const rrState = rrCopy[cfg.label];
+
     if (cfg.type === 'dedicated') {
       const sectionOps = picData.filter(p => p.section === cfg.section);
-      const shiftCov   = getShiftCoverage(getBrandHostSlots(brandSessions));
+      const shiftCov   = getStandbyShiftCoverage(getStandbyHostSlots(brandSessions));
 
       for (const shift of SHIFTS) {
         if (!shiftCov[shift]) continue;
         let ops = sectionOps.filter(p => p.shift === shift);
-        if (!ops.length) {
-          const fp = getPoolForShift(picData, ['floating', 'intern'], shift);
-          if (fp.length) ops = [fp[0]];
+        if (ops.length) {
+          ops.forEach(o => globalAssigned[shift].add(o.name));
+        } else {
+          const pool = getPoolForShift(picData, ['floating', 'intern'], shift);
+          if (!pool.length) continue;
+          const picked = pickStandbyOp(pool, shift, globalAssigned, rrState);
+          if (picked) ops = [picked];
         }
         if (!ops.length) continue;
         const lbl = shift.charAt(0).toUpperCase() + shift.slice(1);
@@ -2918,19 +2888,11 @@ async function copyAllStandby() {
       }
 
     } else if (cfg.type === 'floating') {
-      if (!rrCopy[cfg.label]) rrCopy[cfg.label] = {};
-      const rrState  = rrCopy[cfg.label];
-      const allSlots = getBrandHostSlots(brandSessions);
-
-      for (const slot of allSlots) {
-        const segs = splitAtShiftBoundary(slot.start, slot.end);
-        for (const seg of segs) {
+      for (const slot of getStandbyHostSlots(brandSessions)) {
+        for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
           const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
           if (!pool.length) { brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} —`); continue; }
-          const rrKey = seg.shift;
-          if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
-          const assigned = pool[rrState[rrKey] % pool.length];
-          rrState[rrKey]++;
+          const assigned = pickStandbyOp(pool, seg.shift, globalAssigned, rrState);
           brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${assigned.name.toUpperCase()}`);
         }
       }
@@ -2943,7 +2905,7 @@ async function copyAllStandby() {
     }
   }
 
-  // ── Notes & Links ─────────────────────────────────────────────
+  // ── Notes & Links ───────────────────────────────────────────
   lines.push('1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT');
   lines.push('2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG');
   lines.push('3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST');
@@ -2964,7 +2926,7 @@ async function copyAllStandby() {
   try {
     await navigator.clipboard.writeText(text);
     showBanner('✅ Reminder berhasil dicopy!', 'success');
-  } catch (e) {
+  } catch(e) {
     const ta = document.createElement('textarea');
     ta.value = text; document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta);
@@ -2973,3 +2935,66 @@ async function copyAllStandby() {
 }
 
 
+
+// ── STANDBY HELPERS ──────────────────────────────────────────
+
+// Rekonstruksi slot per host via chaining (ignore h.start, pakai prevEnd)
+function getStandbyHostSlots(brandSessions) {
+  const raw = [];
+  for (const s of brandSessions) {
+    const sStart = s.start ?? s.startTime ?? null;
+    if (!sStart || sStart === '-') continue;
+    const hosts = (s.hosts && s.hosts.length) ? s.hosts : null;
+    if (!hosts) {
+      const e = s.end ?? s.endTime;
+      if (e && e !== '-') raw.push({ start: sStart, end: e });
+      continue;
+    }
+    let prev = sStart; // ← start pertama = session.start
+    for (const h of hosts) {
+      const e = h.endTime ?? h.end ?? null;
+      if (!e || e === '-') continue;
+      raw.push({ start: prev, end: e });
+      prev = e; // ← start berikutnya = end sekarang
+    }
+  }
+  // Dedup SETELAH chaining, sort by start
+  const seen = new Set();
+  return raw
+    .filter(s => { const k=`${s.start}|${s.end}`; if(seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+// Pick operator: prefer yang belum dipakai brand lain (globalAssigned)
+function pickStandbyOp(pool, shift, globalAssigned, rrState) {
+  if (rrState[shift] === undefined) rrState[shift] = 0;
+  for (let i = 0; i < pool.length; i++) {
+    const idx = (rrState[shift] + i) % pool.length;
+    const op  = pool[idx];
+    if (!globalAssigned[shift].has(op.name)) {
+      rrState[shift] = idx + 1;
+      globalAssigned[shift].add(op.name);
+      return op;
+    }
+  }
+  // Semua sudah dipakai → fallback RR biasa
+  const op = pool[rrState[shift] % pool.length];
+  rrState[shift]++;
+  return op;
+}
+
+// Hitung coverage waktu per shift dari list slots
+function getStandbyShiftCoverage(slots) {
+  const cov = {};
+  for (const slot of slots) {
+    for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
+      if (!cov[seg.shift]) {
+        cov[seg.shift] = { start: seg.start, end: seg.end };
+      } else {
+        if (toMin(seg.start) < toMin(cov[seg.shift].start)) cov[seg.shift].start = seg.start;
+        if (toMin(seg.end)   > toMin(cov[seg.shift].end))   cov[seg.shift].end   = seg.end;
+      }
+    }
+  }
+  return cov;
+}
