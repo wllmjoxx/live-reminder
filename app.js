@@ -3142,8 +3142,11 @@ async function initMCRConnections() {
         });
 
         try {
+            // [PERBAIKAN KRUSIAL] - Menggunakan nama Event Enum bawaan library
+            // Kita wajib berlangganan General (1) dan InputVolumeMeters (65536)
             await obs.connect(studio.ip, studio.pw, {
-                eventSubscriptions: 66559 
+                // Menggunakan operasi OR pada bitmask OBS
+                eventSubscriptions: (1 | 65536) 
             });
             
             _mcrStudios[studio.id].isConnected = true;
@@ -3153,10 +3156,10 @@ async function initMCRConnections() {
             if(statusEl) statusEl.innerText = "🟢 Online";
             if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
 
+            // AMBIL DATA MARKETPLACE
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
-                
                 const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
                 if (mpBadge) {
                     let mpInfo = detectMarketplace(serverUrl);
@@ -3187,22 +3190,31 @@ async function initMCRConnections() {
                 let currentDb = -60;
                 let studioState = _mcrStudios[studio.id];
                 
+                // Cari suara terkuat
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
                     data.inputs.forEach(input => {
-                        if (input.inputLevelsMul && input.inputLevelsMul[0] && input.inputLevelsMul[0].length >= 2) {
-                            let linearValue = input.inputLevelsMul[0][1]; 
-                            if (linearValue > maxLinear) maxLinear = linearValue;
+                        // Perbaikan pembacaan array: kadang OBS versi lama pakai index [0], v5 pakai [0][1]
+                        let linearValue = 0;
+                        if (input.inputLevelsMul) {
+                            if (Array.isArray(input.inputLevelsMul[0])) {
+                                linearValue = input.inputLevelsMul[0][1]; // Format OBS v5 (Array 2D: [ [L_peak, L_rms], [R_peak, R_rms] ])
+                            } else if (typeof input.inputLevelsMul[0] === "number") {
+                                linearValue = input.inputLevelsMul[0];    // Format transisi OBS v28
+                            }
                         }
+                        
+                        if (linearValue > maxLinear) maxLinear = linearValue;
                     });
 
                     if (maxLinear > 0.0001) currentDb = 20 * Math.log10(maxLinear);
                 }
-                if (currentDb < -60 || currentDb === -Infinity) currentDb = -60;
+                
+                if (currentDb < -60 || currentDb === -Infinity || isNaN(currentDb)) currentDb = -60;
 
                 let audioProblem = null;
 
-                // A. Deteksi Mic Mati (Lebih sensitif: di bawah -55dB dianggap mati)
+                // A. Deteksi Mic Mati (90 Detik)
                 if (currentDb < -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) { 
@@ -3240,7 +3252,7 @@ async function initMCRConnections() {
                     studioState.alarmPlayed = false;
                 }
 
-                // UPDATE UI (Dipercepat menjadi 100ms agar pergerakan bar mulus seperti OBS)
+                // UPDATE UI BARS
                 if (now - studioState.lastUiUpdate > 100) { 
                     studioState.lastUiUpdate = now;
                     
@@ -3251,19 +3263,15 @@ async function initMCRConnections() {
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
                         if (audioEl && audioBar && cardElement && warnEl) {
-                            // Teks Angka
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
-                            // Hitung Lebar Bar (Persentase 0 - 100%)
-                            // Range di OBS: -60 dB (0%) sampai 0 dB (100%)
+                            // Konversi -60 sampai 0 menjadi lebar 0% sampai 100%
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
                             
                             audioBar.style.width = `${barPercent}%`;
 
-                            // Tentukan Warna Bar persis seperti OBS
-                            // < -20 dB = Hijau, -20 s/d -9 dB = Kuning, > -9 dB = Merah (Keras)
                             if (currentDb > -9) {
                                 audioBar.style.backgroundColor = "#dc3545"; // Merah
                                 audioEl.style.color = "#dc3545";
@@ -3271,11 +3279,10 @@ async function initMCRConnections() {
                                 audioBar.style.backgroundColor = "#ffc107"; // Kuning
                                 audioEl.style.color = "#ffc107";
                             } else {
-                                audioBar.style.backgroundColor = "#198754"; // Hijau Normal
+                                audioBar.style.backgroundColor = "#198754"; // Hijau
                                 audioEl.style.color = "gray"; 
                             }
                             
-                            // Tampilkan Warning Jika Ada Masalah
                             if (audioProblem) {
                                 warnEl.innerText = `⚠️ ${audioProblem}`;
                                 warnEl.style.display = "block";
@@ -3359,6 +3366,7 @@ async function initMCRConnections() {
             }, 2000);
 
         } catch (error) {
+            console.error(`Gagal konek Studio ${studio.id}`, error);
             _mcrStudios[studio.id].isConnected = false;
             if (activeTab === "mcr") {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
@@ -3369,6 +3377,7 @@ async function initMCRConnections() {
         }
     });
 }
+
 
 function triggerMCRAlarm(studioId, masalah) {
     showBanner(`⚠️ Studio ${studioId}: ${masalah}`, "danger");
