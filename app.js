@@ -3191,29 +3191,42 @@ async function initMCRConnections() {
                 // Cari volume puncak
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
+                    
                     data.inputs.forEach(input => {
-                        if (input.inputLevelsMul && input.inputLevelsMul[0]) {
-                            let linearValue = 0;
-                            // Fix struktur array OBS terbaru
-                            if (Array.isArray(input.inputLevelsMul[0])) {
-                                linearValue = input.inputLevelsMul[0][0]; // Ambil nilai Peak
-                            } else if (typeof input.inputLevelsMul[0] === "number") {
-                                linearValue = input.inputLevelsMul[0];
+                        try {
+                            if (input.inputLevelsMul && input.inputLevelsMul.length > 0) {
+                                let linearValue = 0;
+                                let channel0 = input.inputLevelsMul[0];
+                                
+                                if (Array.isArray(channel0)) {
+                                    linearValue = parseFloat(channel0[0]); // Ambil Peak
+                                } else {
+                                    linearValue = parseFloat(channel0);
+                                }
+                                
+                                if (!isNaN(linearValue) && linearValue > maxLinear) {
+                                    maxLinear = linearValue;
+                                }
                             }
-                            
-                            if (linearValue > maxLinear) maxLinear = linearValue;
-                        }
+                        } catch(e) {}
                     });
 
-                    if (maxLinear > 0.0001) currentDb = 20 * Math.log10(maxLinear);
+                    // Konversi Linear ke dB
+                    if (maxLinear > 0) { 
+                        currentDb = 20 * Math.log10(maxLinear);
+                    } else {
+                        currentDb = -60;
+                    }
                 }
                 
-                if (currentDb < -60 || currentDb === -Infinity || isNaN(currentDb)) currentDb = -60;
+                if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) {
+                    currentDb = -60;
+                }
 
                 let audioProblem = null;
 
                 // A. Deteksi Mic Mati (90 Detik)
-                if (currentDb < -55) {
+                if (currentDb <= -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) { 
                         audioProblem = "Mic Mati / Tidak ada suara";
@@ -3251,8 +3264,8 @@ async function initMCRConnections() {
                 }
 
                 // UPDATE UI BARS
-                if (now - studioState.lastUiUpdate > 100) { 
-                    studioState.lastUiUpdate = now;
+                if (nowTime - studioState.lastUiUpdate > 100) { 
+                    studioState.lastUiUpdate = nowTime;
                     
                     if (activeTab === "mcr") {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
@@ -3271,13 +3284,13 @@ async function initMCRConnections() {
                             audioBar.style.width = `${barPercent}%`;
 
                             if (currentDb > -9) {
-                                audioBar.style.backgroundColor = "#dc3545"; 
+                                audioBar.style.backgroundColor = "#dc3545"; // Merah
                                 audioEl.style.color = "#dc3545";
                             } else if (currentDb > -20) {
-                                audioBar.style.backgroundColor = "#ffc107"; 
+                                audioBar.style.backgroundColor = "#ffc107"; // Kuning
                                 audioEl.style.color = "#ffc107";
                             } else {
-                                audioBar.style.backgroundColor = "#198754"; 
+                                audioBar.style.backgroundColor = "#198754"; // Hijau
                                 audioEl.style.color = "gray"; 
                             }
                             
@@ -3375,7 +3388,6 @@ async function initMCRConnections() {
         }
     });
 }
-
 
 
 function triggerMCRAlarm(studioId, masalah) {
