@@ -3039,7 +3039,6 @@ async function initMCRConnections() {
     _mcrInitialized = true;
 
     MCR_CONFIG.forEach(async (studio) => {
-        // Buat instance websocket dan siapkan data timer
         _mcrStudios[studio.id] = { 
             obs: new OBSWebSocket(), 
             silentCount: 0, 
@@ -3065,35 +3064,42 @@ async function initMCRConnections() {
 
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
-                let currentDb = -60; // Default batas paling sunyi
+                let currentDb = -60; // Batas bawah
                 
                 if (data && data.inputs && data.inputs.length > 0) {
-                    let maxVolume = -60;
+                    let maxLinear = 0; // Mulai dari Linear 0 (sunyi)
                     
                     // Loop semua sumber suara (Mic/Desktop) cari yang paling kencang
                     data.inputs.forEach(input => {
                         if (input.inputLevelsMul && input.inputLevelsMul[0] && input.inputLevelsMul[0].length >= 2) {
-                            let db = input.inputLevelsMul[0][1]; 
-                            if (db > maxVolume) {
-                                maxVolume = db;
+                            // Index 1 pada OBS v5 adalah angka Linear (0.0 - 1.0)
+                            let linearValue = input.inputLevelsMul[0][1]; 
+                            if (linearValue > maxLinear) {
+                                maxVolumeName = input.inputName;
+                                maxLinear = linearValue;
                             }
                         }
                     });
-                    
-                    currentDb = maxVolume;
+
+                    // RUMUS KONVERSI LINEAR KE DESIBEL (dB)
+                    if (maxLinear > 0.0001) { 
+                        currentDb = 20 * Math.log10(maxLinear);
+                    } else {
+                        currentDb = -60;
+                    }
                 }
                 
-                if (currentDb === -Infinity) currentDb = -60;
+                // Batasi agar tidak lebih rendah dari -60
+                if (currentDb < -60 || currentDb === -Infinity) currentDb = -60;
 
                 // Logika Timer & Alarm (Di-cek terus-menerus)
                 if (currentDb < -40) {
-                    _mcrStudios[studio.id].silentCount += 0.05; // Timer naik
-                    if (_mcrStudios[studio.id].silentCount >= 15 && !_mcrStudios[studio.id].alarmPlayed) { // 15 Detik (Bisa diubah ke 120 nanti)
+                    _mcrStudios[studio.id].silentCount += 0.05; 
+                    if (_mcrStudios[studio.id].silentCount >= 15 && !_mcrStudios[studio.id].alarmPlayed) { 
                         triggerMCRAlarm(studio.id, "Audio hilang");
                         _mcrStudios[studio.id].alarmPlayed = true;
                     }
                 } else {
-                    // Ada suara, timer di-reset
                     _mcrStudios[studio.id].silentCount = 0;
                     _mcrStudios[studio.id].alarmPlayed = false;
                 }
@@ -3103,15 +3109,14 @@ async function initMCRConnections() {
                 if (now - _mcrStudios[studio.id].lastUiUpdate > 500) { 
                     _mcrStudios[studio.id].lastUiUpdate = now;
                     
-                    // Jangan buang tenaga ngubah tulisan kalau user lagi buka Tab Klasemen/Hari H
                     if (activeTab === "mcr") {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
                         if (audioEl && cardElement) {
+                            // Sekarang angkanya pasti -20.5 dB, -5.2 dB, dll
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
-                            // Visual merah jika suara di bawah -40dB
                             if (currentDb < -40) {
                                 audioEl.classList.add("text-danger");
                                 cardElement.style.borderLeftColor = "#dc3545"; // Merah
@@ -3143,7 +3148,6 @@ async function initMCRConnections() {
 
                     // Logika Alarm Bitrate
                     if (status.outputActive && kbps < 1500) {
-                        // Secara acak trigger alarm agar tidak ngoceh tiap 2 detik jika jaringan masih jelek
                         if (Math.random() > 0.8) triggerMCRAlarm(studio.id, "Drop Bitrate");
                     }
 
@@ -3155,7 +3159,7 @@ async function initMCRConnections() {
                             bitEl.innerText = Math.round(kbps) + " kbps";
                             if (status.outputActive && kbps < 1500) {
                                 bitEl.classList.add("text-danger");
-                                cardElement.style.borderLeftColor = "#ffc107"; // Kuning/Warning
+                                cardElement.style.borderLeftColor = "#ffc107"; // Kuning
                             } else {
                                 bitEl.classList.remove("text-danger");
                             }
@@ -3176,7 +3180,6 @@ async function initMCRConnections() {
     });
 }
 
-// Fungsi Trigger Peringatan (Visual, Audio TTS, Ntfy)
 function triggerMCRAlarm(studioId, masalah) {
     console.log(`ALARM Studio ${studioId}: ${masalah}`);
     
@@ -3188,13 +3191,4 @@ function triggerMCRAlarm(studioId, masalah) {
     speech.lang = "id-ID";
     speech.rate = 1.0;
     window.speechSynthesis.speak(speech);
-
-    // 3. Notifikasi HP Ntfy (Di-comment dulu untuk testing lokal)
-    /*
-    fetch('https://ntfy.sh/castlive-ops-2026-xk9', {
-        method: 'POST',
-        body: `URGENT MCR: Studio ${studioId} - ${masalah}`,
-        headers: { 'Title': '🚨 MCR ALERT', 'Tags': 'warning,loudspeaker' }
-    }).catch(()=>{});
-    */
 }
