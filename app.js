@@ -2425,12 +2425,13 @@ function copyTimeBlock(time, type, items, btn) {
 // ══════════════════════════════════════════════════════════════════
 
 const STANDBY_BRANDS_CFG = [
-  { label:'SAMSONITE TIKTOK',          copyLabel:'STANDBY SAMSONITE TIKTOK', brand:'samsonite',          mp:'tiktok',  type:'floating',  perOperator:true  },
-  { label:'AMERICAN TOURISTER TIKTOK', copyLabel:'STANDBY AT TIKTOK',        brand:'american tourister', mp:'tiktok',  type:'floating',  perOperator:true  },
+  { label:'SAMSONITE TIKTOK',          copyLabel:'STANDBY SAMSONITE TIKTOK', brand:'samsonite',          mp:'tiktok',  type:'floating',  perOperator:false },
+  { label:'AMERICAN TOURISTER TIKTOK', copyLabel:'STANDBY AT TIKTOK',        brand:'american tourister', mp:'tiktok',  type:'floating',  perOperator:false },
   { label:'SAMSONITE SHOPEE',          copyLabel:'STANDBY SAMSONITE SHOPEE', brand:'samsonite',          mp:'shopee',  type:'floating',  perOperator:true  },
   { label:'AMERICAN TOURISTER SHOPEE', copyLabel:'STANDBY AT SHOPEE',        brand:'american tourister', mp:'shopee',  type:'dedicated', section:'amtour'  },
   { label:'ASICS SHOPEE',              copyLabel:'STBY ASICS',               brand:'asics',              mp:'shopee',  type:'dedicated', section:'asics'   },
 ];
+
 
 
 // State
@@ -2588,14 +2589,44 @@ function renderStandby(schedData, picData) {
     return;
   }
 
-  // ✅ Simpan schedData untuk copyAllStandby()
   _lastStandbySchedData = schedData;
-
-  // ✅ FIX-B: Reset round-robin tiap render agar konsisten
   _standbyRrIndex = {};
 
   const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
   const SHIFTS   = ['pagi', 'siang', 'malam'];
+
+  // Helper: kumpulkan semua host slots dari sessions brand
+  function getBrandHostSlots(brandSessions) {
+    const slots = [];
+    for (const session of brandSessions) {
+      const hostSlots = (session.hosts && session.hosts.length)
+        ? session.hosts
+        : [{ startTime: session.start, endTime: session.end }];
+      for (const h of hostSlots) {
+        const s = h.startTime ?? h.start ?? null;
+        const e = h.endTime   ?? h.end   ?? null;
+        if (s && e && s !== '-' && e !== '-') slots.push({ start: s, end: e });
+      }
+    }
+    return slots;
+  }
+
+  // Helper: merge semua slot → coverage per shift { shift: {start, end} }
+  function getShiftCoverage(slots) {
+    const cov = {};
+    for (const slot of slots) {
+      const segs = splitAtShiftBoundary(slot.start, slot.end);
+      for (const seg of segs) {
+        if (!cov[seg.shift]) {
+          cov[seg.shift] = { start: seg.start, end: seg.end };
+        } else {
+          if (toMin(seg.start) < toMin(cov[seg.shift].start)) cov[seg.shift].start = seg.start;
+          if (toMin(seg.end)   > toMin(cov[seg.shift].end))   cov[seg.shift].end   = seg.end;
+        }
+      }
+    }
+    return cov;
+  }
 
   let html = '';
 
@@ -2607,10 +2638,10 @@ function renderStandby(schedData, picData) {
 
     const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
     html += `<div class="shift-block shift-${shift}">`;
-    html += `<div class="shift-header">${shiftEmoji(shift)} Shift ${shiftLabel}</div>`;
-    html += `<ul>`;
+    html += `<div class="shift-header">${shiftEmoji(shift)} Shift ${shiftLabel}</div><ul>`;
     for (const op of ops) {
-      const studioStr = op.studios.length ? ` <span class="studio-badge">Studio ${op.studios.join(', ')}</span>` : '';
+      const studioStr = op.studios && op.studios.length
+        ? ` <span class="studio-badge">Studio ${op.studios.join(', ')}</span>` : '';
       html += `<li><strong>${op.name}</strong> <span class="section-tag">${op.section}</span>${studioStr}</li>`;
     }
     html += `</ul></div>`;
@@ -2626,91 +2657,104 @@ function renderStandby(schedData, picData) {
 
     const brandSessions = sessions.filter(s => matchBrandConfig(s, cfg));
 
-    if (cfg.type === 'dedicated') {
-      // ── DEDICATED: operator dari section tertentu, tampil per shift ──
-      const sectionOps = picData.filter(p => p.section === cfg.section);
+    if (!brandSessions.length) {
+      html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
 
-      if (!sectionOps.length) {
-        html += `<p class="empty-ops">Tidak ada operator ${cfg.section} hari ini.</p>`;
-      } else {
-        for (const shift of SHIFTS) {
-          const ops = sectionOps.filter(p => p.shift === shift);
-          if (!ops.length) continue;
+    } else if (cfg.type === 'dedicated') {
+      // ── DEDICATED: cek brand live di shift ini, fallback ke floating jika no section op ──
+      const sectionOps   = picData.filter(p => p.section === cfg.section);
+      const allSlots     = getBrandHostSlots(brandSessions);
+      const shiftCov     = getShiftCoverage(allSlots);
 
-          const allSegs = brandSessions.flatMap(s =>
-            splitAtShiftBoundary(s.start || s.startTime, s.end || s.endTime)
-          );
-          const merged     = mergeSessionTime(allSegs, shift);
-          const timeStr    = merged ? ` (${merged.start}–${merged.end})` : '';
-          const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+      let hasAnyRow = false;
+      for (const shift of SHIFTS) {
+        const cov = shiftCov[shift];
+        if (!cov) continue; // brand tidak live di shift ini
 
-          html += `<div class="standby-row">`;
-          html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel}${timeStr}</span>`;
-          html += `<span class="ops-list">${ops.map(o => o.name).join(', ')}</span>`;
-          html += `</div>`;
+        let displayOps = sectionOps.filter(p => p.shift === shift);
+
+        // Fallback: jika tidak ada operator section untuk shift ini → ambil 1 dari floating
+        if (!displayOps.length) {
+          const floatPool = getPoolForShift(picData, ['floating', 'intern'], shift);
+          if (floatPool.length) displayOps = [floatPool[0]];
         }
+        if (!displayOps.length) continue;
+
+        const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+        const timeStr    = ` (${cov.start}–${cov.end})`;
+        hasAnyRow = true;
+
+        html += `<div class="standby-row">`;
+        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel}${timeStr}</span>`;
+        html += `<span class="ops-list">${displayOps.map(o => o.name).join(', ')}</span>`;
+        html += `</div>`;
       }
+      if (!hasAnyRow) html += `<p class="empty-ops">Tidak ada data shift hari ini.</p>`;
 
     } else if (cfg.type === 'floating' && !cfg.perOperator) {
-      // ── FLOATING (pool): tampilkan semua operator pool per shift ──
-      if (!brandSessions.length) {
-        html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
-      } else {
-        for (const session of brandSessions) {
-          const segs = splitAtShiftBoundary(session.start || session.startTime, session.end || session.endTime);
-          for (const seg of segs) {
-            const pool      = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
-            const poolNames = pool.map(o => o.name).join(', ') || '—';
-            html += `<div class="standby-row">`;
-            html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-            html += `<span class="ops-list">${poolNames}</span>`;
-            html += `</div>`;
-          }
-        }
+      // ── FLOATING MERGED: gabung semua host slot → 1 jam range per shift, 1 operator ──
+      if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
+      const rrState  = _standbyRrIndex[cfg.label];
+      const allSlots = getBrandHostSlots(brandSessions);
+      const shiftCov = getShiftCoverage(allSlots);
+
+      let hasAnyRow = false;
+      for (const shift of SHIFTS) {
+        const cov = shiftCov[shift];
+        if (!cov) continue;
+
+        const pool = getPoolForShift(picData, ['floating', 'intern'], shift);
+        if (!pool.length) continue;
+
+        const rrKey = shift;
+        if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
+        const assigned = pool[rrState[rrKey] % pool.length];
+        rrState[rrKey]++;
+        hasAnyRow = true;
+
+        html += `<div class="standby-row">`;
+        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${cov.start}–${cov.end}</span>`;
+        html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+        html += `</div>`;
       }
+      if (!hasAnyRow) html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
 
     } else if (cfg.type === 'floating' && cfg.perOperator) {
-      // ── FLOATING PER-OPERATOR: round-robin 1 operator per HOST SLOT ──
-      if (!brandSessions.length) {
-        html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
-      } else {
-        if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
-        const rrState = _standbyRrIndex[cfg.label];
+      // ── FLOATING PER-OPERATOR: round-robin 1 operator per individual HOST SLOT ──
+      if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
+      const rrState = _standbyRrIndex[cfg.label];
 
-        for (const session of brandSessions) {
-          // ✅ FIX-C: loop per host slot, bukan pakai session.start/end keseluruhan
-          const hostSlots = (session.hosts && session.hosts.length)
-            ? session.hosts
-            : [{ startTime: session.start, endTime: session.end }];
+      for (const session of brandSessions) {
+        const hostSlots = (session.hosts && session.hosts.length)
+          ? session.hosts
+          : [{ startTime: session.start, endTime: session.end }];
 
-          for (const hostSlot of hostSlots) {
-            // ✅ Support field lama (startTime/endTime) & baru dari API (start/end)
-            const slotStart = hostSlot.startTime ?? hostSlot.start ?? '-';
-            const slotEnd   = hostSlot.endTime   ?? hostSlot.end   ?? '-';
-            if (slotStart === '-' || slotEnd === '-') continue;
+        for (const hostSlot of hostSlots) {
+          const slotStart = hostSlot.startTime ?? hostSlot.start ?? '-';
+          const slotEnd   = hostSlot.endTime   ?? hostSlot.end   ?? '-';
+          if (slotStart === '-' || slotEnd === '-') continue;
 
-            const segs = splitAtShiftBoundary(slotStart, slotEnd);
-            for (const seg of segs) {
-              const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
+          const segs = splitAtShiftBoundary(slotStart, slotEnd);
+          for (const seg of segs) {
+            const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
 
-              if (!pool.length) {
-                html += `<div class="standby-row">`;
-                html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-                html += `<span class="ops-list">— (tidak ada operator shift ${seg.shift})</span>`;
-                html += `</div>`;
-                continue;
-              }
-
-              const rrKey = seg.shift;
-              if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
-              const assigned = pool[rrState[rrKey] % pool.length];
-              rrState[rrKey]++;
-
+            if (!pool.length) {
               html += `<div class="standby-row">`;
               html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-              html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+              html += `<span class="ops-list">— (tidak ada operator shift ${seg.shift})</span>`;
               html += `</div>`;
+              continue;
             }
+
+            const rrKey = seg.shift;
+            if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
+            const assigned = pool[rrState[rrKey] % pool.length];
+            rrState[rrKey]++;
+
+            html += `<div class="standby-row">`;
+            html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
+            html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+            html += `</div>`;
           }
         }
       }
@@ -2722,7 +2766,6 @@ function renderStandby(schedData, picData) {
 
   html += `</div>`;
 
-  // ── ACTIONS: Copy All + Refresh ──────────────────────────────
   html += `<div class="standby-actions">
     <button class="btn-copy-standby" onclick="copyAllStandby()">📋 Copy All Reminder</button>
     <button class="refresh-btn" onclick="forceRefreshStandby()">🔄 Refresh</button>
@@ -2730,6 +2773,7 @@ function renderStandby(schedData, picData) {
 
   el.innerHTML = html;
 }
+
 
 
 
