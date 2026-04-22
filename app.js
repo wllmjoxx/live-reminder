@@ -2529,11 +2529,14 @@ async function loadStandby(force = false) {
   const el = document.getElementById('schedule-list');
   if (!el) return;
 
+  // ✅ FIX-7a: Jika dipanggil saat bukan di tab standby, skip render tapi tetap fetch cache
+  const isActive = () => activeTab === 'standby';
+
   // Jika ada cache PIC & tidak force → pakai cache PIC, refresh schedule saja
   if (_lastPicScheduleData && !force) {
-    renderStandby(null, _lastPicScheduleData); // render pakai cache dulu
+    if (isActive()) renderStandby(null, _lastPicScheduleData); // ✅ guard
   } else {
-    el.innerHTML = '<p class="loading">Memuat data standby...</p>';
+    if (isActive()) el.innerHTML = '<p class="loading">Memuat data standby...</p>'; // ✅ guard
   }
 
   try {
@@ -2550,16 +2553,18 @@ async function loadStandby(force = false) {
       _lastPicScheduleData = picResp.pics;
     }
 
+    // ✅ FIX-7b: Setelah await selesai, cek lagi — user mungkin sudah pindah tab
+    if (!isActive()) return;
     renderStandby(schedResp, _lastPicScheduleData);
 
   } catch(err) {
     console.error('loadStandby error:', err);
     if (!_lastPicScheduleData) {
-      el.innerHTML = `<p class="error">Gagal memuat data: ${err.message}</p>`;
+      if (isActive()) el.innerHTML = `<p class="error">Gagal memuat data: ${err.message}</p>`; // ✅ guard
     }
-    // Jika ada cache → biarkan render lama tetap tampil
   }
 }
+
 
 async function forceRefreshStandby() {
   _lastPicScheduleData = null;
