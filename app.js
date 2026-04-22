@@ -2998,7 +2998,7 @@ window.speechSynthesis.onvoiceschanged = () => {
 const MCR_CONFIG = [
     {
         id: 1,
-        ip: "ws://127.0.0.1:4455", 
+        ip: "ws://192.168.100.55:4455", 
         pw: "123456"               
     }
 ];
