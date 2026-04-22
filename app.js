@@ -3032,7 +3032,10 @@ function renderMCR() {
 
 
 async function initMCRConnections() {
+    console.log("Tombol Connect MCR ditekan!"); // Cek 1
+
     if (_mcrInitialized) {
+        console.log("MCR sudah jalan, aborting.");
         showBanner("MCR sudah berjalan di background", "success");
         return;
     }
@@ -3041,100 +3044,48 @@ async function initMCRConnections() {
     _mcrInitialized = true;
 
     MCR_CONFIG.forEach(async (studio) => {
-        _mcrStudios[studio.id] = { 
-            obs: new OBSWebSocket(), 
-            silentCount: 0, 
-            alarmPlayed: false,
-            lastUiUpdate: 0 // <--- Variabel untuk THROTTLING
-        };
-        const obs = _mcrStudios[studio.id].obs;
-
+        console.log(`Mencoba konek ke Studio ${studio.id} di IP: ${studio.ip}`); // Cek 2
+        
         try {
+            // Pastikan Anda sudah meload library obs-ws di index.html!
+            if (typeof OBSWebSocket === "undefined") {
+                console.error("FATAL: Library OBSWebSocket belum dimuat!");
+                return;
+            }
+
+            _mcrStudios[studio.id] = { 
+                obs: new OBSWebSocket(), 
+                silentCount: 0, 
+                alarmPlayed: false,
+                lastUiUpdate: 0 
+            };
+            const obs = _mcrStudios[studio.id].obs;
+
+            console.log(`Menunggu response dari OBS Studio ${studio.id}...`); // Cek 3
+            
             await obs.connect(studio.ip, studio.pw);
             
-            // Pancing audio monitor OBS
-            await obs.call('SetInputAudioMonitorType', { inputName: "Mic/Aux", monitorType: "OBS_MONITORING_TYPE_NONE" }).catch(()=>{});
+            console.log(`BERHASIL KONEK ke Studio ${studio.id}!`); // Cek 4
+            
+            // Update UI
+            const statusEl = document.getElementById(`mcr-status-${studio.id}`);
+            const cardEl = document.getElementById(`mcr-card-${studio.id}`);
+            if (statusEl) statusEl.innerText = "🟢 Online";
+            if (cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
 
-            // 1. Pantau Audio (Dioptimasi dengan Throttling)
-            obs.on('InputVolumeMeters', (data) => {
-                let currentDb = data.inputs[0]?.inputLevelsMul[0][1] || -60;
-                if(currentDb === -Infinity) currentDb = -60;
-                
-                // LOGIKA ALARM (Jalan terus di background)
-                if (currentDb < -40) {
-                    _mcrStudios[studio.id].silentCount += 0.05; // Asumsi obs kirim data ~20Hz
-                    if (_mcrStudios[studio.id].silentCount >= 120 && !_mcrStudios[studio.id].alarmPlayed) { 
-                        triggerMCRAlarm(studio.id, "Audio hilang");
-                        _mcrStudios[studio.id].alarmPlayed = true;
-                    }
-                } else {
-                    _mcrStudios[studio.id].silentCount = 0;
-                    _mcrStudios[studio.id].alarmPlayed = false;
-                }
-
-                // LOGIKA UI / DOM UPDATE (Di-rem hanya 1 kali per detik)
-                let now = Date.now();
-                if (now - _mcrStudios[studio.id].lastUiUpdate > 1000) { 
-                    _mcrStudios[studio.id].lastUiUpdate = now;
-                    
-                    // Cek apakah tab MCR sedang aktif (mencegah manipulasi DOM jika user buka tab lain)
-                    if (activeTab === "mcr") {
-                        const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
-                        const cardEl = document.getElementById(`mcr-card-${studio.id}`);
-                        
-                        if (audioEl && cardEl) {
-                            audioEl.innerText = currentDb.toFixed(1) + " dB";
-                            if (currentDb < -40) {
-                                audioEl.classList.add("text-danger");
-                            } else {
-                                audioEl.classList.remove("text-danger");
-                                cardEl.style.borderLeftColor = "var(--bs-success)";
-                                document.getElementById(`mcr-status-${studio.id}`).innerText = "🟢 Online";
-                            }
-                        }
-                    }
-                }
-            });
-
-            // 2. Pantau Bitrate tiap 2 dtk
-            setInterval(async () => {
-                try {
-                    const status = await obs.call('GetStreamStatus');
-                    
-                    // ALARM BITRATE (Jalan di background)
-                    let kbps = status.outputBytes ? (status.outputBytes / 1000) : 0;
-                    if (status.outputActive && kbps < 1500 && !_mcrStudios[studio.id].alarmPlayed) {
-                        triggerMCRAlarm(studio.id, "Drop Bitrate");
-                        // Sengaja tidak di-set true terus agar bunyi berkala jika jaringan belum membaik
-                    }
-
-                    // UI UPDATE (Hanya jalan jika user di tab MCR)
-                    if (activeTab === "mcr") {
-                        const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
-                        const cardEl = document.getElementById(`mcr-card-${studio.id}`);
-                        if (bitEl && cardEl) {
-                            bitEl.innerText = Math.round(kbps) + " kbps";
-                            if (status.outputActive && kbps < 1500) {
-                                bitEl.classList.add("text-danger");
-                                cardEl.style.borderLeftColor = "var(--bs-warning)";
-                            } else {
-                                bitEl.classList.remove("text-danger");
-                            }
-                        }
-                    }
-                } catch(e){}
-            }, 2000);
-
+            // ... (kode pancing audio, event on InputVolumeMeters, dan setInterval ditaruh di sini sama seperti sebelumnya) ...
+            
         } catch (error) {
-            if (activeTab === "mcr") {
-                const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                const cardEl = document.getElementById(`mcr-card-${studio.id}`);
-                if(statusEl) statusEl.innerText = "🔴 Gagal Koneksi";
-                if(cardEl) cardEl.style.borderLeftColor = "var(--bs-danger)";
-            }
+            console.error(`🔴 Gagal konek ke Studio ${studio.id}:`, error); // Cek 5: Jika error, apa pesan error aslinya?
+            
+            const statusEl = document.getElementById(`mcr-status-${studio.id}`);
+            const cardEl = document.getElementById(`mcr-card-${studio.id}`);
+            if(statusEl) statusEl.innerText = "🔴 Gagal Koneksi";
+            if(cardEl) cardEl.style.borderLeftColor = "var(--bs-danger)";
         }
     });
 }
+
 
 
 function triggerMCRAlarm(studioId, masalah) {
