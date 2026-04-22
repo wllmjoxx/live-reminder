@@ -2583,7 +2583,6 @@ async function forceRefreshStandby() {
 function renderStandby(schedData, picData) {
   const el = document.getElementById('schedule-list');
   if (!el) return;
-
   if (!picData || !picData.length) {
     el.innerHTML = '<p class="empty">Data PIC belum tersedia.</p>';
     return;
@@ -2595,28 +2594,30 @@ function renderStandby(schedData, picData) {
   const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
   const SHIFTS   = ['pagi', 'siang', 'malam'];
 
-  // Helper: kumpulkan semua host slots dari sessions brand
+  // ── Helpers ──────────────────────────────────────────────────
   function getBrandHostSlots(brandSessions) {
     const slots = [];
-    for (const session of brandSessions) {
-      const hostSlots = (session.hosts && session.hosts.length)
-        ? session.hosts
-        : [{ startTime: session.start, endTime: session.end }];
-      for (const h of hostSlots) {
-        const s = h.startTime ?? h.start ?? null;
-        const e = h.endTime   ?? h.end   ?? null;
-        if (s && e && s !== '-' && e !== '-') slots.push({ start: s, end: e });
+    for (const s of brandSessions) {
+      const hs = (s.hosts && s.hosts.length)
+        ? s.hosts
+        : [{ startTime: s.start, endTime: s.end }];
+      for (const h of hs) {
+        const st = h.startTime ?? h.start ?? null;
+        const en = h.endTime   ?? h.end   ?? null;
+        if (st && en && st !== '-' && en !== '-') slots.push({ start: st, end: en });
       }
     }
-    return slots;
+    // Deduplikasi slot yang sama (misal 2 studio dengan waktu identik)
+    const seen = new Set();
+    return slots
+      .filter(s => { const k = `${s.start}|${s.end}`; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => toMin(a.start) - toMin(b.start));
   }
 
-  // Helper: merge semua slot → coverage per shift { shift: {start, end} }
   function getShiftCoverage(slots) {
     const cov = {};
     for (const slot of slots) {
-      const segs = splitAtShiftBoundary(slot.start, slot.end);
-      for (const seg of segs) {
+      for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
         if (!cov[seg.shift]) {
           cov[seg.shift] = { start: seg.start, end: seg.end };
         } else {
@@ -2635,14 +2636,13 @@ function renderStandby(schedData, picData) {
   for (const shift of SHIFTS) {
     const ops = picData.filter(p => p.shift === shift);
     if (!ops.length) continue;
-
     const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
     html += `<div class="shift-block shift-${shift}">`;
     html += `<div class="shift-header">${shiftEmoji(shift)} Shift ${shiftLabel}</div><ul>`;
     for (const op of ops) {
-      const studioStr = op.studios && op.studios.length
+      const st = op.studios && op.studios.length
         ? ` <span class="studio-badge">Studio ${op.studios.join(', ')}</span>` : '';
-      html += `<li><strong>${op.name}</strong> <span class="section-tag">${op.section}</span>${studioStr}</li>`;
+      html += `<li><strong>${op.name}</strong> <span class="section-tag">${op.section}</span>${st}</li>`;
     }
     html += `</ul></div>`;
   }
@@ -2661,91 +2661,51 @@ function renderStandby(schedData, picData) {
       html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
 
     } else if (cfg.type === 'dedicated') {
-      // ── DEDICATED: cek brand live di shift ini, fallback ke floating jika no section op ──
-      const sectionOps   = picData.filter(p => p.section === cfg.section);
-      const allSlots     = getBrandHostSlots(brandSessions);
-      const shiftCov     = getShiftCoverage(allSlots);
+      // ── DEDICATED: per shift, fallback ke floating jika no section op ──
+      const sectionOps = picData.filter(p => p.section === cfg.section);
+      const shiftCov   = getShiftCoverage(getBrandHostSlots(brandSessions));
+      let anyRow = false;
 
-      let hasAnyRow = false;
-      for (const shift of SHIFTS) {
-        const cov = shiftCov[shift];
-        if (!cov) continue; // brand tidak live di shift ini
-
-        let displayOps = sectionOps.filter(p => p.shift === shift);
-
-        // Fallback: jika tidak ada operator section untuk shift ini → ambil 1 dari floating
-        if (!displayOps.length) {
-          const floatPool = getPoolForShift(picData, ['floating', 'intern'], shift);
-          if (floatPool.length) displayOps = [floatPool[0]];
-        }
-        if (!displayOps.length) continue;
-
-        const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
-        const timeStr    = ` (${cov.start}–${cov.end})`;
-        hasAnyRow = true;
-
-        html += `<div class="standby-row">`;
-        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel}${timeStr}</span>`;
-        html += `<span class="ops-list">${displayOps.map(o => o.name).join(', ')}</span>`;
-        html += `</div>`;
-      }
-      if (!hasAnyRow) html += `<p class="empty-ops">Tidak ada data shift hari ini.</p>`;
-
-    } else if (cfg.type === 'floating' && !cfg.perOperator) {
-      // ── FLOATING MERGED: gabung semua host slot → 1 jam range per shift, 1 operator ──
-      if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
-      const rrState  = _standbyRrIndex[cfg.label];
-      const allSlots = getBrandHostSlots(brandSessions);
-      const shiftCov = getShiftCoverage(allSlots);
-
-      let hasAnyRow = false;
       for (const shift of SHIFTS) {
         const cov = shiftCov[shift];
         if (!cov) continue;
 
-        const pool = getPoolForShift(picData, ['floating', 'intern'], shift);
-        if (!pool.length) continue;
+        let ops = sectionOps.filter(p => p.shift === shift);
+        if (!ops.length) {
+          const fp = getPoolForShift(picData, ['floating', 'intern'], shift);
+          if (fp.length) ops = [fp[0]];
+        }
+        if (!ops.length) continue;
 
-        const rrKey = shift;
-        if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
-        const assigned = pool[rrState[rrKey] % pool.length];
-        rrState[rrKey]++;
-        hasAnyRow = true;
-
+        const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
         html += `<div class="standby-row">`;
-        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${cov.start}–${cov.end}</span>`;
-        html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel} (${cov.start}–${cov.end})</span>`;
+        html += `<span class="ops-list">${ops.map(o => o.name).join(', ')}</span>`;
         html += `</div>`;
+        anyRow = true;
       }
-      if (!hasAnyRow) html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
+      if (!anyRow) html += `<p class="empty-ops">Tidak ada data shift hari ini.</p>`;
 
-    } else if (cfg.type === 'floating' && cfg.perOperator) {
-      // ── FLOATING PER-OPERATOR: round-robin 1 operator per individual HOST SLOT ──
+    } else if (cfg.type === 'floating') {
+      // ── FLOATING: per individual host slot (deduplicated + sorted) ──
       if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
-      const rrState = _standbyRrIndex[cfg.label];
+      const rrState  = _standbyRrIndex[cfg.label];
+      const allSlots = getBrandHostSlots(brandSessions);
 
-      for (const session of brandSessions) {
-        const hostSlots = (session.hosts && session.hosts.length)
-          ? session.hosts
-          : [{ startTime: session.start, endTime: session.end }];
-
-        for (const hostSlot of hostSlots) {
-          const slotStart = hostSlot.startTime ?? hostSlot.start ?? '-';
-          const slotEnd   = hostSlot.endTime   ?? hostSlot.end   ?? '-';
-          if (slotStart === '-' || slotEnd === '-') continue;
-
-          const segs = splitAtShiftBoundary(slotStart, slotEnd);
+      if (!allSlots.length) {
+        html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
+      } else {
+        for (const slot of allSlots) {
+          const segs = splitAtShiftBoundary(slot.start, slot.end);
           for (const seg of segs) {
             const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
-
             if (!pool.length) {
               html += `<div class="standby-row">`;
               html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-              html += `<span class="ops-list">— (tidak ada operator shift ${seg.shift})</span>`;
+              html += `<span class="ops-list">—</span>`;
               html += `</div>`;
               continue;
             }
-
             const rrKey = seg.shift;
             if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
             const assigned = pool[rrState[rrKey] % pool.length];
@@ -2765,7 +2725,6 @@ function renderStandby(schedData, picData) {
   }
 
   html += `</div>`;
-
   html += `<div class="standby-actions">
     <button class="btn-copy-standby" onclick="copyAllStandby()">📋 Copy All Reminder</button>
     <button class="refresh-btn" onclick="forceRefreshStandby()">🔄 Refresh</button>
@@ -2773,6 +2732,7 @@ function renderStandby(schedData, picData) {
 
   el.innerHTML = html;
 }
+
 
 
 
@@ -2887,38 +2847,50 @@ let _lastStandbySchedData = null; // ← TAMBAH INI
 async function copyAllStandby() {
   const picData   = _lastPicScheduleData;
   const schedData = _lastStandbySchedData;
-
-  if (!picData || !picData.length) {
-    showBanner('⚠️ Data PIC belum tersedia', 'warning');
-    return;
-  }
+  if (!picData || !picData.length) { showBanner('⚠️ Data PIC belum tersedia', 'warning'); return; }
 
   const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
   const SHIFTS   = ['pagi', 'siang', 'malam'];
+  const fmtT     = t => (t && t !== '-') ? t.replace(/:00$/, '') : '-';
 
-  // Helper: "09:00" → "09", "16:30" → "16:30"
-  const fmtT = t => (t && t !== '-') ? t.replace(/:00$/, '') : (t || '-');
+  function getBrandHostSlots(brandSessions) {
+    const slots = [];
+    for (const s of brandSessions) {
+      const hs = (s.hosts && s.hosts.length)
+        ? s.hosts : [{ startTime: s.start, endTime: s.end }];
+      for (const h of hs) {
+        const st = h.startTime ?? h.start ?? null;
+        const en = h.endTime   ?? h.end   ?? null;
+        if (st && en && st !== '-' && en !== '-') slots.push({ start: st, end: en });
+      }
+    }
+    const seen = new Set();
+    return slots
+      .filter(s => { const k=`${s.start}|${s.end}`; if(seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => toMin(a.start) - toMin(b.start));
+  }
 
-  // Header
+  function getShiftCoverage(slots) {
+    const cov = {};
+    for (const slot of slots) {
+      for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
+        if (!cov[seg.shift]) { cov[seg.shift] = true; }
+      }
+    }
+    return cov;
+  }
+
   const today   = new Date();
-  const dateStr = today.toLocaleDateString('id-ID', {
-    day: 'numeric', month: 'long', year: 'numeric'
-  }).toUpperCase();
+  const dateStr = today.toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }).toUpperCase();
 
-  let lines = [];
-  lines.push(`REMINDER ${dateStr}`);
-  lines.push('');
+  let lines = [`REMINDER ${dateStr}`, ''];
 
   // ── PIC SHIFT ─────────────────────────────────────────────────
   for (const shift of SHIFTS) {
-    // Hanya operator yang punya studio assignment
     const ops = picData.filter(p => p.shift === shift && p.studios && p.studios.length > 0);
     if (!ops.length) continue;
-
     lines.push(`PIC SHIFT ${shift.toUpperCase()}`);
-    for (const op of ops) {
-      lines.push(`${op.name}\t${op.studios.join(',')}`);
-    }
+    for (const op of ops) lines.push(`${op.name}\t${op.studios.join(',')}`);
     lines.push('');
   }
 
@@ -2931,63 +2903,40 @@ async function copyAllStandby() {
 
     if (cfg.type === 'dedicated') {
       const sectionOps = picData.filter(p => p.section === cfg.section);
+      const shiftCov   = getShiftCoverage(getBrandHostSlots(brandSessions));
+
       for (const shift of SHIFTS) {
-        const ops = sectionOps.filter(p => p.shift === shift);
-        if (!ops.length) continue;
-        const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
-        brandLines.push(`${shiftLabel.toUpperCase()} : ${ops.map(o => o.name).join(', ')}`);
-      }
-
-    } else if (cfg.type === 'floating' && cfg.perOperator) {
-      if (!rrCopy[cfg.label]) rrCopy[cfg.label] = {};
-      const rrState = rrCopy[cfg.label];
-
-      for (const session of brandSessions) {
-        const hostSlots = (session.hosts && session.hosts.length)
-          ? session.hosts
-          : [{ startTime: session.start, endTime: session.end }];
-
-        for (const hostSlot of hostSlots) {
-          const slotStart = hostSlot.startTime ?? hostSlot.start ?? '-';
-          const slotEnd   = hostSlot.endTime   ?? hostSlot.end   ?? '-';
-          if (slotStart === '-' || slotEnd === '-') continue;
-
-          const segs = splitAtShiftBoundary(slotStart, slotEnd);
-          for (const seg of segs) {
-            const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
-            if (!pool.length) {
-              brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} —`);
-              continue;
-            }
-            const rrKey = seg.shift;
-            if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
-            const assigned = pool[rrState[rrKey] % pool.length];
-            rrState[rrKey]++;
-            brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${assigned.name.toUpperCase()}`);
-          }
+        if (!shiftCov[shift]) continue;
+        let ops = sectionOps.filter(p => p.shift === shift);
+        if (!ops.length) {
+          const fp = getPoolForShift(picData, ['floating', 'intern'], shift);
+          if (fp.length) ops = [fp[0]];
         }
+        if (!ops.length) continue;
+        const lbl = shift.charAt(0).toUpperCase() + shift.slice(1);
+        brandLines.push(`${lbl.toUpperCase()} : ${ops.map(o => o.name).join(', ')}`);
       }
 
-    } else if (cfg.type === 'floating' && !cfg.perOperator) {
-      const seenShifts = new Set();
-      for (const session of brandSessions) {
-        const segs = splitAtShiftBoundary(
-          session.start || session.startTime,
-          session.end   || session.endTime
-        );
+    } else if (cfg.type === 'floating') {
+      if (!rrCopy[cfg.label]) rrCopy[cfg.label] = {};
+      const rrState  = rrCopy[cfg.label];
+      const allSlots = getBrandHostSlots(brandSessions);
+
+      for (const slot of allSlots) {
+        const segs = splitAtShiftBoundary(slot.start, slot.end);
         for (const seg of segs) {
-          if (seenShifts.has(seg.shift)) continue;
-          seenShifts.add(seg.shift);
           const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
-          if (pool.length) {
-            brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${pool.map(o => o.name.toUpperCase()).join(', ')}`);
-          }
+          if (!pool.length) { brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} —`); continue; }
+          const rrKey = seg.shift;
+          if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
+          const assigned = pool[rrState[rrKey] % pool.length];
+          rrState[rrKey]++;
+          brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${assigned.name.toUpperCase()}`);
         }
       }
     }
 
     if (brandLines.length) {
-      // ✅ Pakai copyLabel untuk nama yang sesuai reminder
       lines.push(cfg.copyLabel || `STANDBY ${cfg.label}`);
       lines.push(...brandLines);
       lines.push('');
@@ -3011,19 +2960,16 @@ async function copyAllStandby() {
   lines.push('Upload Screenshot LS Streamlab (Responses) 2.0 (GMV Uploadan host)');
   lines.push('https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?resourcekey=&gid=743892642#gid=743892642');
 
-  // ── Clipboard ─────────────────────────────────────────────────
   const text = lines.join('\n');
   try {
     await navigator.clipboard.writeText(text);
     showBanner('✅ Reminder berhasil dicopy!', 'success');
   } catch (e) {
     const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
     showBanner('✅ Reminder berhasil dicopy!', 'success');
   }
 }
+
 
