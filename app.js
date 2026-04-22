@@ -2585,6 +2585,9 @@ function renderStandby(schedData, picData) {
     return;
   }
 
+  // ✅ Simpan schedData untuk copyAllStandby()
+  _lastStandbySchedData = schedData;
+
   // ✅ FIX-B: Reset round-robin tiap render agar konsisten
   _standbyRrIndex = {};
 
@@ -2634,8 +2637,8 @@ function renderStandby(schedData, picData) {
           const allSegs = brandSessions.flatMap(s =>
             splitAtShiftBoundary(s.start || s.startTime, s.end || s.endTime)
           );
-          const merged   = mergeSessionTime(allSegs, shift);
-          const timeStr  = merged ? ` (${merged.start}–${merged.end})` : '';
+          const merged     = mergeSessionTime(allSegs, shift);
+          const timeStr    = merged ? ` (${merged.start}–${merged.end})` : '';
           const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
 
           html += `<div class="standby-row">`;
@@ -2695,7 +2698,6 @@ function renderStandby(schedData, picData) {
                 continue;
               }
 
-              // Round-robin per shift
               const rrKey = seg.shift;
               if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
               const assigned = pool[rrState[rrKey] % pool.length];
@@ -2717,12 +2719,15 @@ function renderStandby(schedData, picData) {
 
   html += `</div>`;
 
+  // ── ACTIONS: Copy All + Refresh ──────────────────────────────
   html += `<div class="standby-actions">
+    <button class="btn-copy-standby" onclick="copyAllStandby()">📋 Copy All Reminder</button>
     <button class="refresh-btn" onclick="forceRefreshStandby()">🔄 Refresh</button>
   </div>`;
 
   el.innerHTML = html;
 }
+
 
 
 // ── Emoji helper per shift
@@ -2825,5 +2830,152 @@ function copyBrandStandby(label) {
       });
 
     return;
+  }
+}
+
+
+let _lastStandbySchedData = null; // ← TAMBAH INI
+
+
+async function copyAllStandby() {
+  const picData  = _lastPicScheduleData;
+  const schedData = _lastStandbySchedData;
+
+  if (!picData || !picData.length) {
+    showBanner('⚠️ Data PIC belum tersedia', 'warning');
+    return;
+  }
+
+  const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
+  const SHIFTS   = ['pagi', 'siang', 'malam'];
+
+  // ── Header tanggal ──────────────────────────────────────────
+  const today   = new Date();
+  const dateStr = today.toLocaleDateString('id-ID', {
+    day: 'numeric', month: 'long', year: 'numeric'
+  }).toUpperCase();
+
+  let lines = [];
+  lines.push(`REMINDER ${dateStr}`);
+  lines.push('');
+
+  // ── PIC SHIFT ───────────────────────────────────────────────
+  for (const shift of SHIFTS) {
+    const ops = picData.filter(p => p.shift === shift);
+    if (!ops.length) continue;
+
+    lines.push(`PIC SHIFT ${shift.toUpperCase()}`);
+    for (const op of ops) {
+      const studioStr = op.studios && op.studios.length ? op.studios.join(',') : '-';
+      lines.push(`${op.name}\t${studioStr}`);
+    }
+    lines.push('');
+  }
+
+  // ── STANDBY BRAND ───────────────────────────────────────────
+  const rrCopy = {}; // fresh RR state untuk copy, terpisah dari render
+
+  for (const cfg of STANDBY_BRANDS_CFG) {
+    const brandSessions = sessions.filter(s => matchBrandConfig(s, cfg));
+    const brandLines    = [];
+
+    if (cfg.type === 'dedicated') {
+      // Per shift: PAGI / SIANG / MALAM : NAMA
+      const sectionOps = picData.filter(p => p.section === cfg.section);
+      for (const shift of SHIFTS) {
+        const ops = sectionOps.filter(p => p.shift === shift);
+        if (!ops.length) continue;
+        const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+        brandLines.push(`${shiftLabel.toUpperCase()} : ${ops.map(o => o.name).join(', ')}`);
+      }
+
+    } else if (cfg.type === 'floating' && cfg.perOperator) {
+      // Per host slot: HH:MM–HH:MM NAMA
+      if (!rrCopy[cfg.label]) rrCopy[cfg.label] = {};
+      const rrState = rrCopy[cfg.label];
+
+      for (const session of brandSessions) {
+        const hostSlots = (session.hosts && session.hosts.length)
+          ? session.hosts
+          : [{ startTime: session.start, endTime: session.end }];
+
+        for (const hostSlot of hostSlots) {
+          const slotStart = hostSlot.startTime ?? hostSlot.start ?? '-';
+          const slotEnd   = hostSlot.endTime   ?? hostSlot.end   ?? '-';
+          if (slotStart === '-' || slotEnd === '-') continue;
+
+          const segs = splitAtShiftBoundary(slotStart, slotEnd);
+          for (const seg of segs) {
+            const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
+            if (!pool.length) {
+              brandLines.push(`${seg.start}–${seg.end} —`);
+              continue;
+            }
+            const rrKey = seg.shift;
+            if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
+            const assigned = pool[rrState[rrKey] % pool.length];
+            rrState[rrKey]++;
+            brandLines.push(`${seg.start}–${seg.end} ${assigned.name.toUpperCase()}`);
+          }
+        }
+      }
+
+    } else if (cfg.type === 'floating' && !cfg.perOperator) {
+      // Pool semua operator per shift
+      const seenShifts = new Set();
+      for (const session of brandSessions) {
+        const segs = splitAtShiftBoundary(
+          session.start || session.startTime,
+          session.end   || session.endTime
+        );
+        for (const seg of segs) {
+          if (seenShifts.has(seg.shift)) continue;
+          seenShifts.add(seg.shift);
+          const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
+          if (pool.length) {
+            brandLines.push(`${seg.start}–${seg.end} ${pool.map(o => o.name.toUpperCase()).join(', ')}`);
+          }
+        }
+      }
+    }
+
+    if (brandLines.length) {
+      lines.push(`STANDBY ${cfg.label}`);
+      lines.push(...brandLines);
+      lines.push('');
+    }
+  }
+
+  // ── Notes & Links tetap ─────────────────────────────────────
+  lines.push('1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT');
+  lines.push('2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG');
+  lines.push('3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST');
+  lines.push('');
+  lines.push('Form bukti tayang:');
+  lines.push('https://forms.gle/J8WG4kmQap7h6VcZ7');
+  lines.push('');
+  lines.push('SLAB Host Report:');
+  lines.push('https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0#gid=0');
+  lines.push('');
+  lines.push('LINK Insight American Tourister dan Samsonite:');
+  lines.push('https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067297791#gid=1067297791');
+  lines.push('');
+  lines.push('Upload Screenshot LS Streamlab (Responses) 2.0 (GMV Uploadan host)');
+  lines.push('https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?resourcekey=&gid=743892642#gid=743892642');
+
+  // ── Copy ke clipboard ───────────────────────────────────────
+  const text = lines.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    showBanner('✅ Reminder berhasil dicopy!', 'success');
+  } catch (e) {
+    // Fallback untuk browser yang tidak support clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showBanner('✅ Reminder berhasil dicopy!', 'success');
   }
 }
