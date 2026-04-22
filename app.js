@@ -2986,12 +2986,10 @@ function getStandbyShiftCoverage(slots) {
 
 let _mcrInitialized = false;
 let _mcrStudios = {}; 
-let _indoVoice = null; // Menyimpan jenis suara Indonesia
+let _indoVoice = null; 
 
-// Memuat suara Indonesia saat pertama kali web dibuka
 window.speechSynthesis.onvoiceschanged = () => {
     let voices = window.speechSynthesis.getVoices();
-    // Cari suara yang ada kata "Indonesia" atau kode "id-ID"
     _indoVoice = voices.find(v => v.lang === 'id-ID' || v.name.includes('Indonesia'));
 };
 
@@ -3018,10 +3016,16 @@ function renderMCR() {
 
     MCR_CONFIG.forEach(s => {
         html += `
-            <div style="flex: 0 0 auto; width: 140px;">
-                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid gray; transition: border-color 0.3s ease;">
+            <div style="flex: 0 0 auto; width: 150px;">
+                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid gray; transition: border-color 0.3s ease; position: relative;">
                     <div style="font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 5px;">Studio ${s.id}</div>
-                    <div id="mcr-status-${s.id}" style="font-size: 0.75rem; color: gray; margin-bottom: 10px;">⚫ Offline</div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div id="mcr-status-${s.id}" style="font-size: 0.75rem; color: gray;">⚫ Offline</div>
+                        <!-- Badge MP -->
+                        <span id="mcr-mp-${s.id}" style="font-size: 0.6rem; padding: 2px 5px; border-radius: 4px; background: #e9ecef; color: #6c757d; display: none; font-weight: bold;">UNKNOWN</span>
+                    </div>
+
                     <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 5px;">
                         <div>🔈 <span id="mcr-audio-${s.id}" style="font-weight: bold;">-60.0 dB</span></div>
                         <div>📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold; color: gray;">0 kbps</span></div>
@@ -3033,6 +3037,21 @@ function renderMCR() {
 
     html += `</div>`;
     el.innerHTML = html;
+}
+
+// Fungsi bantu mendeteksi nama MP dari URL RTMP
+function detectMarketplace(serverUrl) {
+    if (!serverUrl) return { name: "CUSTOM", color: "#6c757d", bg: "#e9ecef" };
+    let url = serverUrl.toLowerCase();
+    
+    if (url.includes("tiktok")) return { name: "TIKTOK", color: "#ffffff", bg: "#000000" };
+    if (url.includes("shopee")) return { name: "SHOPEE", color: "#ffffff", bg: "#ee4d2d" };
+    if (url.includes("tokopedia")) return { name: "TOKOPEDIA", color: "#ffffff", bg: "#03ac0e" };
+    if (url.includes("lazada")) return { name: "LAZADA", color: "#ffffff", bg: "#0f136d" };
+    if (url.includes("youtube")) return { name: "YOUTUBE", color: "#ffffff", bg: "#ff0000" };
+    if (url.includes("facebook")) return { name: "FACEBOOK", color: "#ffffff", bg: "#1877f2" };
+    
+    return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; // Default Custom RTMP
 }
 
 async function initMCRConnections() {
@@ -3065,19 +3084,33 @@ async function initMCRConnections() {
             if(statusEl) statusEl.innerText = "🟢 Online";
             if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
 
+            // AMBIL DATA MARKETPLACE (URL RTMP)
+            try {
+                const streamSettings = await obs.call('GetStreamServiceSettings');
+                const serverUrl = streamSettings.streamServiceSettings?.server || "";
+                
+                const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
+                if (mpBadge) {
+                    let mpInfo = detectMarketplace(serverUrl);
+                    mpBadge.innerText = mpInfo.name;
+                    mpBadge.style.color = mpInfo.color;
+                    mpBadge.style.background = mpInfo.bg;
+                    mpBadge.style.display = "inline-block";
+                }
+            } catch (err) {
+                console.log("Gagal membaca setting stream MP:", err);
+            }
+
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
                 let currentDb = -60;
                 
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
-                    
                     data.inputs.forEach(input => {
                         if (input.inputLevelsMul && input.inputLevelsMul[0] && input.inputLevelsMul[0].length >= 2) {
                             let linearValue = input.inputLevelsMul[0][1]; 
-                            if (linearValue > maxLinear) {
-                                maxLinear = linearValue;
-                            }
+                            if (linearValue > maxLinear) maxLinear = linearValue;
                         }
                     });
 
@@ -3113,10 +3146,10 @@ async function initMCRConnections() {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
                             if (currentDb < -40) {
-                                audioEl.style.color = "#dc3545"; // Merah
+                                audioEl.style.color = "#dc3545"; 
                                 cardElement.style.borderLeftColor = "#dc3545"; 
                             } else {
-                                audioEl.style.color = "#198754"; // Hijau
+                                audioEl.style.color = "#198754"; 
                                 cardElement.style.borderLeftColor = "#198754"; 
                             }
                         }
@@ -3153,12 +3186,12 @@ async function initMCRConnections() {
                             bitEl.innerText = Math.round(kbps) + " kbps";
                             
                             if (!status.outputActive) {
-                                bitEl.style.color = "gray"; // Tidak streaming
+                                bitEl.style.color = "gray"; 
                             } else if (kbps < 1500) {
-                                bitEl.style.color = "#ffc107"; // Kuning (Drop)
+                                bitEl.style.color = "#ffc107"; 
                                 cardElement.style.borderLeftColor = "#ffc107"; 
                             } else {
-                                bitEl.style.color = "#198754"; // Hijau (Aman)
+                                bitEl.style.color = "#198754"; 
                             }
                         }
                     }
@@ -3180,16 +3213,9 @@ async function initMCRConnections() {
 function triggerMCRAlarm(studioId, masalah) {
     showBanner(`⚠️ Studio ${studioId}: ${masalah}`, "danger");
 
-    // Pelafalan Bahasa Indonesia yang lebih jelas
     let speech = new SpeechSynthesisUtterance(`Perhatian. Studio ${studioId}, mengalami masalah. ${masalah}`);
     speech.lang = "id-ID";
-    
-    // Gunakan voice Indonesia asli jika tersedia di Windows/Chrome
-    if (_indoVoice) {
-        speech.voice = _indoVoice;
-    }
-    
-    // Diperlambat sedikit agar intonasi jelas
+    if (_indoVoice) speech.voice = _indoVoice;
     speech.rate = 0.9;
     
     window.speechSynthesis.speak(speech);
