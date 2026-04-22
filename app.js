@@ -2585,6 +2585,9 @@ function renderStandby(schedData, picData) {
     return;
   }
 
+  // ✅ FIX-B: Reset round-robin tiap render agar konsisten
+  _standbyRrIndex = {};
+
   const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
   const SHIFTS   = ['pagi', 'siang', 'malam'];
 
@@ -2593,7 +2596,6 @@ function renderStandby(schedData, picData) {
   // ── SECTION 1: PIC SHIFT ─────────────────────────────────────
   html += `<div class="standby-section"><h3>👤 PIC SHIFT</h3>`;
   for (const shift of SHIFTS) {
-    // Semua operator dari SEMUA section yang punya shift ini
     const ops = picData.filter(p => p.shift === shift);
     if (!ops.length) continue;
 
@@ -2607,7 +2609,7 @@ function renderStandby(schedData, picData) {
     }
     html += `</ul></div>`;
   }
-  html += `</div>`; // end PIC SHIFT section
+  html += `</div>`;
 
   // ── SECTION 2: STANDBY BRAND ──────────────────────────────────
   html += `<div class="standby-section"><h3>🎯 STANDBY BRAND</h3>`;
@@ -2616,29 +2618,26 @@ function renderStandby(schedData, picData) {
     html += `<div class="brand-standby-block">`;
     html += `<div class="brand-standby-header">${cfg.label}</div>`;
 
-    // Filter sessions yang cocok dengan brand ini
     const brandSessions = sessions.filter(s => matchBrandConfig(s, cfg));
 
     if (cfg.type === 'dedicated') {
       // ── DEDICATED: operator dari section tertentu, tampil per shift ──
-      const sectionKey = cfg.section; // 'amtour' atau 'asics'
-      const sectionOps = picData.filter(p => p.section === sectionKey);
+      const sectionOps = picData.filter(p => p.section === cfg.section);
 
       if (!sectionOps.length) {
-        html += `<p class="empty-ops">Tidak ada operator ${sectionKey} hari ini.</p>`;
+        html += `<p class="empty-ops">Tidak ada operator ${cfg.section} hari ini.</p>`;
       } else {
         for (const shift of SHIFTS) {
           const ops = sectionOps.filter(p => p.shift === shift);
           if (!ops.length) continue;
 
-          // Hitung merged time dari sessions brand ini untuk shift ini
           const allSegs = brandSessions.flatMap(s =>
             splitAtShiftBoundary(s.start || s.startTime, s.end || s.endTime)
           );
-          const merged = mergeSessionTime(allSegs, shift);
-          const timeStr = merged ? ` (${merged.start}–${merged.end})` : '';
-
+          const merged   = mergeSessionTime(allSegs, shift);
+          const timeStr  = merged ? ` (${merged.start}–${merged.end})` : '';
           const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+
           html += `<div class="standby-row">`;
           html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel}${timeStr}</span>`;
           html += `<span class="ops-list">${ops.map(o => o.name).join(', ')}</span>`;
@@ -2647,16 +2646,15 @@ function renderStandby(schedData, picData) {
       }
 
     } else if (cfg.type === 'floating' && !cfg.perOperator) {
-      // ── FLOATING: per host-slot, tampilkan pool operator shift tsb ──
+      // ── FLOATING (pool): tampilkan semua operator pool per shift ──
       if (!brandSessions.length) {
         html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
       } else {
         for (const session of brandSessions) {
           const segs = splitAtShiftBoundary(session.start || session.startTime, session.end || session.endTime);
           for (const seg of segs) {
-            const pool = getPoolForShift(picData, ['floating','intern'], seg.shift);
+            const pool      = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
             const poolNames = pool.map(o => o.name).join(', ') || '—';
-            const shiftLabel = seg.shift.charAt(0).toUpperCase() + seg.shift.slice(1);
             html += `<div class="standby-row">`;
             html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
             html += `<span class="ops-list">${poolNames}</span>`;
@@ -2666,7 +2664,7 @@ function renderStandby(schedData, picData) {
       }
 
     } else if (cfg.type === 'floating' && cfg.perOperator) {
-      // ── FLOATING PER-OPERATOR: round-robin 1 operator per slot ──
+      // ── FLOATING PER-OPERATOR: round-robin 1 operator per HOST SLOT ──
       if (!brandSessions.length) {
         html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
       } else {
@@ -2674,45 +2672,58 @@ function renderStandby(schedData, picData) {
         const rrState = _standbyRrIndex[cfg.label];
 
         for (const session of brandSessions) {
-          const segs = splitAtShiftBoundary(session.start || session.startTime, session.end || session.endTime);
-          for (const seg of segs) {
-            const pool = getPoolForShift(picData, ['floating','intern'], seg.shift);
-            if (!pool.length) {
+          // ✅ FIX-C: loop per host slot, bukan pakai session.start/end keseluruhan
+          const hostSlots = (session.hosts && session.hosts.length)
+            ? session.hosts
+            : [{ startTime: session.start, endTime: session.end }];
+
+          for (const hostSlot of hostSlots) {
+            // ✅ Support field lama (startTime/endTime) & baru dari API (start/end)
+            const slotStart = hostSlot.startTime ?? hostSlot.start ?? '-';
+            const slotEnd   = hostSlot.endTime   ?? hostSlot.end   ?? '-';
+            if (slotStart === '-' || slotEnd === '-') continue;
+
+            const segs = splitAtShiftBoundary(slotStart, slotEnd);
+            for (const seg of segs) {
+              const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
+
+              if (!pool.length) {
+                html += `<div class="standby-row">`;
+                html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
+                html += `<span class="ops-list">— (tidak ada operator shift ${seg.shift})</span>`;
+                html += `</div>`;
+                continue;
+              }
+
+              // Round-robin per shift
+              const rrKey = seg.shift;
+              if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
+              const assigned = pool[rrState[rrKey] % pool.length];
+              rrState[rrKey]++;
+
               html += `<div class="standby-row">`;
               html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-              html += `<span class="ops-list">— (tidak ada operator shift ${seg.shift})</span>`;
+              html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
               html += `</div>`;
-              continue;
             }
-            // Round-robin per shift
-            const rrKey = seg.shift;
-            if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
-            const assigned = pool[rrState[rrKey] % pool.length];
-            rrState[rrKey]++;
-
-            html += `<div class="standby-row">`;
-            html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
-            html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
-            html += `</div>`;
           }
         }
       }
     }
 
-    // Tombol copy per brand
     html += `<button class="copy-btn-sm" onclick="copyBrandStandby('${cfg.label}')">📋 Copy</button>`;
-    html += `</div>`; // end brand-standby-block
+    html += `</div>`;
   }
 
-  html += `</div>`; // end STANDBY BRAND section
+  html += `</div>`;
 
-  // Tombol force refresh
   html += `<div class="standby-actions">
     <button class="refresh-btn" onclick="forceRefreshStandby()">🔄 Refresh</button>
   </div>`;
 
   el.innerHTML = html;
 }
+
 
 // ── Emoji helper per shift
 function shiftEmoji(shift) {
