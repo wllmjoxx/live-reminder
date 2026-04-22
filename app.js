@@ -3078,6 +3078,8 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
+// Ganti HANYA bagian initMCRConnections di app.js Anda dengan kode di bawah ini:
+
 async function initMCRConnections() {
     if (_mcrInitialized) {
         showBanner("MCR sudah berjalan di background", "success");
@@ -3090,8 +3092,8 @@ async function initMCRConnections() {
     MCR_CONFIG.forEach(async (studio) => {
         _mcrStudios[studio.id] = { 
             obs: new OBSWebSocket(), 
-            silentCount: 0,
-            staticNoiseCount: 0, 
+            silentSeconds: 0,       // <-- Diubah jadi hitungan detik nyata
+            staticNoiseSeconds: 0,  // <-- Diubah jadi hitungan detik nyata
             lastDbHistory: [],
             alarmPlayed: false,
             lastUiUpdate: 0,
@@ -3101,6 +3103,7 @@ async function initMCRConnections() {
         };
         
         const obs = _mcrStudios[studio.id].obs;
+        let lastAudioCheckTime = Date.now(); // Untuk menghitung detik nyata (Delta Time)
 
         obs.on('ConnectionClosed', () => {
             _mcrStudios[studio.id].isConnected = false;
@@ -3122,7 +3125,7 @@ async function initMCRConnections() {
             if(statusEl) statusEl.innerText = "🟢 Online";
             if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
 
-            // AMBIL DATA MARKETPLACE (URL RTMP)
+            // AMBIL DATA MARKETPLACE
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
@@ -3139,6 +3142,13 @@ async function initMCRConnections() {
 
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
+                let nowTime = Date.now();
+                let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; // Selisih waktu dalam detik
+                lastAudioCheckTime = nowTime; // Update waktu terakhir
+                
+                // Cegah penambahan timer yang aneh jika web baru bangun dari sleep
+                if (deltaTimeSec > 2) deltaTimeSec = 0; 
+
                 if (_mcrStudios[studio.id].isConnected && activeTab === "mcr") {
                     const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                     if (statusEl && statusEl.innerText !== "🟢 Online") {
@@ -3164,33 +3174,40 @@ async function initMCRConnections() {
 
                 let audioProblem = null;
 
-                // Deteksi Mic Mati
+                // --- A. Deteksi Mic Mati (90 Detik / 1.5 Menit) ---
                 if (currentDb < -45) {
-                    studioState.silentCount += 0.05; 
-                    if (studioState.silentCount >= 15) { 
+                    studioState.silentSeconds += deltaTimeSec; // Tambah sesuai waktu nyata
+                    
+                    if (studioState.silentSeconds >= 90) { // 90 DETIK = 1.5 Menit
                         audioProblem = "Mic Mati / Tidak ada suara";
                     }
                 } else {
-                    studioState.silentCount = 0;
+                    studioState.silentSeconds = 0; // Reset langsung kalau ada suara sedikit
                 }
 
-                // Deteksi Dengung Statis
-                if (Date.now() % 500 < 50) { 
+                // --- B. Deteksi Dengung Statis (30 Detik Riwayat) ---
+                // Simpan sampel riwayat 1 kali per detik saja
+                if (Math.floor(nowTime / 1000) !== Math.floor((nowTime - deltaTimeSec*1000) / 1000)) { 
                     studioState.lastDbHistory.push(currentDb);
-                    if (studioState.lastDbHistory.length > 20) studioState.lastDbHistory.shift(); 
+                    
+                    // Simpan maksimal 30 riwayat (30 detik terakhir)
+                    if (studioState.lastDbHistory.length > 30) {
+                        studioState.lastDbHistory.shift(); 
+                    }
 
-                    if (studioState.lastDbHistory.length === 20) {
+                    if (studioState.lastDbHistory.length === 30) {
                         let highest = Math.max(...studioState.lastDbHistory);
                         let lowest = Math.min(...studioState.lastDbHistory);
                         let difference = highest - lowest;
 
-                        if (difference <= 3 && highest > -35) {
-                            studioState.staticNoiseCount++;
-                            if (studioState.staticNoiseCount > 5) { 
+                        // Jika selama 30 detik suaranya sangat kencang (> -30dB) dan tidak dinamis (beda <= 3dB)
+                        if (difference <= 3 && highest > -30) {
+                            studioState.staticNoiseSeconds++;
+                            if (studioState.staticNoiseSeconds > 60) { // Jika statis bertahan selama 60 detik (1 menit)
                                 audioProblem = "Terdeteksi Noise atau Dengung Statis";
                             }
                         } else {
-                            studioState.staticNoiseCount = 0;
+                            studioState.staticNoiseSeconds = 0; // Reset jika ada dinamika (orang ngomong)
                         }
                     }
                 }
@@ -3257,7 +3274,8 @@ async function initMCRConnections() {
                     if (status.outputActive) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             netProblem = "Koneksi Macet Parah";
-                            if (Math.random() > 0.7) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
+                            // Kurangi kemungkinan trigger agar tidak terlalu berisik (hanya 10% peluang per siklus 2 detik)
+                            if (Math.random() > 0.9) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             netProblem = "Jaringan Tidak Stabil";
                         }
@@ -3309,6 +3327,7 @@ async function initMCRConnections() {
         }
     });
 }
+
 
 function triggerMCRAlarm(studioId, masalah) {
     showBanner(`⚠️ Studio ${studioId}: ${masalah}`, "danger");
