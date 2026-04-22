@@ -2989,11 +2989,15 @@ let _mcrStudios = {}; // Menyimpan state per studio (koneksi, silent timer)
 
 // Anda bisa ubah ke localhost untuk tes di rumah, 
 // atau masukkan IP LAN 192.168.x.x untuk di kantor.
-const MCR_CONFIG = Array.from({length: 27}, (_, i) => ({
-    id: i + 1,
-    ip: "ws://127.0.0.1:4455", // <-- Ganti localhost menjadi IP ini
-    pw: "123456" // <-- Pastikan password ini sama dengan yang di OBS
-}));
+// Konfigurasi hanya untuk 1 Studio (Testing Localhost)
+const MCR_CONFIG = [
+    {
+        id: 1,
+        ip: "ws://127.0.0.1:4455",
+        pw: "123456" // Ganti jika password OBS Anda berbeda
+    }
+];
+
 
 
 function renderMCR() {
