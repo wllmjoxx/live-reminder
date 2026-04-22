@@ -3000,23 +3000,25 @@ function renderMCR() {
     
     // Header & Controls
     let html = `
-        <div class="action-bar mb-3 d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">📡 MCR Network & Audio Monitor</h5>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
             <button class="btn btn-sm btn-primary" onclick="initMCRConnections()">🔌 Connect All Studios</button>
         </div>
-        <div class="row row-cols-2 row-cols-md-4 row-cols-lg-6 g-3" id="mcr-grid">
+        
+        <!-- INI KUNCI UTAMANYA: display: flex dan flex-wrap: wrap -->
+        <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
 
     // Buat 27 Kotak Studio
     MCR_CONFIG.forEach(s => {
         html += `
-            <div class="col">
-                <div id="mcr-card-${s.id}" class="card p-2 shadow-sm" style="border-left: 4px solid gray;">
-                    <div class="fw-bold" style="font-size: 0.9rem;">Studio ${s.id}</div>
-                    <div class="small mt-1 text-muted" id="mcr-status-${s.id}">Offline</div>
-                    <div class="mt-2" style="font-size: 0.85rem;">
-                        <div>🔈 <span id="mcr-audio-${s.id}" class="fw-bold">0 dB</span></div>
-                        <div>📶 <span id="mcr-bitrate-${s.id}" class="fw-bold">0 kbps</span></div>
+            <div style="flex: 0 0 auto; width: 140px;">
+                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid gray;">
+                    <div style="font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 5px;">Studio ${s.id}</div>
+                    <div id="mcr-status-${s.id}" style="font-size: 0.75rem; color: gray; margin-bottom: 10px;">Offline</div>
+                    <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 5px;">
+                        <div>🔈 <span id="mcr-audio-${s.id}" style="font-weight: bold;">0 dB</span></div>
+                        <div>📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold;">0 kbps</span></div>
                     </div>
                 </div>
             </div>
@@ -3026,6 +3028,7 @@ function renderMCR() {
     html += `</div>`;
     el.innerHTML = html;
 }
+
 
 async function initMCRConnections() {
     if (_mcrInitialized) {
