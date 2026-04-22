@@ -9,6 +9,8 @@
   <title>Live Reminder SLAB</title>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://accounts.google.com/gsi/client" async onload="onGsiLoad()"></script>
+  <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5.0.3/dist/obs-ws.min.js"></script>
+
 
   <style>
     /* ── BOOTSTRAP-INSPIRED VARIABLES ── */
@@ -590,6 +592,7 @@
       <button id="tab-klasemen"    class="nav-link"        onclick="switchTab('klasemen')">Data</button>
       <button id="tab-hariH"       class="nav-link"        onclick="switchTab('hariH')">Data</button>
       <button id="tab-buktiTayang" class="nav-link"        onclick="switchTab('buktiTayang')">Bukti Tayang</button>
+      <button class="nav-link" id="tab-mcr" onclick="switchTab('mcr')">MCR Monitor</button>
     </div>
   </div>
 
