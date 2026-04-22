@@ -2038,10 +2038,13 @@ async function forceRefreshBuktiTayang() {
 // BUKTI TAYANG — HELPERS
 // ─────────────────────────────────────────────────────
 
+// SESUDAH (benar — 3 shift, split di 08:00 dan 16:00):
 function getShiftBT(startTime) {
   if (!startTime) return 'pagi';
   const m = toMin(startTime);
-  return m < 12 * 60 ? 'pagi' : 'siang';
+  if (m < 480)  return 'malam';  // 00:00–07:59
+  if (m < 960)  return 'pagi';   // 08:00–15:59
+  return 'siang';                 // 16:00–23:59
 }
 
 function toggleBtShift(shift) {
@@ -2080,19 +2083,23 @@ function renderBuktiTayang(data) {
   const linkKosong = sessions.filter(s => s.status === 'pending');
   const missing    = sessions.filter(s => s.status === 'missing');
 
-  // Klasifikasi shift berdasarkan JAM START
+  // ─── FIX: 3 shift berdasarkan START LIVE ───────────────
   const shifts = {
+    malam: {
+      done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'malam'),
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'malam'),
+    },
     pagi: {
       done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'pagi'),
-      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'pagi')
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'pagi'),
     },
     siang: {
       done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'siang'),
-      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'siang')
-    }
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'siang'),
+    },
   };
+  // ───────────────────────────────────────────────────────
 
-  // ── Card ─────────────────────────────────────────────
   function renderCard(s) {
     const isUploaded = s.status === 'uploaded';
     const isPending  = s.status === 'pending';
@@ -2141,7 +2148,6 @@ function renderBuktiTayang(data) {
       </div>`;
   }
 
-  // ── Done Section (default CLOSED) ────────────────────
   function renderDoneSection(shiftKey, done) {
     if (done.length === 0) return '';
     return `
@@ -2158,7 +2164,6 @@ function renderBuktiTayang(data) {
       </div>`;
   }
 
-  // ── Not Done Section (default CLOSED) ────────────────
   function renderNotDoneSection(shiftKey, notDone) {
     if (notDone.length === 0) return '';
     return `
@@ -2175,12 +2180,11 @@ function renderBuktiTayang(data) {
       </div>`;
   }
 
-  // ── Shift Group (default OPEN) ────────────────────────
   function renderShiftGroup(shiftKey, label, emoji, shiftData) {
     const { done, notDone } = shiftData;
     if (done.length === 0 && notDone.length === 0) return '';
 
-    const pillDone = done.length > 0
+    const pillDone    = done.length > 0
       ? `<span style="background:#28a745;color:white;border-radius:12px;padding:2px 8px;font-size:12px;">${done.length} uploaded</span>` : '';
     const pillNotDone = notDone.length > 0
       ? `<span style="background:#dc3545;color:white;border-radius:12px;padding:2px 8px;font-size:12px;">${notDone.length} belum</span>` : '';
@@ -2202,7 +2206,6 @@ function renderBuktiTayang(data) {
       </div>`;
   }
 
-  // ── Assemble ──────────────────────────────────────────
   container.innerHTML = `
     <div style="padding:0 10px 24px;">
       <div style="text-align:center;margin-bottom:12px;padding-top:8px;">
@@ -2236,11 +2239,13 @@ function renderBuktiTayang(data) {
         </button>
       </div>
 
-      ${renderShiftGroup('pagi',  'Shift Pagi',  '🌅', shifts.pagi)}
-      ${renderShiftGroup('siang', 'Shift Siang', '☀️', shifts.siang)}
+      ${renderShiftGroup('malam', 'Shift Malam  00:00 – 07:59', '🌙', shifts.malam)}
+      ${renderShiftGroup('pagi',  'Shift Pagi   08:00 – 15:59', '🌅', shifts.pagi)}
+      ${renderShiftGroup('siang', 'Shift Siang  16:00 – 23:59', '☀️', shifts.siang)}
     </div>
   `;
 }
+
 
 // ─────────────────────────────────────────────────────
 // BUKTI TAYANG — COPY WA
@@ -2253,21 +2258,28 @@ function copyBuktiTayangWA() {
   const belum = data.sessions.filter(s => s.status !== 'uploaded');
   if (belum.length === 0) { alert('Semua sudah upload! 🎉'); return; }
 
+  // ─── FIX: 3 shift ───────────────────────────────────────
+  const malam = belum.filter(s => getShiftBT(s.startTime) === 'malam');
   const pagi  = belum.filter(s => getShiftBT(s.startTime) === 'pagi');
   const siang = belum.filter(s => getShiftBT(s.startTime) === 'siang');
+  // ─────────────────────────────────────────────────────────
 
-  const d = new Date();
-  const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const d      = new Date();
+  const bulan  = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   const dateStr = `${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
 
   let text = `📋 *Bukti Tayang ${dateStr} — ${belum.length} Belum Upload*`;
 
+  if (malam.length > 0) {
+    text += `\n\n🌙 *Shift Malam (00:00–07:59)*\n`;
+    text += malam.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
+  }
   if (pagi.length > 0) {
-    text += `\n\n🌅 *Shift Pagi*\n`;
+    text += `\n\n🌅 *Shift Pagi (08:00–15:59)*\n`;
     text += pagi.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
   if (siang.length > 0) {
-    text += `\n\n☀️ *Shift Siang*\n`;
+    text += `\n\n☀️ *Shift Siang (16:00–23:59)*\n`;
     text += siang.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
 
@@ -2282,6 +2294,7 @@ function copyBuktiTayangWA() {
     })
     .catch(() => alert('Gagal copy. Coba lagi.'));
 }
+
 
 
 
