@@ -2425,15 +2425,13 @@ function copyTimeBlock(time, type, items, btn) {
 // ══════════════════════════════════════════════════════════════════
 
 const STANDBY_BRANDS_CFG = [
-  // type:'floating'   → semua operator di pool floating+intern untuk shift tsb
-  // type:'dedicated'  → operator dari section tertentu saja, merged per shift
-  // perOperator:true  → round-robin 1 operator per host-slot (Samsonite Shopee)
-  { label:'AMERICAN TOURISTER TIKTOK', brand:'american tourister', mp:'tiktok',  type:'floating',  perOperator:false },
-  { label:'SAMSONITE TIKTOK',          brand:'samsonite',          mp:'tiktok',  type:'floating',  perOperator:false },
-  { label:'AMERICAN TOURISTER SHOPEE', brand:'american tourister', mp:'shopee',  type:'dedicated', section:'amtour'  },
-  { label:'SAMSONITE SHOPEE',          brand:'samsonite',          mp:'shopee',  type:'floating',  perOperator:true  },
-  { label:'ASICS SHOPEE',              brand:'asics',              mp:'shopee',  type:'dedicated', section:'asics'   },
+  { label:'SAMSONITE TIKTOK',          copyLabel:'STANDBY SAMSONITE TIKTOK', brand:'samsonite',          mp:'tiktok',  type:'floating',  perOperator:true  },
+  { label:'AMERICAN TOURISTER TIKTOK', copyLabel:'STANDBY AT TIKTOK',        brand:'american tourister', mp:'tiktok',  type:'floating',  perOperator:true  },
+  { label:'SAMSONITE SHOPEE',          copyLabel:'STANDBY SAMSONITE SHOPEE', brand:'samsonite',          mp:'shopee',  type:'floating',  perOperator:true  },
+  { label:'AMERICAN TOURISTER SHOPEE', copyLabel:'STANDBY AT SHOPEE',        brand:'american tourister', mp:'shopee',  type:'dedicated', section:'amtour'  },
+  { label:'ASICS SHOPEE',              copyLabel:'STBY ASICS',               brand:'asics',              mp:'shopee',  type:'dedicated', section:'asics'   },
 ];
+
 
 // State
 let _lastPicScheduleData = null;
@@ -2843,7 +2841,7 @@ let _lastStandbySchedData = null; // ← TAMBAH INI
 
 
 async function copyAllStandby() {
-  const picData  = _lastPicScheduleData;
+  const picData   = _lastPicScheduleData;
   const schedData = _lastStandbySchedData;
 
   if (!picData || !picData.length) {
@@ -2854,7 +2852,10 @@ async function copyAllStandby() {
   const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
   const SHIFTS   = ['pagi', 'siang', 'malam'];
 
-  // ── Header tanggal ──────────────────────────────────────────
+  // Helper: "09:00" → "09", "16:30" → "16:30"
+  const fmtT = t => (t && t !== '-') ? t.replace(/:00$/, '') : (t || '-');
+
+  // Header
   const today   = new Date();
   const dateStr = today.toLocaleDateString('id-ID', {
     day: 'numeric', month: 'long', year: 'numeric'
@@ -2864,28 +2865,27 @@ async function copyAllStandby() {
   lines.push(`REMINDER ${dateStr}`);
   lines.push('');
 
-  // ── PIC SHIFT ───────────────────────────────────────────────
+  // ── PIC SHIFT ─────────────────────────────────────────────────
   for (const shift of SHIFTS) {
-    const ops = picData.filter(p => p.shift === shift);
+    // Hanya operator yang punya studio assignment
+    const ops = picData.filter(p => p.shift === shift && p.studios && p.studios.length > 0);
     if (!ops.length) continue;
 
     lines.push(`PIC SHIFT ${shift.toUpperCase()}`);
     for (const op of ops) {
-      const studioStr = op.studios && op.studios.length ? op.studios.join(',') : '-';
-      lines.push(`${op.name}\t${studioStr}`);
+      lines.push(`${op.name}\t${op.studios.join(',')}`);
     }
     lines.push('');
   }
 
-  // ── STANDBY BRAND ───────────────────────────────────────────
-  const rrCopy = {}; // fresh RR state untuk copy, terpisah dari render
+  // ── STANDBY BRAND ─────────────────────────────────────────────
+  const rrCopy = {};
 
   for (const cfg of STANDBY_BRANDS_CFG) {
     const brandSessions = sessions.filter(s => matchBrandConfig(s, cfg));
     const brandLines    = [];
 
     if (cfg.type === 'dedicated') {
-      // Per shift: PAGI / SIANG / MALAM : NAMA
       const sectionOps = picData.filter(p => p.section === cfg.section);
       for (const shift of SHIFTS) {
         const ops = sectionOps.filter(p => p.shift === shift);
@@ -2895,7 +2895,6 @@ async function copyAllStandby() {
       }
 
     } else if (cfg.type === 'floating' && cfg.perOperator) {
-      // Per host slot: HH:MM–HH:MM NAMA
       if (!rrCopy[cfg.label]) rrCopy[cfg.label] = {};
       const rrState = rrCopy[cfg.label];
 
@@ -2913,20 +2912,19 @@ async function copyAllStandby() {
           for (const seg of segs) {
             const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
             if (!pool.length) {
-              brandLines.push(`${seg.start}–${seg.end} —`);
+              brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} —`);
               continue;
             }
             const rrKey = seg.shift;
             if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
             const assigned = pool[rrState[rrKey] % pool.length];
             rrState[rrKey]++;
-            brandLines.push(`${seg.start}–${seg.end} ${assigned.name.toUpperCase()}`);
+            brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${assigned.name.toUpperCase()}`);
           }
         }
       }
 
     } else if (cfg.type === 'floating' && !cfg.perOperator) {
-      // Pool semua operator per shift
       const seenShifts = new Set();
       for (const session of brandSessions) {
         const segs = splitAtShiftBoundary(
@@ -2938,20 +2936,21 @@ async function copyAllStandby() {
           seenShifts.add(seg.shift);
           const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
           if (pool.length) {
-            brandLines.push(`${seg.start}–${seg.end} ${pool.map(o => o.name.toUpperCase()).join(', ')}`);
+            brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${pool.map(o => o.name.toUpperCase()).join(', ')}`);
           }
         }
       }
     }
 
     if (brandLines.length) {
-      lines.push(`STANDBY ${cfg.label}`);
+      // ✅ Pakai copyLabel untuk nama yang sesuai reminder
+      lines.push(cfg.copyLabel || `STANDBY ${cfg.label}`);
       lines.push(...brandLines);
       lines.push('');
     }
   }
 
-  // ── Notes & Links tetap ─────────────────────────────────────
+  // ── Notes & Links ─────────────────────────────────────────────
   lines.push('1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT');
   lines.push('2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG');
   lines.push('3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST');
@@ -2968,13 +2967,12 @@ async function copyAllStandby() {
   lines.push('Upload Screenshot LS Streamlab (Responses) 2.0 (GMV Uploadan host)');
   lines.push('https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?resourcekey=&gid=743892642#gid=743892642');
 
-  // ── Copy ke clipboard ───────────────────────────────────────
+  // ── Clipboard ─────────────────────────────────────────────────
   const text = lines.join('\n');
   try {
     await navigator.clipboard.writeText(text);
     showBanner('✅ Reminder berhasil dicopy!', 'success');
   } catch (e) {
-    // Fallback untuk browser yang tidak support clipboard API
     const ta = document.createElement('textarea');
     ta.value = text;
     document.body.appendChild(ta);
@@ -2984,3 +2982,4 @@ async function copyAllStandby() {
     showBanner('✅ Reminder berhasil dicopy!', 'success');
   }
 }
+
