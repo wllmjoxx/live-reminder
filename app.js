@@ -952,7 +952,7 @@ function renderKlasemen(data) {
     } else {
       const parts = [];
       if (r.pendingHariH > 0) {
-        const blStr = belumLengkapCount > 0 ? ` (${belumLengkapCount} ⚠ blm lgkp)` : "";
+        const blStr = belumLengkapCount > 0 ? ` ()` : "";
         parts.push(`${r.pendingHariH} Hari H${blStr}`);
       }
       if (r.pendingH1 > 0) parts.push(`${r.pendingH1} H+1`);
