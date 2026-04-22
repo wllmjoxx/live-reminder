@@ -10,11 +10,11 @@ let presenceStarted  = false;
 
 // ─── BUKTI TAYANG HELPERS ─────────────────────────────
 
-function getShiftBT(startTime) {
-  if (!startTime) return 'pagi';
-  const m = toMin(startTime);
-  return m < 12 * 60 ? 'pagi' : 'siang';
-}
+// function getShiftBT(startTime) {
+//   if (!startTime) return 'pagi';
+//   const m = toMin(startTime);
+//   return m < 12 * 60 ? 'pagi' : 'siang';
+// }
 
 function formatPicForCopy(assignedPic) {
   if (!assignedPic || assignedPic === 'LSC') return 'LSC';
@@ -28,23 +28,16 @@ function formatPicForCopy(assignedPic) {
 }
 
 
-function toggleBtShift(shift) {
-  const body    = document.getElementById('bt-shift-body-' + shift);
-  const chevron = document.getElementById('bt-shift-chevron-' + shift);
-  if (!body) return;
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : '';
-  if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
-}
+// function toggleBtShift(shift) {
+//   const body    = document.getElementById('bt-shift-body-' + shift);
+//   const chevron = document.getElementById('bt-shift-chevron-' + shift);
+//   if (!body) return;
+//   const isOpen = body.style.display !== 'none';
+//   body.style.display = isOpen ? 'none' : '';
+//   if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+// }
 
-function toggleBtStatus(shift, status) {
-  const body    = document.getElementById(`bt-status-body-${shift}-${status}`);
-  const chevron = document.getElementById(`bt-status-chevron-${shift}-${status}`);
-  if (!body) return;
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : '';
-  if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
-}
+
 
 
 function onGsiLoad() {
@@ -895,84 +888,163 @@ async function forceRefreshKlasemen() {
   }
 }
 
-function renderKlasemen(data){
-  const container=document.getElementById("schedule-list");
-  if(!data.leaderboard){container.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;return;}
-  const totalPendHariH=data.leaderboard.reduce((s,r)=>s+r.pendingHariH,0);
-  const totalPendH1=data.leaderboard.reduce((s,r)=>s+r.pendingH1,0);
-  const totalRows=data.leaderboard.reduce((s,r)=>s+r.total,0);
-  const totalHold=data.leaderboard.reduce((s,r)=>s+r.hold,0);
-  const summaryCard=(bg,border,numColor,num,label)=>
+function renderKlasemen(data) {
+  const container = document.getElementById("schedule-list");
+  if (!data.leaderboard) {
+    container.innerHTML = `<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
+    return;
+  }
+
+  const totalPendHariH = data.leaderboard.reduce((s, r) => s + r.pendingHariH, 0);
+  const totalPendH1    = data.leaderboard.reduce((s, r) => s + r.pendingH1, 0);
+  const totalRows      = data.leaderboard.reduce((s, r) => s + r.total, 0);
+  const totalHold      = data.leaderboard.reduce((s, r) => s + r.hold, 0);
+  // ─── NEW: total belumLengkap ───
+  const totalBelumLengkap = data.leaderboard.reduce((s, r) => s + (r.pendingBelumLengkap || 0), 0);
+
+  const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center;position:relative;overflow:hidden">
        <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
        <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
-  let html=`<div style="padding:8px 10px 24px">`;
-  html+=`<div style="text-align:center;margin-bottom:12px"><div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Data Input</div><div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.dateFrom||""} → ${data.dateTo||""}</div></div>`;
-  html+=`<div style="display:flex;gap:7px;margin-bottom:14px">
-    ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPendHariH,"⏳ Hari H")}
-    ${summaryCard("var(--bs-warning-subtle)","#ffe69c","#856404",totalPendH1,"📋 H+1")}
-    ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalRows,"📂 Total")}
-    ${summaryCard("var(--bs-secondary-subtle)","var(--bs-border)","var(--bs-secondary)",totalHold,"⏸ Hold")}
+
+  let html = `<div style="padding:8px 10px 24px">`;
+
+  html += `<div style="text-align:center;margin-bottom:12px">
+    <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Data Input</div>
+    <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.dateFrom || ""} → ${data.dateTo || ""}</div>
   </div>`;
-  html+=`<div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
+
+  // ─── Summary Cards ───
+  html += `<div style="display:flex;gap:7px;margin-bottom:14px">
+    ${summaryCard("var(--bs-danger-subtle)",   "#f1aeb5",          "var(--bs-danger)",   totalPendHariH,    "⏳ Hari H")}
+    ${summaryCard("var(--bs-warning-subtle)",  "#ffe69c",          "#856404",            totalPendH1,       "📋 H+1")}
+    ${summaryCard("#fff3cd",                   "#ffc107",          "#b45309",            totalBelumLengkap, "⚠ Blm Lgkp")}
+    ${summaryCard("var(--bs-primary-subtle)",  "#9ec5fe",          "var(--bs-primary)",  totalRows,         "📂 Total")}
+  </div>`;
+
+  // ─── Leaderboard Table ───
+  html += `<div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
     <div style="padding:7px 12px;background:var(--bs-light);border-bottom:1px solid var(--bs-border);font-size:0.6rem;font-weight:700;color:var(--bs-muted);display:flex;gap:4px;text-transform:uppercase;letter-spacing:0.5px">
-      <span style="width:26px">#</span><span style="flex:1">PIC</span>
-      <span style="width:44px;text-align:center">H+1</span><span style="width:44px;text-align:center">Hari H</span>
-      <span style="width:38px;text-align:center">Total</span><span style="width:34px;text-align:center">Hold</span>
+      <span style="width:26px">#</span>
+      <span style="flex:1">PIC</span>
+      <span style="width:44px;text-align:center">H+1</span>
+      <span style="width:44px;text-align:center">Hari H</span>
+      <span style="width:38px;text-align:center">Total</span>
+      <span style="width:34px;text-align:center">Hold</span>
     </div>`;
-  data.leaderboard.forEach((r,idx)=>{
-    const pts=r.pendingPoints;
-    const medal=idx===0?"🥇":idx===1?"🥈":idx===2?"🥉":`${idx+1}.`;
-    const sColor=pts===0?"var(--bs-success)":pts<=5?"var(--bs-primary)":pts<=15?"#856404":"var(--bs-danger)";
-    const sTxt=pts>0?`${pts} data pending`:"✅ Data Lengkap";
-    const rowBg=idx%2===1?"var(--bs-light)":"var(--bs-white)";
-    html+=`<div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);display:flex;align-items:center;gap:4px;background:${rowBg}">
+
+  data.leaderboard.forEach((r, idx) => {
+    const pts              = r.pendingPoints;
+    const belumLengkapCount = r.pendingBelumLengkap || 0;
+    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}.`;
+
+    const sColor = pts === 0
+      ? "var(--bs-success)"
+      : pts <= 5  ? "var(--bs-primary)"
+      : pts <= 15 ? "#856404"
+      : "var(--bs-danger)";
+
+    // ─── NEW: status text bedain belumLengkap ───
+    let sTxt;
+    if (pts === 0) {
+      sTxt = "✅ Data Lengkap";
+    } else {
+      const parts = [];
+      if (r.pendingHariH > 0) {
+        const blStr = belumLengkapCount > 0 ? ` (${belumLengkapCount} ⚠ blm lgkp)` : "";
+        parts.push(`${r.pendingHariH} Hari H${blStr}`);
+      }
+      if (r.pendingH1 > 0) parts.push(`${r.pendingH1} H+1`);
+      sTxt = parts.join(" · ");
+    }
+
+    const rowBg = idx % 2 === 1 ? "var(--bs-light)" : "var(--bs-white)";
+
+    html += `<div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);display:flex;align-items:center;gap:4px;background:${rowBg}">
       <span style="width:26px;font-size:0.8rem">${medal}</span>
-      <div style="flex:1;min-width:0"><div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div><div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div>
+        <div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div>
+      </div>
       <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:#856404">${r.pendingH1}</span>
       <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:var(--bs-danger)">${r.pendingHariH}</span>
       <span style="width:38px;text-align:center;font-size:0.75rem;color:var(--bs-muted)">${r.total}</span>
       <span style="width:34px;text-align:center;font-size:0.75rem;color:var(--bs-secondary)">${r.hold}</span>
     </div>`;
   });
-  html+=`</div>`;
-  html+=`<div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Copy ID Line Pending per PIC</div>`;
-  html+=`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
-  data.leaderboard.forEach(r=>{
-    const hasPending=r.pendingRows?.length>0;
-    const idLines=(r.pendingRows||[]).map(p=>p.idLine).filter(Boolean);
-    const pts=r.pendingPoints;
-    if(hasPending){
-      html+=`<button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g,'&quot;')})"
+
+  html += `</div>`;
+
+  // ─── Copy ID Line Buttons ───
+  html += `<div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Copy ID Line Pending per PIC</div>`;
+  html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
+
+  data.leaderboard.forEach(r => {
+    const hasPending = r.pendingRows?.length > 0;
+    const idLines    = (r.pendingRows || []).map(p => p.idLine).filter(Boolean);
+    const pts        = r.pendingPoints;
+    if (hasPending) {
+      html += `<button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g, '&quot;')})"
         style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.7rem;font-weight:600;cursor:pointer">
-        ${formatPic(r.pic)} <span style="color:#856404;font-weight:700">(${pts})</span></button>`;
-    }else{
-      html+=`<button disabled style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);background:var(--bs-light);color:#adb5bd;font-size:0.7rem;font-weight:600;cursor:not-allowed">${formatPic(r.pic)} ✅</button>`;
+        ${formatPic(r.pic)} <span style="color:#856404;font-weight:700">(${pts})</span>
+      </button>`;
+    } else {
+      html += `<button disabled style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);background:var(--bs-light);color:#adb5bd;font-size:0.7rem;font-weight:600;cursor:not-allowed">
+        ${formatPic(r.pic)} ✅
+      </button>`;
     }
   });
-  html+=`</div>`;
-  const withPending=data.leaderboard.filter(r=>r.pendingRows?.length>0);
-  if(withPending.length){
-    withPending.forEach(r=>{
-      html+=`<div style="margin-bottom:12px"><div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending</div>`;
-      r.pendingRows.forEach(p=>{
-        const tags=[];
-        if(p.hariH)tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
-        if(p.h1)tags.push(`<span style="background:var(--bs-warning-subtle);color:var(--bs-warning-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">H+1</span>`);
-        html+=`<div style="background:var(--bs-white);border-radius:var(--bs-radius);padding:7px 10px;margin-bottom:3px;display:flex;align-items:center;gap:8px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
-          <div style="flex:1;min-width:0"><div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div><div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">${p.date} · ${p.startTime} · ${p.studio}</div></div>
+
+  html += `</div>`;
+
+  // ─── Detail Pending per PIC ───
+  const withPending = data.leaderboard.filter(r => r.pendingRows?.length > 0);
+  if (withPending.length) {
+    withPending.forEach(r => {
+      html += `<div style="margin-bottom:12px">
+        <div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">
+          ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
+        </div>`;
+
+      r.pendingRows.forEach(p => {
+        const tags = [];
+
+        // ─── NEW: bedain belumLengkap (oranye) vs missing biasa (merah) ───
+        if (p.hariH) {
+          if (p.belumLengkap) {
+            tags.push(`<span style="background:#fff3cd;color:#92400e;border:1px solid #fde68a;font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">⚠ Blm Lengkap</span>`);
+          } else {
+            tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
+          }
+        }
+        if (p.h1) {
+          tags.push(`<span style="background:var(--bs-warning-subtle);color:var(--bs-warning-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">H+1</span>`);
+        }
+
+        // ─── NEW: border & background bedain belumLengkap ───
+        const cardBorder = p.belumLengkap ? "#fde68a" : "var(--bs-border)";
+        const cardBg     = p.belumLengkap ? "#fffbeb" : "var(--bs-white)";
+
+        html += `<div style="background:${cardBg};border-radius:var(--bs-radius);padding:7px 10px;margin-bottom:3px;display:flex;align-items:center;gap:8px;border:1px solid ${cardBorder};box-shadow:var(--bs-shadow-sm)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+            <div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">${p.date} · ${p.startTime} · ${p.studio}</div>
+          </div>
           <div style="display:flex;gap:3px">${tags.join("")}</div>
           <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">${p.idLine}</div>
         </div>`;
       });
-      html+=`</div>`;
+
+      html += `</div>`;
     });
   }
-  html+=`<button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block" style="margin-top:6px;padding:10px">🔄 Refresh (Clear Cache)</button>`;
-  html+=`</div>`;
-  container.innerHTML=html;
+
+  html += `<button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block" style="margin-top:6px;padding:10px">🔄 Refresh (Clear Cache)</button>`;
+  html += `</div>`;
+  container.innerHTML = html;
 }
+
 
 function updateTabLabels() {
   const toWIB = d => new Date(d.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
