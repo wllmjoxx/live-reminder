@@ -919,7 +919,6 @@ function renderKlasemen(data) {
   html += `<div style="display:flex;gap:7px;margin-bottom:14px">
     ${summaryCard("var(--bs-danger-subtle)",   "#f1aeb5",          "var(--bs-danger)",   totalPendHariH,    "⏳ Hari H")}
     ${summaryCard("var(--bs-warning-subtle)",  "#ffe69c",          "#856404",            totalPendH1,       "📋 H+1")}
-    ${summaryCard("#fff3cd",                   "#ffc107",          "#b45309",            totalBelumLengkap, "⚠ Blm Lgkp")}
     ${summaryCard("var(--bs-primary-subtle)",  "#9ec5fe",          "var(--bs-primary)",  totalRows,         "📂 Total")}
   </div>`;
 
@@ -1013,7 +1012,7 @@ function renderKlasemen(data) {
         // ─── NEW: bedain belumLengkap (oranye) vs missing biasa (merah) ───
         if (p.hariH) {
           if (p.belumLengkap) {
-            tags.push(`<span style="background:#fff3cd;color:#92400e;border:1px solid #fde68a;font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">⚠ Blm Lengkap</span>`);
+            tags.push(`<span style="background:#fff3cd;color:#92400e;border:1px solid #fde68a;font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
           } else {
             tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
           }
