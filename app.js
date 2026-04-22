@@ -1,48 +1,541 @@
-// ============================================================
-//  CASTLIVE OPS 2026 — app.js  (REVISED — match index.html)
-//  CHANGES vs versi lama:
-//  - showBanner → pakai #banner + class alert-*
-//  - switchTab  → pakai id="tab-{name}" bukan .tab-btn
-//  - renderTab  → tab name hariH & buktiTayang (camelCase)
-//  - loadSchedule → showLoading/hideLoading + updateStats
-//  - renderMarathon/Single → Bootstrap card HTML
-//  - handleCredentialResponse → hapus #user-name yg tdk ada
-//  - renderOnlineUsers → querySelectorAll (ada 2 id sama)
-//  - tambah updateClock, updateStats, showLoading, hideLoading
-//  - DOMContentLoaded → loadSchedule() + updateClock()
-// ============================================================
+const API_URL    = "https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec";
+const NTFY_TOPIC = "castlive-ops-2026-xk9";
+const ICON_URL   = new URL("./icon-192.png", location.href).href;
+const GOOGLE_CLIENT_ID = "343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com";
+const PRESENCE_TOPIC   = "castlive-presence-2026";
 
-const API_URL             = 'https://script.google.com/macros/s/AKfycbyhsAeqXWyuR0sRoNmy2i1vcyvKAk7Q-gaivbiNTLAq7eDKdCev8RpsG11v1aEGdTbB/exec';
-const NTFY_TOPIC          = 'castlive-ops-2026-xk9';
-const NTFY_PRESENCE_TOPIC = 'castlive-presence-2026';
-const GOOGLE_CLIENT_ID    = '343542715243-jhl0dshlpiklcapfgj4akj0a02vg9q05.apps.googleusercontent.com';
+let currentUserEmail = localStorage.getItem("userEmail") || null;
+let onlineUsers      = {};
+let presenceStarted  = false;
 
-// ─── State ───────────────────────────────────────────────────
-let currentTab      = 'marathon';
-let scheduleData    = null;
-let onlineUsers     = {};
-let currentUser     = null;
-let presenceStarted = false;
+// ─── BUKTI TAYANG HELPERS ─────────────────────────────
 
-let _lastKlasemenData           = null;
-let _lastHariHData              = null;
-let _lastFormData               = null;
-let _lastBuktiTayangData        = null;
-let _lastBuktiTayangHistoryData = null;
-let _lastPicScheduleData        = null;
-let _standbyRrIndex             = {};
-let exclusiveClaims             = {};
+// function getShiftBT(startTime) {
+//   if (!startTime) return 'pagi';
+//   const m = toMin(startTime);
+//   return m < 12 * 60 ? 'pagi' : 'siang';
+// }
 
-// ─── Constants ───────────────────────────────────────────────
-const STANDBY_BRANDS_CFG = [
-  { label:'AMERICAN TOURISTER TIKTOK', brand:'american tourister', mp:'tiktok',  type:'floating',  perOperator:false },
-  { label:'SAMSONITE TIKTOK',          brand:'samsonite',          mp:'tiktok',  type:'floating',  perOperator:false },
-  { label:'AMERICAN TOURISTER SHOPEE', brand:'american tourister', mp:'shopee',  type:'dedicated', section:'amtour'  },
-  { label:'SAMSONITE SHOPEE',          brand:'samsonite',          mp:'shopee',  type:'floating',  perOperator:true  },
-  { label:'ASICS SHOPEE',              brand:'asics',              mp:'shopee',  type:'dedicated', section:'asics'   },
-];
+function formatPicForCopy(assignedPic) {
+  if (!assignedPic || assignedPic === 'LSC') return 'LSC';
+  const lower = assignedPic.replace('@', '').toLowerCase().trim();
+  // LSC coordinator (jonathan, hamzah, tyo, hanif) → @jonathan (lowercase, no Sirclo)
+  if (LSC_NAMES_SET.has(lower)) return `@${lower}`;
+  // Unknown name (sudah ada @ dari formatPic) → @Velind Sirclo
+  if (assignedPic.startsWith('@')) return `${assignedPic} Sirclo`;
+  // Regular PIC → @Maul Sirclo, @Arbi Sirclo, dll
+  return `@${assignedPic} Sirclo`;
+}
 
-// ─── Utility (TIDAK BERUBAH) ─────────────────────────────────
+
+// function toggleBtShift(shift) {
+//   const body    = document.getElementById('bt-shift-body-' + shift);
+//   const chevron = document.getElementById('bt-shift-chevron-' + shift);
+//   if (!body) return;
+//   const isOpen = body.style.display !== 'none';
+//   body.style.display = isOpen ? 'none' : '';
+//   if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+// }
+
+
+
+
+function onGsiLoad() {
+  if (!currentUserEmail) {
+    google.accounts.id.initialize({
+      client_id  : GOOGLE_CLIENT_ID,
+      callback   : handleGoogleSignIn,
+      auto_select: false,
+    });
+    const wrapper = document.getElementById("user-login-wrapper");
+    const btnDiv  = document.getElementById("google-signin-btn");
+    if (wrapper) wrapper.style.display = "flex";
+    if (btnDiv) {
+      google.accounts.id.renderButton(btnDiv, {
+        type : "standard",
+        theme: "filled_blue",
+        size : "large",
+        text : "sign_in_with",
+        width: 280,
+      });
+    }
+  } else {
+    startPresenceIfNeeded();
+  }
+}
+
+function handleGoogleSignIn(response) {
+  try {
+    const payload = JSON.parse(atob(response.credential.split(".")[1]));
+    currentUserEmail = payload.email;
+    localStorage.setItem("userEmail", currentUserEmail);
+    const wrapper = document.getElementById("user-login-wrapper");
+    if (wrapper) wrapper.style.display = "none";
+    startPresenceIfNeeded();
+    updateOnlineDisplay();
+    showBanner(`✅ Login: ${currentUserEmail}`, "success");
+  } catch(e) {
+    showBanner("❌ Gagal login Google", "error");
+  }
+}
+
+function logoutUser() {
+  currentUserEmail = null;
+  localStorage.removeItem("userEmail");
+  presenceStarted  = false;
+  onlineUsers      = {};
+  updateOnlineDisplay();
+  location.reload();
+}
+
+function startPresenceIfNeeded() {
+  if (presenceStarted || !currentUserEmail) return;
+  presenceStarted = true;
+  broadcastPresence();
+  listenPresence();
+  setInterval(broadcastPresence, 3 * 60 * 1000);
+  setInterval(() => {
+    const cutoff = Date.now() - 6 * 60 * 1000;
+    Object.keys(onlineUsers).forEach(email => {
+      if (onlineUsers[email] < cutoff) delete onlineUsers[email];
+    });
+    updateOnlineDisplay();
+  }, 60 * 1000);
+}
+
+function broadcastPresence() {
+  if (!currentUserEmail) return;
+  fetch(`https://ntfy.sh/${PRESENCE_TOPIC}`, {
+    method: "POST",
+    body  : JSON.stringify({ type: "presence", email: currentUserEmail, ts: Date.now() }),
+  }).catch(() => {});
+}
+
+function listenPresence() {
+  const src = new EventSource(`https://ntfy.sh/${PRESENCE_TOPIC}/sse`);
+  src.addEventListener("message", e => {
+    try {
+      const d    = JSON.parse(e.data);
+      if (d.event !== "message") return;
+      const body = JSON.parse(d.message || d.body || "{}");
+      if (body.type === "presence" && body.email) {
+        onlineUsers[body.email] = body.ts;
+        updateOnlineDisplay();
+      }
+    } catch(err) {}
+  });
+  src.onerror = () => { src.close(); setTimeout(listenPresence, 5000); };
+}
+
+function updateOnlineDisplay() {
+  const el = document.getElementById("online-users");
+  if (!el) return;
+  if (!currentUserEmail) {
+    el.innerHTML = `<span style="cursor:pointer;color:var(--bs-muted);font-size:0.62rem"
+      onclick="document.getElementById('user-login-wrapper').style.display='flex'">
+      👤 Login untuk lihat online users
+    </span>`;
+    return;
+  }
+  onlineUsers[currentUserEmail] = Math.max(onlineUsers[currentUserEmail] || 0, Date.now() - 10000);
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  const active = Object.entries(onlineUsers)
+    .filter(([, ts]) => ts > cutoff)
+    .map(([email]) => email.split("@")[0]);
+  el.innerHTML = `
+    <span style="color:var(--bs-success);font-weight:700">🟢 ${active.length}</span>
+    <span style="color:var(--bs-muted)"> online: </span>
+    <span style="color:#60a5fa;font-weight:600">${active.join(", ")}</span>
+    <span onclick="logoutUser()"
+      style="margin-left:6px;cursor:pointer;color:#adb5bd;font-size:0.6rem;text-decoration:underline">
+      logout
+    </span>`;
+}
+
+const PIC_MENTIONS = {
+  "jonathan":"Jonathan","tyo":"Tyo","hamzah":"Hamzah","hanif":"Hanif",
+  "riva":"Riva","ferry":"Ferry","bernhard":"Bernhard","leleng":"Leleng",
+  "nadiem":"Nadiem","fadhil":"Fadhil","imam":"Imam","eric":"Eric",
+  "rizky":"Rizky","yohan":"Yohan","septian":"Septian","agung":"Agung",
+  "apri":"Apri","maulidan":"Maul","arbi":"Arbi","afdal":"Afdal",
+  "roiisul":"Roiisul","rakha":"Rakha","isaac":"Isaac","raffyco":"Raffyco",
+  "luthfi rizal":"Luthfi Rizal",
+};
+
+const MAX_STUDIO_PER_PIC = 2;
+const MAX_OPERATOR_DIST  = 4;
+const LSC_NAMES_SET = new Set(["jonathan","hamzah","tyo","hanif"]);
+const DEDICATED_OPS = ["arbi","agung","raffyco","isaac","roiisul","eric"];
+const MANDATORY_STUDIOS = {
+  2:["agung","arbi","raffyco"], 29:["roiisul","eric","isaac"],
+};
+
+const STUDIO_PHYSICAL = {};
+[1,2,3,5].forEach((s,i)                    => STUDIO_PHYSICAL[s]={c:"entrance",p:i});
+[6,7,8,9,10,11,12,15].forEach((s,i)        => STUDIO_PHYSICAL[s]={c:"A",p:i});
+[16,17,18,19,20,21,22,23,25].forEach((s,i) => STUDIO_PHYSICAL[s]={c:"B1",p:i});
+[26,27,28,29,30,31,32].forEach((s,i)       => STUDIO_PHYSICAL[s]={c:"B2",p:i});
+
+function physicalDist(a,b){
+  if(a===b)return 0;
+  const pA=STUDIO_PHYSICAL[a],pB=STUDIO_PHYSICAL[b];
+  if(!pA||!pB)return 99;
+  if(pA.c===pB.c)return Math.abs(pA.p-pB.p);
+  if(pA.c==="B1"&&pB.c==="B2")return Math.abs(pA.p-(pB.p+4));
+  if(pA.c==="B2"&&pB.c==="B1")return Math.abs((pA.p+4)-pB.p);
+  if((pA.c==="entrance"&&pB.c==="A")||(pA.c==="A"&&pB.c==="entrance"))return 1+Math.abs(pA.p-pB.p);
+  if((pA.c==="entrance"&&pB.c==="B1")||(pA.c==="B1"&&pB.c==="entrance")){
+    const eP=pA.c==="entrance"?pA.p:pB.p,b1P=pA.c==="B1"?pA.p:pB.p;
+    return Math.abs(eP-3)+Math.abs(b1P-8)+1;
+  }
+  if((pA.c==="A"&&pB.c==="B1")||(pA.c==="B1"&&pB.c==="A"))return 4+Math.abs(pA.p-pB.p);
+  return 10;
+}
+
+const DEDICATED_ZONE_A=new Set([1,2,3,5,6,7]);
+const DEDICATED_ZONE_B=new Set([19,20,21,25,26,27,28,29,30,31,32]);
+const DEDICATED_HOME={"agung":2,"arbi":2,"raffyco":2,"roiisul":29,"eric":29,"isaac":29};
+
+function getDedicatedGroup(n){
+  if(DEDICATED_ZONE_A.has(n))return["agung","arbi","raffyco"];
+  if(DEDICATED_ZONE_B.has(n))return["roiisul","eric","isaac"];
+  return null;
+}
+
+let sessions=[],scheduledTasks=[],swRegistration=null,activeTab="marathon",ntfySource=null;
+const seenNtfyIds=new Set();
+
+window.addEventListener("DOMContentLoaded", async () => {
+  updateClock();
+  updateTabLabels();
+  setInterval(updateClock, 1000);
+  await registerSW();
+  await requestNotifPermission();
+  connectNtfy();
+  await loadSchedule();
+  setInterval(loadSchedule, 5 * 120 * 1000);
+  if (currentUserEmail) {
+    startPresenceIfNeeded();
+    updateOnlineDisplay();
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      connectNtfy();
+      broadcastPresence();
+      loadSchedule();
+    }
+  });
+  window.addEventListener("pageshow", e => {
+    if (e.persisted) { connectNtfy(); broadcastPresence(); loadSchedule(); }
+  });
+});
+
+async function registerSW(){
+  if("serviceWorker"in navigator){
+    try{swRegistration=await navigator.serviceWorker.register("./sw.js",{scope:"./"});}
+    catch(e){console.warn("SW failed:",e);}
+  }
+}
+
+async function requestNotifPermission(){
+  if(!("Notification"in window))return false;
+  if(Notification.permission==="granted")return true;
+  if(Notification.permission==="denied"){showBanner("❌ Notifikasi diblokir","error");return false;}
+  const r=await Notification.requestPermission();
+  if(r==="granted")showBanner("✅ Notifikasi aktif!","success");
+  return r==="granted";
+}
+
+function connectNtfy(){
+  if(ntfySource&&ntfySource.readyState===EventSource.OPEN)return;
+  ntfySource=new EventSource(`https://ntfy.sh/${NTFY_TOPIC}/sse`);
+  ntfySource.addEventListener("message",e=>{
+    try{
+      const d=JSON.parse(e.data);
+      if(d.event!=="message")return;
+      if(seenNtfyIds.has(d.id))return;
+      seenNtfyIds.add(d.id);
+      setTimeout(()=>seenNtfyIds.delete(d.id),60000);
+      sendNotification(d.title||"Live Reminder",d.message||d.body||"",`ntfy-${d.id}`);
+    }catch(err){}
+  });
+  ntfySource.onerror=()=>{ntfySource?.close();ntfySource=null;setTimeout(connectNtfy,5000);};
+}
+
+async function broadcastNotif(title,body,urgent=false){
+  sendNotification(title,body,`local-${Date.now()}`,urgent);
+  try{
+    const res=await fetch(`https://ntfy.sh/${NTFY_TOPIC}`,{
+      method:"POST",body:`${title}\n\n${body}`,
+    });
+    if(!res.ok)throw new Error(`ntfy ${res.status}`);
+    showBanner("🔔 Notif dikirim ke semua user!","success");
+  }catch(e){
+    console.error("ntfy error:",e);
+    showBanner("⚠️ Broadcast gagal: "+e.message,"warning");
+  }
+}
+
+function sendNotification(title,body,tag,urgent=false){
+  if(Notification.permission!=="granted"){requestNotifPermission();return;}
+  const options={
+    body,tag:tag||`notif-${Date.now()}`,
+    icon:ICON_URL,badge:ICON_URL,
+    vibrate:urgent?[300,100,300,100,300]:[200,100,200],
+    requireInteraction:false,
+  };
+  if(swRegistration){
+    swRegistration.showNotification(title,options).catch(()=>{try{new Notification(title,options);}catch(e){}});
+  }else{
+    navigator.serviceWorker?.ready
+      .then(reg=>reg.showNotification(title,options))
+      .catch(()=>{try{new Notification(title,options);}catch(e){}});
+  }
+}
+
+async function loadSchedule(){
+  if(!sessions.length){
+    try{
+      const cached=localStorage.getItem("lastSchedule");
+      if(cached){
+        const data=JSON.parse(cached);
+        sessions=data.sessions.map(s=>{s.isMarathon=s.hosts.length>1;return s;});
+        renderTab(activeTab);updateStats();
+      }
+    }catch(e){}
+  }
+  showLoading(true);
+  try{
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),15000);
+    const res=await fetch(API_URL+"?t="+Date.now(),{signal:controller.signal});
+    clearTimeout(timeout);
+    const data=JSON.parse(await res.text());
+    if(!data.success)throw new Error(data.error);
+    localStorage.setItem("lastSchedule",JSON.stringify(data));
+    sessions=data.sessions.map(s=>{s.isMarathon=s.hosts.length>1;return s;});
+    renderTab(activeTab);cancelAllScheduled();scheduleAllNotifications(sessions);updateStats();
+    showBanner(`✅ ${data.date} — ${sessions.length} sesi`,"success");
+  }catch(err){
+    if(err.name==="AbortError"){
+      showBanner("⚠️ Timeout — pakai data cache","warning");
+    }else{
+      showBanner("❌ Gagal load: "+err.message,"error");
+    }
+  }
+  showLoading(false);
+}
+
+function switchTab(tab){
+  activeTab=tab;
+  document.querySelectorAll(".nav-link").forEach(b=>b.classList.remove("active"));
+  document.getElementById("tab-"+tab).classList.add("active");
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  if(tab==="marathon")    renderMarathon();
+  if(tab==="timeline")    renderTimeline();
+  if(tab==="single")      renderSingle();
+  if(tab==="standby")     { if(_lastPicScheduleData) renderStandby(null, _lastPicScheduleData); loadStandby(); }
+  if(tab==="klasemen")    loadKlasemen();
+  if(tab==="hariH")       loadHariH();
+  if(tab==="buktiTayang") loadBuktiTayang();
+}
+
+
+function formatPic(rawName){
+  if(!rawName||rawName==="-"||rawName==="")return"LSC";
+  const key=rawName.trim().toLowerCase();
+  return PIC_MENTIONS[key]||("@"+rawName.trim());
+}
+
+function getShift(timeStr){
+  if(!timeStr||timeStr==="-"||timeStr==="23:59/00:00")return"siang";
+  const[h,m]=timeStr.split(":").map(Number);
+  if(h===0&&m===0)return"siang";
+  if(h<8)return"malam";
+  if(h<16)return"pagi";
+  return"siang";
+}
+
+function getAvailableOps(sessions,eventTimeStr){
+  let eventShift,tEvent;
+  if(eventTimeStr==="23:59/00:00"){eventShift="siang";tEvent=23*60+59;}
+  else{
+    const[h,m]=(eventTimeStr||"0:0").split(":").map(Number);
+    if(h===0&&m===0){eventShift="malam";tEvent=0;}
+    else{eventShift=getShift(eventTimeStr);tEvent=h*60+m;}
+  }
+  const available=new Set();
+  sessions.forEach(s=>{
+    (s.hosts||[]).forEach(h=>{
+      if(!h.picData||h.picData==="-")return;
+      const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+      if(getShift(endStr)!==eventShift)return;
+      const[sh,sm]=(h.startTime||"99:99").split(":").map(Number);
+      const tStart=sh*60+sm;
+      const[eh,em]=endStr.split(":").map(Number);
+      let tEnd=eh*60+em;
+      if(tEnd===0)tEnd=24*60;
+      if(tEnd<=tStart)tEnd+=24*60;
+      let tAdj=tEvent;
+      if(eventShift==="malam"&&tEvent<tStart)tAdj=tEvent+24*60;
+      if(tStart<=tAdj&&tAdj<=tEnd)available.add(h.picData.trim().toLowerCase());
+    });
+  });
+  return available;
+}
+
+function assignPics(starts,ends,validPics=null){
+  const picCount={},picRawNames={},picStudios={};
+  const isCoord=n=>!n||n==="-"||n===""||LSC_NAMES_SET.has(n.trim().toLowerCase());
+  const sNum=s=>{const m=String(s.studio||"").match(/\d+/);return m?parseInt(m[0]):99;};
+  const isInShift=k=>!validPics||validPics.has(k);
+  const reg=rawName=>{
+    if(!rawName||isCoord(rawName))return;
+    const key=rawName.trim().toLowerCase();
+    if(picCount[key]===undefined)picCount[key]=0;
+    if(!picRawNames[key])picRawNames[key]=rawName;
+  };
+  const assignKey=(key,s)=>{
+    picCount[key]++;
+    if(!picStudios[key])picStudios[key]=[];
+    picStudios[key].push(sNum(s));
+    s.assignedPic=formatPic(picRawNames[key]||key);
+  };
+  const opDistTo=(key,n)=>{
+    const a=picStudios[key]||[];
+    return a.length===0?0:Math.min(...a.map(s=>physicalDist(s,n)));
+  };
+  const findMandatory=n=>{
+    const g=MANDATORY_STUDIOS[n];if(!g)return null;
+    for(const name of g){const k=name.toLowerCase();if(!isInShift(k))continue;if((picCount[k]||0)<MAX_STUDIO_PER_PIC)return k;}
+    return null;
+  };
+  const findDedInGroup=(g,n)=>{
+    for(const name of g){
+      const k=name.toLowerCase();
+      if(!isInShift(k))continue;
+      if((picCount[k]||0)>=MAX_STUDIO_PER_PIC)continue;
+      if(opDistTo(k,n)>MAX_OPERATOR_DIST)continue;
+      return k;
+    }return null;
+  };
+  const findIdle=(excl=null)=>{
+    for(const[k,c]of Object.entries(picCount)){
+      if(k===excl)continue;if(!isInShift(k))continue;
+      if(DEDICATED_OPS.includes(k))continue;if(c===0)return k;
+    }return null;
+  };
+  const findBetter=(n,excl)=>{
+    const idle=findIdle(excl);if(idle)return idle;
+    const ed=opDistTo(excl,n);let bestK=null,bestD=Infinity;
+    for(const[k,c]of Object.entries(picCount)){
+      if(k===excl)continue;if(!isInShift(k))continue;
+      if(DEDICATED_OPS.includes(k))continue;if(c>=MAX_STUDIO_PER_PIC)continue;
+      const a=picStudios[k]||[];if(!a.length)continue;
+      const d=Math.min(...a.map(s=>physicalDist(s,n)));
+      if(d<ed&&d<bestD){bestD=d;bestK=k;}
+    }return bestK;
+  };
+  const doAssign=(s,rawPic)=>{
+    const n=sNum(s),dg=getDedicatedGroup(n);
+    if(MANDATORY_STUDIOS[n]){const mk=findMandatory(n);if(mk)assignKey(mk,s);else s.assignedPic="LSC";return;}
+    if(dg){
+      const ded=findDedInGroup(dg,n);if(ded){assignKey(ded,s);return;}
+      const idle=findIdle();if(idle){assignKey(idle,s);return;}
+      s.assignedPic="LSC";return;
+    }
+    if(!isCoord(rawPic)){
+      const key=rawPic.trim().toLowerCase();
+      if(picCount[key]===undefined)picCount[key]=0;
+      if(isInShift(key)){
+        if(picCount[key]===0){assignKey(key,s);return;}
+        if(picCount[key]===1){
+          const better=findBetter(n,key);
+          if(better){assignKey(better,s);return;}
+          assignKey(key,s);return;
+        }
+      }
+    }
+    const idle=findIdle();
+    if(idle){assignKey(idle,s);return;}
+    for(const[k,c]of Object.entries(picCount)){
+      if(!isInShift(k)||DEDICATED_OPS.includes(k))continue;
+      if(c<MAX_STUDIO_PER_PIC){assignKey(k,s);return;}
+    }
+    s.assignedPic="LSC";
+  };
+  [...starts,...ends].forEach(s=>reg(s.picForEvent||"-"));
+  DEDICATED_OPS.forEach(name=>{if(!validPics||validPics.has(name.toLowerCase()))reg(name);});
+  const sortFn=list=>[...list].sort((a,b)=>{
+    const aN=sNum(a),bN=sNum(b);
+    const aM=!!MANDATORY_STUDIOS[aN],bM=!!MANDATORY_STUDIOS[bN];
+    if(aM!==bM)return aM?-1:1;
+    const aZ=DEDICATED_ZONE_B.has(aN)?0:DEDICATED_ZONE_A.has(aN)?1:2;
+    const bZ=DEDICATED_ZONE_B.has(bN)?0:DEDICATED_ZONE_A.has(bN)?1:2;
+    if(aZ!==bZ)return aZ-bZ;
+    return aN-bN;
+  });
+  sortFn(ends).forEach(s=>doAssign(s,s.picForEvent||"-"));
+  sortFn(starts).forEach(s=>doAssign(s,s.picForEvent||"-"));
+}
+
+// ─────────────────────────────────────────────
+// RENDER MARATHON
+// ─────────────────────────────────────────────
+function renderMarathon(){
+  const container=document.getElementById("schedule-list");
+  container.innerHTML="";
+  const list=sessions.filter(s=>s.isMarathon);
+  if(!list.length){
+    container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi marathon hari ini</div>`;
+    return;
+  }
+  const now=Date.now();
+  list.forEach(s=>{
+    const curIdx=getCurrentHostIdx(s);
+    let endMs=timeToMs(s.date,s.endTime);
+    const startMs=timeToMs(s.date,s.startTime);
+    if(endMs&&startMs&&endMs<=startMs)endMs+=24*60*60*1000;
+    const isEnded=endMs?now>endMs:false;
+    const card=document.createElement("div");
+    card.className=`marathon-session-card${isEnded?" ms-ended":""}`;
+    card.innerHTML=`
+      <div class="ms-card-header">
+        <div class="ms-brand">🏃 ${s.brand}
+          ${isEnded?`<span class="badge" style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);font-size:0.55rem;vertical-align:middle;margin-left:6px">✓ ENDED</span>`:""}
+        </div>
+        <div class="ms-meta">
+          <span class="badge marketplace">${s.marketplace}</span>
+          <span class="badge studio">${s.studio}</span>
+          <span class="badge idline">📋 ${s.idLine||s.skpId||"-"}</span>
+        </div>
+        <div class="ms-time">▶ ${s.startTime} &nbsp;·&nbsp; ⏹ ${s.endTime} &nbsp;·&nbsp; ${s.hosts.length} host</div>
+      </div>
+      <div class="ms-card-body" id="msh-${s.idLine||s.skpId}"></div>`;
+    container.appendChild(card);
+    const hc=card.querySelector(`#msh-${s.idLine||s.skpId}`);
+    s.hosts.forEach((h,hi)=>{
+      const isCurrent=!isEnded&&hi===curIdx;
+      const isNext=!isEnded&&hi===curIdx+1;
+      const isPast=isEnded||(curIdx>=0&&hi<curIdx);
+      const row=document.createElement("div");
+      row.className=`host-row${isCurrent?" host-current":""}${isNext?" host-next":""}${isPast?" host-past":""}`;
+      row.innerHTML=`
+        <div class="hr-num">${hi+1}</div>
+        <div class="hr-time"><span class="hr-start">▶ ${h.startTime}</span><span class="hr-arrow">→</span><span class="hr-end">⏹ ${h.endTime}</span></div>
+        <div class="hr-info">
+          <div class="hr-name">${h.host}${isCurrent?`<span class="live-badge">● LIVE</span>`:""}${isNext?`<span class="next-badge">NEXT</span>`:""}${isEnded&&hi===s.hosts.length-1?`<span class="badge" style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);font-size:0.55rem;margin-left:4px">✓ selesai</span>`:""}</div>
+          <div class="hr-pic">🧑‍💼 PIC: ${h.picData||"-"}</div>
+        </div>`;
+      hc.appendChild(row);
+    });
+  });
+}
+
+// ─── Helper: parse "HH:mm" → total menit ───────────────────────────────────
 function toMin(t) {
   if (!t) return 0;
   const str = (typeof t === 'string') ? t : String(t);
@@ -51,912 +544,2251 @@ function toMin(t) {
   return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
 }
 
+// ─── Helper: normalize brand string (hapus special chars) ──────────────────
+// FIX: supaya "He!!o by Paseo" bisa match "Hello by Paseo"
+function normalizeBrand(str) {
+  if (!str) return '';
+  return str.replace(/[^a-zA-Z0-9\s]/g, '').toLowerCase().trim();
+}
+
+// ─────────────────────────────────────────────
+// RENDER TIMELINE
+// ─────────────────────────────────────────────
+function renderTimeline(){
+  const container=document.getElementById("schedule-list");
+  container.innerHTML="";
+    // ── Copy Button ──────────────────────────────────────
+  const copyBar = document.createElement('div');
+  copyBar.style.cssText = 'padding:8px 10px 2px;';
+  copyBar.innerHTML = `<button id="btn-copy-timeline" onclick="copyTimeline()"
+    style="width:100%;padding:9px;background:#f0f4ff;border:1px solid #9ec5fe;
+           border-radius:6px;cursor:pointer;font-weight:600;
+           color:var(--bs-primary-text);font-size:13px;">
+    📋 Copy Timeline
+  </button>`;
+  container.appendChild(copyBar);
+  // ────────────────────────────────────────────────────
+
+  if(!sessions.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada jadwal</div>`;return;}
+  const events={};
+  sessions.forEach(s=>{
+    const firstPic=s.hosts?.[0]?.picData||"-";
+    const lastPic=s.hosts?.[s.hosts.length-1]?.picData||"-";
+    if(s.startTime&&s.startTime!=="-"){
+      if(!events[s.startTime])events[s.startTime]={starts:[],ends:[]};
+      events[s.startTime].starts.push({...s,picForEvent:firstPic});
+    }
+    if(s.endTime&&s.endTime!=="-"){
+      const endKey=(s.endTime==="00:00"||s.endTime==="23:59")?"23:59/00:00":s.endTime;
+      if(!events[endKey])events[endKey]={starts:[],ends:[]};
+      events[endKey].ends.push({...s,picForEvent:lastPic});
+    }
+  });
+  Object.entries(events).forEach(([time,ev])=>{assignPics(ev.starts,ev.ends,getAvailableOps(sessions,time));});
+  const now=Date.now();
+  const sorted=Object.keys(events).sort((a,b)=>{
+    const f=t=>t==="23:59/00:00"?1441:(([h,m])=>h*60+m)(t.split(":").map(Number));
+    return f(a)-f(b);
+  });
+  let firstUpcoming=null;
+function makeBlock(ev,time,type){
+  const items=type==="start"?ev.starts:ev.ends;
+  if(!items.length)return null;
+  const display=time==="23:59/00:00"?"23:59 / 00:00":time;
+  const checkTime=time==="23:59/00:00"?"23:59":time;
+  const eventMs=timeToMs(sessions[0]?.date,checkTime);
+  const isPast=eventMs&&eventMs<now;
+  const block=document.createElement("div");
+  block.className=`time-block${isPast?" collapsed":""}`;
+
+  const header=document.createElement("div");
+  header.className=`time-header ${type==="start"?"start":"end"}-header`;
+  header.style.cssText="display:flex;align-items:center;gap:6px;justify-content:space-between;";
+
+  // ── Copy button (stop propagation supaya tidak trigger toggle) ──
+  const copyBtn = document.createElement("button");
+  copyBtn.textContent = "📋";
+  copyBtn.title = `Copy ${type} ${display}`;
+  copyBtn.style.cssText = `
+    padding:2px 8px;border-radius:4px;font-size:0.65rem;font-weight:700;cursor:pointer;
+    border:1px solid rgba(0,0,0,0.15);background:rgba(255,255,255,0.6);
+    color:inherit;flex-shrink:0;line-height:1.4;
+  `;
+  copyBtn.onclick = (e) => {
+    e.stopPropagation();
+    copyTimeBlock(time, type, items, copyBtn);
+  };
+
+  if(isPast){
+    header.style.opacity="0.55";
+    header.innerHTML=`
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
+        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
+        <span>${type==="start"?"Start":"End"} ${display}</span>
+        <span class="count-badge">▸ ${items.length}</span>
+      </div>`;
+    header.appendChild(copyBtn);
+    header.onclick=(e)=>{
+      if(e.target===copyBtn)return;
+      const wasCollapsed=block.classList.contains("collapsed");
+      block.classList.toggle("collapsed");
+      const cnt=block.querySelector(".sessions-container");
+      cnt.style.maxHeight=wasCollapsed?cnt.scrollHeight+"px":"0px";
+    };
+  }else{
+    header.innerHTML=`
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
+        <span class="dot ${type==="start"?"start":"end"}-dot"></span>
+        <span>${type==="start"?"▶ Start":"⏹ End"} ${display}</span>
+        <span class="toggle-icon">▾</span>
+      </div>`;
+    header.appendChild(copyBtn);
+  }
+
+  const content=document.createElement("div");
+  content.className="sessions-container";
+  content.style.maxHeight=isPast?"0px":"none";
+  items.forEach((s,i)=>content.appendChild(makeTimelineCard(s,i+1,type,time)));
+  block.appendChild(header);
+  block.appendChild(content);
+  if(!isPast&&!firstUpcoming)firstUpcoming=block;
+  return block;
+}
+
+  sorted.forEach(time=>{
+    const ev=events[time];
+    const sb=makeBlock(ev,time,"start");
+    const eb=makeBlock(ev,time,"end");
+    if(sb)container.appendChild(sb);
+    if(eb)container.appendChild(eb);
+  });
+  if(firstUpcoming)setTimeout(()=>firstUpcoming.scrollIntoView({behavior:"smooth",block:"start"}),150);
+}
+
+function makeTimelineCard(s,num,mode,eventTime=null){
+  const now=Date.now();
+  const checkTime=eventTime||s.startTime;
+  const eventMs=checkTime==="23:59/00:00"?null:timeToMs(s.date,checkTime);
+  const isPast=eventMs&&eventMs<now;
+  const isSoon=eventMs&&(eventMs-now)<15*60*1000&&!isPast;
+  const picLabel=s.assignedPic||"LSC";
+  const isLSC=picLabel==="LSC";
+  const firstHost=s.hosts?.[0]?.host||"-";
+  const card=document.createElement("div");
+  card.className=`session-card${isPast?" past":""}${isSoon?" soon":""}${s.isMarathon?" marathon-card":""}`;
+  card.innerHTML=`
+    <div class="session-num">${num}</div>
+    <div class="session-info">
+      <div class="session-brand">${s.brand}${s.isMarathon?`<span class="type-badge marathon-badge">🏃 Marathon</span>`:`<span class="type-badge single-badge">⚡ Single</span>`}</div>
+      <div class="session-meta"><span class="badge marketplace">${s.marketplace}</span><span class="badge studio">${s.studio}</span></div>
+      <div class="session-host">👤 ${firstHost}</div>
+      ${mode==="single"?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
+    </div>
+    <div class="session-pic-right${isLSC?" lsc":""}">${picLabel}</div>`;
+  return card;
+}
+
+function renderSingle(){
+  const container=document.getElementById("schedule-list");
+  container.innerHTML="";
+  const list=sessions.filter(s=>!s.isMarathon);
+  if(!list.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Tidak ada sesi single</div>`;return;}
+  const copies=list.map(s=>Object.assign({},s));
+  assignPics(copies,[]);
+  copies.forEach((s,i)=>container.appendChild(makeTimelineCard(s,i+1,"single")));
+}
+
+// ─────────────────────────────────────────────
+// STANDBY
+// ─────────────────────────────────────────────
+const STANDBY_BRANDS=[
+  {key:"AT Tiktok",slotFormat:false,showBackup:true,match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="tiktok"},
+  {key:"Samsonite Tiktok",slotFormat:false,showBackup:true,match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="tiktok"},
+  {key:"AT Shopee",slotFormat:false,showBackup:false,match:s=>s.brand.toLowerCase().includes("american tourister")&&s.marketplace.toLowerCase()==="shopee"},
+  {key:"Samsonite Shopee",slotFormat:true,showBackup:false,match:s=>s.brand.toLowerCase().includes("samsonite")&&s.marketplace.toLowerCase()==="shopee"},
+  {key:"ASICS",slotFormat:false,showBackup:false,match:s=>s.brand.toLowerCase().includes("asics")},
+];
+const BACKUP_DEPRIORITY={pagi:new Set(["nadiem"]),siang:new Set(["maulidan"])};
+
+function buildPicShiftData(){
+  const shifts={pagi:{},siang:{}};
+  sessions.forEach(s=>{
+    const n=parseInt((s.studio||"").match(/\d+/)?.[0]||"0");if(!n)return;
+    s.hosts.forEach(h=>{
+      if(!h.picData||h.picData==="-")return;
+      const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+      const shift=getShift(endStr);if(shift==="malam")return;
+      const key=h.picData.trim().toLowerCase(),name=formatPic(h.picData);
+      if(!shifts[shift][key])shifts[shift][key]={name,studios:new Set()};
+      shifts[shift][key].studios.add(n);
+    });
+  });
+  return shifts;
+}
+
+function buildStandbyData(){
+  const nonDedByShift={pagi:{},siang:{}};
+  sessions.forEach(s=>{
+    s.hosts.forEach(h=>{
+      if(!h.picData||h.picData==="-")return;
+      const key=h.picData.trim().toLowerCase();
+      if(DEDICATED_OPS.includes(key)||LSC_NAMES_SET.has(key))return;
+      const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+      const shift=getShift(endStr);if(shift==="malam")return;
+      const cur=nonDedByShift[shift][key];
+      if(!cur){nonDedByShift[shift][key]={name:h.picData.trim(),minStart:h.startTime,maxEnd:endStr};}
+      else{
+        if(toMinJS(h.startTime)<toMinJS(cur.minStart))cur.minStart=h.startTime;
+        if(toMinJS(endStr)>toMinJS(cur.maxEnd))cur.maxEnd=endStr;
+      }
+    });
+  });
+  function findBackup(shift,usedSet){
+    const entries=Object.values(nonDedByShift[shift]);
+    for(const e of entries){if(usedSet.has(e.name.toLowerCase()))continue;if(BACKUP_DEPRIORITY[shift]?.has(e.name.toLowerCase()))continue;return e;}
+    for(const e of entries){if(usedSet.has(e.name.toLowerCase()))continue;return e;}
+    return null;
+  }
+  return STANDBY_BRANDS.map(b=>{
+    const matched=sessions.filter(b.match);
+    const slots=[],seenKey=new Set();
+    const usedNonDed={pagi:new Set(),siang:new Set()};
+    matched.forEach(s=>{
+      if(b.slotFormat){
+        s.hosts.forEach(h=>{
+          const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+          const shift=getShift(endStr);if(shift==="malam")return;
+          const st=(h.startTime||"").substring(0,5),en=(h.endTime||"").substring(0,5);
+          let picForSlot=null;
+          const picKey=(h.picData||"").trim().toLowerCase();
+          if(!h.picData||h.picData==="-"||DEDICATED_OPS.includes(picKey)||LSC_NAMES_SET.has(picKey)){
+            const backup=findBackup(shift,usedNonDed[shift]);if(!backup)return;
+            picForSlot=backup.name;usedNonDed[shift].add(backup.name.toLowerCase());
+          }else{picForSlot=h.picData.trim();}
+          const slotKey=`${st}-${en}-${picForSlot.toLowerCase()}`;
+          if(seenKey.has(slotKey))return;seenKey.add(slotKey);
+          slots.push({type:"slot",label:`${st.replace(":00","")}–${en.replace(":00","")}`,pic:picForSlot,nonDedPic:null,nonDedTime:null,sortKey:toMinJS(h.startTime)});
+        });
+      }else{
+        s.hosts.forEach(h=>{
+          if(!h.picData||h.picData==="-")return;
+          const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
+          const shift=getShift(endStr);if(shift==="malam")return;
+          const shiftKey=`${shift}-${h.picData.trim().toLowerCase()}`;
+          if(seenKey.has(shiftKey))return;seenKey.add(shiftKey);
+          let nonDedPic=null,nonDedTime=null;
+          if(b.showBackup){
+            const backup=findBackup(shift,usedNonDed[shift]);
+            if(backup){nonDedPic=backup.name;const st=backup.minStart.replace(":00","");const en=backup.maxEnd.replace(":00","");nonDedTime=`${st}–${en}`;usedNonDed[shift].add(backup.name.toLowerCase());}
+          }
+          slots.push({type:"shift",label:shift.toUpperCase(),pic:h.picData.trim(),nonDedPic,nonDedTime,sortKey:shift==="pagi"?0:1});
+        });
+      }
+    });
+    slots.sort((a,b)=>a.sortKey-b.sortKey);
+    return{key:b.key,slotFormat:b.slotFormat,slots};
+  }).filter(b=>b.slots.length>0);
+}
+
+function renderStandby(){
+  const container=document.getElementById("schedule-list");
+  container.innerHTML="";
+  if(!sessions.length){container.innerHTML=`<div class="empty"><span class="empty-icon">📭</span>Data belum dimuat</div>`;return;}
+  const dateStr=sessions[0]?.date||"";
+  let dateLabel="";
+  try{dateLabel=new Date(dateStr+"T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase();}catch(e){}
+  const picShift=buildPicShiftData();
+  const standbyList=buildStandbyData();
+  let html=`<div class="standby-wrapper">`;
+  html+=`<div class="date-banner"><div class="date-title">📅 REMINDER HARIAN</div><div class="date-value">${dateLabel}</div></div>`;
+  ["pagi","siang"].forEach(shift=>{
+    const data=picShift[shift];
+    if(!data||!Object.keys(data).length)return;
+    const isShiftPagi=shift==="pagi";
+    html+=`<div class="card"><div class="card-header ${isShiftPagi?"header-primary":"header-warning"}">👥 PIC Shift ${shift.charAt(0).toUpperCase()+shift.slice(1)}</div><div class="list-group">`;
+    Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{
+      html+=`<div class="list-group-item"><span class="item-name">${d.name}</span><span class="item-right">Studio ${[...d.studios].sort((a,b)=>a-b).join(", ")}</span></div>`;
+    });
+    html+=`</div></div>`;
+  });
+  standbyList.forEach(b=>{
+    html+=`<div class="card"><div class="card-header header-warning">📍 Standby ${b.key}</div>`;
+    b.slots.forEach(slot=>{
+      const picDisp=formatPic(slot.pic);
+      let backupStr="";
+      if(slot.nonDedPic){backupStr=` <span style="color:var(--bs-muted);font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;if(slot.nonDedTime)backupStr+=` <span style="color:#adb5bd;font-size:0.62rem">(${slot.nonDedTime})</span>`;}
+      html+=`<div class="standby-row-item"><span class="standby-time">${slot.label}</span><span class="standby-pic">${picDisp}${backupStr}</span></div>`;
+    });
+    html+=`</div>`;
+  });
+  html+=`<div class="card"><div class="card-header">📋 Prosedur</div><div class="card-body"><div class="standby-text">1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT\n2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG\n3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST</div></div></div>`;
+  html+=`<div class="card"><div class="card-header header-primary">🔗 Links</div>
+    <a class="standby-link" href="https://forms.gle/J8WG4kmQap7h6VcZ7" target="_blank">📝 Form Bukti Tayang</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0" target="_blank">📊 Data Report & List Host</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642" target="_blank">📷 Backup Screenshot LS</a>
+    <a class="standby-link" href="https://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791" target="_blank">📈 Insight AT & Samsonite</a>
+  </div>`;
+  html+=`<button class="btn-copy-standby" onclick="copyStandbyText()">📋 Copy Teks Reminder</button></div>`;
+  container.innerHTML=html;
+}
+
+// ─────────────────────────────────────────────
+// KLASEMEN
+// ─────────────────────────────────────────────
+function _bsLoadingHTML(msg){
+  return `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 20px;gap:12px"><div class="spinner-border"></div><span style="color:var(--bs-muted);font-size:0.82rem;font-weight:500">${msg}</span></div>`;
+}
+
+let _lastKlasemenData = null;
+
+async function loadKlasemen() {
+  if (activeTab !== "klasemen") return;
+  const container = document.getElementById("schedule-list");
+  if (_lastKlasemenData) { renderKlasemen(_lastKlasemenData); }
+  else { container.innerHTML = _bsLoadingHTML("Memuat klasemen..."); }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch(API_URL + "?action=leaderboard&t=" + Date.now(), { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (!data.leaderboard) {
+      if (!_lastKlasemenData && activeTab === "klasemen")
+        container.innerHTML = `<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
+      return;
+    }
+    if (activeTab !== "klasemen") return;
+    _lastKlasemenData = data;
+    renderKlasemen(_lastKlasemenData);
+  } catch(err) {
+    if (activeTab !== "klasemen") return;
+    if (!_lastKlasemenData)
+      container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+    else
+      showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
+  }
+}
+
+async function forceRefreshKlasemen() {
+  if (activeTab !== "klasemen") return;
+  const container = document.getElementById("schedule-list");
+  _lastKlasemenData = null;
+  container.innerHTML = _bsLoadingHTML("Force refresh...");
+  try {
+    const res = await fetch(API_URL + "?action=leaderboard&nocache=1&t=" + Date.now());
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error);
+    if (activeTab !== "klasemen") return;
+    _lastKlasemenData = data;
+    renderKlasemen(_lastKlasemenData);
+    showBanner("✅ Klasemen diperbarui!", "success");
+  } catch(err) {
+    if (activeTab !== "klasemen") return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.message}</div>`;
+  }
+}
+
+function renderKlasemen(data) {
+  const container = document.getElementById("schedule-list");
+  if (!data.leaderboard) {
+    container.innerHTML = `<div class="empty"><span class="empty-icon">⚠️</span>Deploy Apps Script versi baru dulu</div>`;
+    return;
+  }
+
+  const totalPendHariH = data.leaderboard.reduce((s, r) => s + r.pendingHariH, 0);
+  const totalPendH1    = data.leaderboard.reduce((s, r) => s + r.pendingH1, 0);
+  const totalRows      = data.leaderboard.reduce((s, r) => s + r.total, 0);
+  const totalHold      = data.leaderboard.reduce((s, r) => s + r.hold, 0);
+  // ─── NEW: total belumLengkap ───
+  const totalBelumLengkap = data.leaderboard.reduce((s, r) => s + (r.pendingBelumLengkap || 0), 0);
+
+  const summaryCard = (bg, border, numColor, num, label) =>
+    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center;position:relative;overflow:hidden">
+       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
+       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
+     </div>`;
+
+  let html = `<div style="padding:8px 10px 24px">`;
+
+  html += `<div style="text-align:center;margin-bottom:12px">
+    <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">🏆 Klasemen Pending Data Input</div>
+    <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.dateFrom || ""} → ${data.dateTo || ""}</div>
+  </div>`;
+
+  // ─── Summary Cards ───
+  html += `<div style="display:flex;gap:7px;margin-bottom:14px">
+    ${summaryCard("var(--bs-danger-subtle)",   "#f1aeb5",          "var(--bs-danger)",   totalPendHariH,    "⏳ Hari H")}
+    ${summaryCard("var(--bs-warning-subtle)",  "#ffe69c",          "#856404",            totalPendH1,       "📋 H+1")}
+    ${summaryCard("var(--bs-primary-subtle)",  "#9ec5fe",          "var(--bs-primary)",  totalRows,         "📂 Total")}
+  </div>`;
+
+  // ─── Leaderboard Table ───
+  html += `<div style="background:var(--bs-white);border-radius:var(--bs-radius-xl);overflow:hidden;margin-bottom:14px;border:1px solid var(--bs-border);box-shadow:var(--bs-shadow-sm)">
+    <div style="padding:7px 12px;background:var(--bs-light);border-bottom:1px solid var(--bs-border);font-size:0.6rem;font-weight:700;color:var(--bs-muted);display:flex;gap:4px;text-transform:uppercase;letter-spacing:0.5px">
+      <span style="width:26px">#</span>
+      <span style="flex:1">PIC</span>
+      <span style="width:44px;text-align:center">H+1</span>
+      <span style="width:44px;text-align:center">Hari H</span>
+      <span style="width:38px;text-align:center">Total</span>
+      <span style="width:34px;text-align:center">Hold</span>
+    </div>`;
+
+  data.leaderboard.forEach((r, idx) => {
+    const pts              = r.pendingPoints;
+    const belumLengkapCount = r.pendingBelumLengkap || 0;
+    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}.`;
+
+    const sColor = pts === 0
+      ? "var(--bs-success)"
+      : pts <= 5  ? "var(--bs-primary)"
+      : pts <= 15 ? "#856404"
+      : "var(--bs-danger)";
+
+    // ─── NEW: status text bedain belumLengkap ───
+    let sTxt;
+    if (pts === 0) {
+      sTxt = "✅ Data Lengkap";
+    } else {
+      const parts = [];
+      if (r.pendingHariH > 0) {
+        const blStr = belumLengkapCount > 0 ? ` ()` : "";
+        parts.push(`${r.pendingHariH} Hari H${blStr}`);
+      }
+      if (r.pendingH1 > 0) parts.push(`${r.pendingH1} H+1`);
+      sTxt = parts.join(" · ");
+    }
+
+    const rowBg = idx % 2 === 1 ? "var(--bs-light)" : "var(--bs-white)";
+
+    html += `<div style="padding:7px 12px;border-top:1px solid var(--bs-border-subtle);display:flex;align-items:center;gap:4px;background:${rowBg}">
+      <span style="width:26px;font-size:0.8rem">${medal}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div>
+        <div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div>
+      </div>
+      <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:#856404">${r.pendingH1}</span>
+      <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:var(--bs-danger)">${r.pendingHariH}</span>
+      <span style="width:38px;text-align:center;font-size:0.75rem;color:var(--bs-muted)">${r.total}</span>
+      <span style="width:34px;text-align:center;font-size:0.75rem;color:var(--bs-secondary)">${r.hold}</span>
+    </div>`;
+  });
+
+  html += `</div>`;
+
+  // ─── Copy ID Line Buttons ───
+  html += `<div style="font-size:0.68rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Copy ID Line Pending per PIC</div>`;
+  html += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">`;
+
+  data.leaderboard.forEach(r => {
+    const hasPending = r.pendingRows?.length > 0;
+    const idLines    = (r.pendingRows || []).map(p => p.idLine).filter(Boolean);
+    const pts        = r.pendingPoints;
+    if (hasPending) {
+      html += `<button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g, '&quot;')})"
+        style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.7rem;font-weight:600;cursor:pointer">
+        ${formatPic(r.pic)} <span style="color:#856404;font-weight:700">(${pts})</span>
+      </button>`;
+    } else {
+      html += `<button disabled style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);background:var(--bs-light);color:#adb5bd;font-size:0.7rem;font-weight:600;cursor:not-allowed">
+        ${formatPic(r.pic)} ✅
+      </button>`;
+    }
+  });
+
+  html += `</div>`;
+
+  // ─── Detail Pending per PIC ───
+  const withPending = data.leaderboard.filter(r => r.pendingRows?.length > 0);
+  if (withPending.length) {
+    withPending.forEach(r => {
+      html += `<div style="margin-bottom:12px">
+        <div style="font-size:0.7rem;font-weight:700;color:var(--bs-primary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:5px">
+          ${formatPic(r.pic)} — ${r.pendingRows.length} sesi pending
+        </div>`;
+
+      r.pendingRows.forEach(p => {
+        const tags = [];
+
+        // ─── NEW: bedain belumLengkap (oranye) vs missing biasa (merah) ───
+        if (p.hariH) {
+          if (p.belumLengkap) {
+            tags.push(`<span style="background:#fff3cd;color:#92400e;border:1px solid #fde68a;font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
+          } else {
+            tags.push(`<span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">Hari H</span>`);
+          }
+        }
+        if (p.h1) {
+          tags.push(`<span style="background:var(--bs-warning-subtle);color:var(--bs-warning-text);font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:600">H+1</span>`);
+        }
+
+        // ─── NEW: border & background bedain belumLengkap ───
+        const cardBorder = p.belumLengkap ? "#fde68a" : "var(--bs-border)";
+        const cardBg     = p.belumLengkap ? "#fffbeb" : "var(--bs-white)";
+
+        html += `<div style="background:${cardBg};border-radius:var(--bs-radius);padding:7px 10px;margin-bottom:3px;display:flex;align-items:center;gap:8px;border:1px solid ${cardBorder};box-shadow:var(--bs-shadow-sm)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.78rem;font-weight:600;color:var(--bs-dark)">${p.brand}</div>
+            <div style="font-size:0.63rem;color:var(--bs-muted);margin-top:1px">${p.date} · ${p.startTime} · ${p.studio}</div>
+          </div>
+          <div style="display:flex;gap:3px">${tags.join("")}</div>
+          <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0">${p.idLine}</div>
+        </div>`;
+      });
+
+      html += `</div>`;
+    });
+  }
+
+  html += `<button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block" style="margin-top:6px;padding:10px">🔄 Refresh (Clear Cache)</button>`;
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+
+function updateTabLabels() {
+  const toWIB = d => new Date(d.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const fmt   = d => d.toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
+  const today = toWIB(new Date());
+  const h7 = new Date(today); h7.setDate(h7.getDate() - 7);
+  const h1 = new Date(today); h1.setDate(h1.getDate() - 1);
+  const btnKlasemen = document.getElementById("tab-klasemen");
+  const btnHariH    = document.getElementById("tab-hariH");
+  if (btnKlasemen) btnKlasemen.innerHTML = `Data <span style="opacity:0.75;font-size:0.85em">${fmt(h7)} – ${fmt(h1)}</span>`;
+  if (btnHariH)    btnHariH.innerHTML    = `Data <span style="opacity:0.75;font-size:0.85em">${fmt(today)}</span>`;
+}
+
+// ─────────────────────────────────────────────
+// HARI H
+// ─────────────────────────────────────────────
+let _lastHariHData = null;
+let _lastFormData  = [];
+
+// FIX: Promise.allSettled supaya kalau formcheck gagal, today data tetap muncul
+async function loadHariH() {
+  if (activeTab !== "hariH") return;
+  const container = document.getElementById("schedule-list");
+  if (_lastHariHData) { renderHariH(_lastHariHData, _lastFormData); }
+  else { container.innerHTML = _bsLoadingHTML("Memuat data hari ini..."); }
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
+    const [todayResult, formResult] = await Promise.allSettled([
+      fetch(API_URL + "?action=today&t="     + Date.now(), { signal: controller.signal }),
+      fetch(API_URL + "?action=formcheck&t=" + Date.now(), { signal: controller.signal }),
+    ]);
+    clearTimeout(timeout);
+    if (todayResult.status === "rejected") throw todayResult.reason;
+    const data     = JSON.parse(await todayResult.value.text());
+    const formData = formResult.status === "fulfilled"
+      ? JSON.parse(await formResult.value.text())
+      : { success: false };
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (activeTab !== "hariH") return;
+    _lastHariHData = data;
+    _lastFormData  = formData.success ? formData.responses : [];
+    renderHariH(_lastHariHData, _lastFormData);
+  } catch(err) {
+    if (activeTab !== "hariH") return;
+    if (!_lastHariHData)
+      container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+    else
+      showBanner(err.name === "AbortError" ? "⚠️ Timeout — menampilkan data terakhir" : "⚠️ Gagal update: " + err.message, "warning");
+  }
+}
+
+// FIX: Promise.allSettled juga untuk forceRefresh
+async function forceRefreshHariH() {
+  if (activeTab !== "hariH") return;
+  const container = document.getElementById("schedule-list");
+  _lastHariHData = null; _lastFormData = [];
+  container.innerHTML = _bsLoadingHTML("Force refresh...");
+  try {
+    const controller = new AbortController();
+    // FIX: timeout 30000ms (dari 20000ms)
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const [todayResult, formResult] = await Promise.allSettled([
+      fetch(API_URL + "?action=today&nocache=1&t="     + Date.now(), { signal: controller.signal }),
+      fetch(API_URL + "?action=formcheck&nocache=1&t=" + Date.now(), { signal: controller.signal }),
+    ]);
+    clearTimeout(timeout);
+    if (todayResult.status === "rejected") throw todayResult.reason;
+    const data     = JSON.parse(await todayResult.value.text());
+    const formData = formResult.status === "fulfilled"
+      ? JSON.parse(await formResult.value.text())
+      : { success: false };
+    if (!data.success) throw new Error(data.error || "Unknown error");
+    if (activeTab !== "hariH") return;
+    _lastHariHData = data;
+    _lastFormData  = formData.success ? formData.responses : [];
+    renderHariH(_lastHariHData, _lastFormData);
+    showBanner("✅ Data hari H diperbarui!", "success");
+  } catch(err) {
+    if (activeTab !== "hariH") return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === "AbortError" ? "Timeout, coba refresh" : err.message}</div>`;
+  }
+}
+
+
+// ✅ FINAL — tidak perlu startTime, tidak perlu override
+function getHariHShift(endTime) {
+  if (!endTime || endTime === "-") return "siang";
+  const [h, m] = endTime.split(":").map(Number);
+  if (h === 0 && m === 0) return "siang";  // 00:00 = akhir shift siang
+  if (h >= 8  && h < 16) return "pagi";
+  if (h >= 16)            return "siang";
+  return "malam";                           // 00:01–07:59 genuinely overnight
+}
+
+const SHIFT_ORDER = { pagi: 0, siang: 1, malam: 2 };
+const SHIFT_LABEL = {
+  pagi : "☀️ Shift Pagi   08:00 – 15:59",
+  siang: "🌆 Shift Siang  16:00 – 00:00",
+  malam: "🌙 Shift Malam  00:01 – 07:59",
+};
+const SHIFT_COLOR = {
+  pagi : { bg: "var(--bs-warning-subtle)",   border: "#ffe69c",          text: "#856404" },
+  siang: { bg: "var(--bs-primary-subtle)",   border: "#9ec5fe",          text: "var(--bs-primary)" },
+  malam: { bg: "var(--bs-secondary-subtle)", border: "var(--bs-border)", text: "var(--bs-secondary)" },
+};
+
+function _fmtSubmitTime(ms) {
+  if (!ms) return '-';
+  try {
+    const d = new Date(ms);
+    return d.toLocaleDateString("id-ID", { day:"numeric", month:"short", timeZone:"Asia/Jakarta" })
+      + ", " + d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
+  } catch(e) { return '-'; }
+}
+
+// ─────────────────────────────────────────────
+// INTERVAL OVERLAP HELPER
+// ─────────────────────────────────────────────
+function getOverlapRatio(formStart, formEnd, hStart, hEnd) {
+  let fS = toMin(formStart), fE = toMin(formEnd);
+  let hS = toMin(hStart),    hE = toMin(hEnd);
+  // FIX: Normalize 00:00 end time → 1440
+  if (fE === 0) fE = 1440;
+  if (hE === 0) hE = 1440;
+  const overlap = Math.max(0, Math.min(fE, hE) - Math.max(fS, hS));
+  const dur = fE - fS;
+  return dur > 0 ? overlap / dur : 0;
+}
+
+// ─────────────────────────────────────────────
+// ★ parseFormHosts
+// "Jonathan (with Agnes)" → ["Jonathan", "Agnes"]
+// ─────────────────────────────────────────────
+function parseFormHosts(hostStr) {
+  if (!hostStr) return [];
+  const cleaned = hostStr.replace(/[()]/g, ' ');
+  const parts   = cleaned
+    .split(/\s*(?:\bwith\b|\bdan\b|\bbareng\b|\bsama\b|&|,)\s*/i)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  return parts.length > 0 ? parts : [hostStr.trim()];
+}
+
+// ─────────────────────────────────────────────
+// ★ hostNameMatchesSlot — fuzzy word match
+// ─────────────────────────────────────────────
+function hostNameMatchesSlot(formHostName, hostObj) {
+  const hostName   = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
+  const wordsForm  = formHostName.toLowerCase().trim().split(/\s+/);
+  const wordsSched = hostName.toLowerCase().trim().split(/\s+/);
+  return wordsForm.some(wf => {
+    if (wf.length < 3) return false;
+    return wordsSched.some(ws => {
+      if (ws.length < 3) return false;
+      const minLen = Math.min(wf.length, ws.length);
+      return wf.substring(0, minLen) === ws.substring(0, minLen);
+    });
+  });
+}
+
+// ─────────────────────────────────────────────
+// ★ getTimeMatchScore — scoring-based time matching
+//   end ±30m → +3 | start ±30m → +2 | overlap≥50% → +1
+//   threshold match: ≥2 | kandidat: ≥1 atau overlap≥15%
+// ─────────────────────────────────────────────
+function getTimeMatchScore(formResp, hostStart, hostEnd) {
+  let formStartMin = toMin(formResp.startLive);
+  let formEndMin   = toMin(formResp.endLive);
+  let hStartMin    = toMin(hostStart);
+  let hEndMin      = toMin(hostEnd);
+  // FIX: Normalize 00:00 end time → 1440
+  if (formEndMin === 0) formEndMin = 1440;
+  if (hEndMin === 0)    hEndMin    = 1440;
+  let score = 0;
+  if (Math.abs(formEndMin - hEndMin) <= 30)     score += 3;
+  if (Math.abs(formStartMin - hStartMin) <= 30) score += 2;
+  const overlapStart = Math.max(formStartMin, hStartMin);
+  const overlapEnd   = Math.min(formEndMin, hEndMin);
+  const formDur      = formEndMin - formStartMin;
+  if (formDur > 0 && (overlapEnd - overlapStart) / formDur >= 0.5) score += 1;
+  return score;
+}
+
+// ─────────────────────────────────────────────
+// RENDER HARI H
+// ─────────────────────────────────────────────
+function renderHariH(data, formResponses = []) {
+  const container    = document.getElementById("schedule-list");
+  const leaderboard  = data.leaderboard || [];
+  const totalPending = leaderboard.reduce((s,r) => s + r.pending, 0);
+  const totalAll     = leaderboard.reduce((s,r) => s + r.total, 0);
+
+  const shiftGroups = { pagi: {}, siang: {}, malam: {} };
+  leaderboard.forEach(r => {
+    if (!r.rows || !r.rows.length) return;
+    r.rows.forEach(row => {
+      const shift = getHariHShift(row.endTime);
+      if (!shiftGroups[shift][r.pic]) shiftGroups[shift][r.pic] = { pic: r.pic, rows: [] };
+      shiftGroups[shift][r.pic].rows.push(row);
+    });
+  });
+
+  window._hariHShiftGroups = shiftGroups;
+  window._hariHDate        = data.date;
+
+  function sessionMatch(formResp, p, hostObj) {
+    const hostName  = typeof hostObj === 'string' ? hostObj : (hostObj?.name || '');
+    const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
+    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
+
+    const formHosts    = parseFormHosts(formResp.host);
+    const anyHostMatch = formHosts.some(name => hostNameMatchesSlot(name, hostName));
+    if (!anyHostMatch) return false;
+
+    const fBrand = normalizeBrand(formResp.brand);
+    const sBrand = normalizeBrand(p.brand);
+    if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+
+    if (formResp.marketplace && p.mp) {
+      const mpOk = formResp.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
+        || p.mp.toLowerCase().includes(formResp.marketplace.toLowerCase().substring(0,4));
+      if (!mpOk) return false;
+    }
+
+    const score = getTimeMatchScore(formResp, hostStart, hostEnd);
+    if (score < 2) return false;
+
+    return true;
+  }
+
+  function deduplicateResponses(responses) {
+    const groups = {};
+    responses.forEach(r => {
+      const key = [
+        r.host.toLowerCase().trim(),
+        r.brand.toLowerCase().trim(),
+        r.marketplace.toLowerCase().trim(),
+        r.startLive || '',
+        r.endLive   || '',
+      ].join('|');
+      if (!groups[key]) {
+        groups[key] = { ...r };
+      } else {
+        const existing = groups[key].screenshot.split(',').map(s => s.trim()).filter(Boolean);
+        const incoming = r.screenshot.split(',').map(s => s.trim()).filter(Boolean);
+        incoming.forEach(lnk => { if (!existing.includes(lnk)) existing.push(lnk); });
+        groups[key].screenshot = existing.join(',');
+        if (r.submittedAt && r.submittedAt > (groups[key].submittedAt || 0)) {
+          groups[key].submittedAt = r.submittedAt;
+        }
+      }
+    });
+    return Object.values(groups);
+  }
+
+  function buildExclusiveClaims(dedupedResponses, allSlots) {
+    const claims = {};
+
+    dedupedResponses.forEach((r, rIdx) => {
+      const formHosts   = parseFormHosts(r.host);
+      const isMultiHost = formHosts.length > 1;
+
+      if (isMultiHost) {
+        const claimedKeys = [];
+
+        formHosts.forEach(formHostName => {
+          let bestSlotKey = null;
+          let bestScore   = -1;
+          let bestDiff    = Infinity;
+
+          allSlots.forEach(({ slotKey, p, h }) => {
+            const hostName  = typeof h === 'string' ? h : (h?.name || '');
+            const hostStart = (typeof h === 'object' && h?.start) ? h.start : p.startTime;
+            const hostEnd   = (typeof h === 'object' && h?.end && h.end !== '-') ? h.end : null;
+
+            if (!hostNameMatchesSlot(formHostName, hostName)) return;
+
+            const fBrand = normalizeBrand(r.brand);
+            const sBrand = normalizeBrand(p.brand);
+            if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return;
+
+            if (r.marketplace && p.mp) {
+              const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
+                || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
+              if (!mpOk) return;
+            }
+
+            const score = getTimeMatchScore(r, hostStart, hostEnd);
+            if (score < 2) return;
+
+            const diff = r.startLive ? Math.abs(toMinJS(r.startLive) - toMinJS(hostStart)) : 9999;
+
+            if (score > bestScore || (score === bestScore && diff < bestDiff)) {
+              bestScore   = score;
+              bestDiff    = diff;
+              bestSlotKey = slotKey;
+            }
+          });
+
+          if (bestSlotKey && !claimedKeys.includes(bestSlotKey)) {
+            claimedKeys.push(bestSlotKey);
+          }
+        });
+
+        if (claimedKeys.length > 0) claims[rIdx] = claimedKeys;
+
+      } else {
+        let bestSlotKey = null;
+        let bestScore   = -1;
+        let bestDiff    = Infinity;
+
+        allSlots.forEach(({ slotKey, p, h }) => {
+          if (!sessionMatch(r, p, h)) return;
+
+          const hostStart = (typeof h === 'object' && h?.start) ? h.start : p.startTime;
+          const hostEnd   = (typeof h === 'object' && h?.end && h.end !== '-') ? h.end : null;
+          const score     = getTimeMatchScore(r, hostStart, hostEnd);
+          const diff      = r.startLive ? Math.abs(toMinJS(r.startLive) - toMinJS(hostStart)) : 9999;
+
+          if (score > bestScore || (score === bestScore && diff < bestDiff)) {
+            bestScore   = score;
+            bestDiff    = diff;
+            bestSlotKey = slotKey;
+          }
+        });
+
+        if (bestSlotKey !== null) claims[rIdx] = [bestSlotKey];
+      }
+    });
+
+    return claims;
+  }
+
+  // ─── PRE-PASS ───────────────────────────────────────────────────────────────
+  const dedupedForms = deduplicateResponses(formResponses);
+
+  const allSlots = [];
+  leaderboard.forEach(r => {
+    (r.rows || []).forEach(p => {
+      const hosts = (p.hosts || []).map(h =>
+        typeof h === 'string' ? { name: h, start: null, end: null } : h
+      );
+      hosts.forEach(h => {
+        allSlots.push({
+          slotKey: `${p.idLine}__${h.start || ''}__${h.name}`,
+          p, h,
+        });
+      });
+    });
+  });
+
+  const exclusiveClaims = buildExclusiveClaims(dedupedForms, allSlots);
+
+  function getClaimedForms(slotKey) {
+    return dedupedForms.filter((_, rIdx) => {
+      const c = exclusiveClaims[rIdx];
+      return Array.isArray(c) && c.includes(slotKey);
+    });
+  }
+
+  function findSessionCandidates(p, hostObj) {
+    const hostStart = (typeof hostObj === 'object' && hostObj?.start) ? hostObj.start : p.startTime;
+    const hostEnd   = (typeof hostObj === 'object' && hostObj?.end && hostObj.end !== '-') ? hostObj.end : null;
+    return dedupedForms.filter(r => {
+      const fBrand = normalizeBrand(r.brand);
+      const sBrand = normalizeBrand(p.brand);
+      if (!fBrand.includes(sBrand.substring(0,5)) && !sBrand.includes(fBrand.substring(0,5))) return false;
+      if (r.marketplace && p.mp) {
+        const mpOk = r.marketplace.toLowerCase().includes(p.mp.toLowerCase().substring(0,4))
+          || p.mp.toLowerCase().includes(r.marketplace.toLowerCase().substring(0,4));
+        if (!mpOk) return false;
+      }
+      const score = getTimeMatchScore(r, hostStart, hostEnd);
+      const ratio = getOverlapRatio(r.startLive, r.endLive, hostStart, hostEnd);
+      return score >= 1 || ratio >= 0.15;
+    });
+  }
+
+  // ─── RENDER HTML ────────────────────────────────────────────────────────────
+  const summaryCard = (bg, border, numColor, num, label) =>
+    `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
+       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
+       <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
+     </div>`;
+
+  let html = `<div style="padding:8px 10px 24px">`;
+
+  html += `
+    <div style="text-align:center;margin-bottom:12px">
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">📅 Data Hari H (Belum diisi)</div>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">!Harap selalu cek manual TANGGAL, MP, JAM & DLL pada foto file GMV host di sheet responses!</div>
+      <div style="font-size:0.68rem;color:var(--bs-muted);margin-top:3px">${data.date}</div>
+    </div>`;
+
+  html += `<div style="display:flex;gap:7px;margin-bottom:12px">
+    ${summaryCard("var(--bs-danger-subtle)","#f1aeb5","var(--bs-danger)",totalPending,"⏳ Belum Diisi")}
+    ${summaryCard("var(--bs-success-subtle)","#a3cfbb","var(--bs-success)",totalAll-totalPending,"✅ Sudah Diisi")}
+    ${summaryCard("var(--bs-primary-subtle)","#9ec5fe","var(--bs-primary)",totalAll,"📋 Total Sesi")}
+  </div>`;
+
+  html += `
+    <button onclick="forceRefreshHariH()" class="btn btn-outline-primary btn-block"
+      style="margin-bottom:16px;padding:8px;font-size:0.78rem">
+      🔄 Refresh (Clear Cache)
+    </button>`;
+
+  if (totalPending === 0) {
+    html += `<div style="text-align:center;padding:28px;color:var(--bs-success);font-size:0.85rem;font-weight:600">✅ Semua data hari ini sudah diisi!</div>`;
+  } else {
+    ["pagi","siang","malam"].forEach(shift => {
+      const picMap     = shiftGroups[shift];
+      const pics       = Object.values(picMap);
+      if (!pics.length) return;
+      const c          = SHIFT_COLOR[shift];
+      const totalShift = pics.reduce((s, p) => s + p.rows.length, 0);
+
+      html += `
+        <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
+                    padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:0.78rem;font-weight:700;color:${c.text}">${SHIFT_LABEL[shift]}</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">${totalShift} sesi belum</span>
+            <button onclick="copyShiftPending('${shift}')"
+              style="padding:3px 9px;border:1px solid ${c.border};border-radius:var(--bs-radius-pill);
+                     background:white;color:${c.text};font-size:0.62rem;font-weight:700;cursor:pointer">
+              📋 Copy
+            </button>
+          </div>
+        </div>`;
+
+      pics.sort((a, b) => b.rows.length - a.rows.length).forEach(picData => {
+        const rows    = [...picData.rows].sort((a, b) => a.startTime.localeCompare(b.startTime));
+        const ids     = rows.map(p => p.idLine).filter(Boolean);
+        const safeKey = (picData.pic + "_" + shift).replace(/[^a-zA-Z0-9]/g, '_');
+
+        html += `
+          <div style="background:var(--bs-white);border:1px solid var(--bs-border);border-radius:var(--bs-radius-lg);
+                      margin-bottom:10px;overflow:hidden;box-shadow:var(--bs-shadow-sm)">
+            <div onclick="togglePicDropdown('${safeKey}')"
+              style="padding:9px 12px;background:var(--bs-light);display:flex;align-items:center;
+                     justify-content:space-between;cursor:pointer;user-select:none;border-bottom:1px solid var(--bs-border)">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span id="pic-icon-${safeKey}" style="font-size:0.75rem;color:var(--bs-muted)">▸</span>
+                <span style="font-size:0.85rem;font-weight:700;color:var(--bs-dark)">${formatPic(picData.pic)}</span>
+                <span style="background:var(--bs-danger-subtle);color:var(--bs-danger-text);border:1px solid #f1aeb5;
+                             font-size:0.6rem;font-weight:700;padding:1px 7px;border-radius:var(--bs-radius-pill)">
+                  ${rows.length} sesi
+                </span>
+              </div>
+              <button onclick="event.stopPropagation();copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
+                style="padding:3px 10px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
+                       background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.62rem;font-weight:600;cursor:pointer">
+                📋 ID
+              </button>
+            </div>
+            <div id="pic-content-${safeKey}" style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px">`;
+
+        rows.forEach((p, pIdx) => {
+          const sessionTime = (p.endTime && p.endTime !== '-') ? `${p.startTime} → ${p.endTime}` : p.startTime;
+
+          const typeBadge = p.isMarathon
+            ? `<span style="background:var(--bs-warning-subtle);color:#856404;border:1px solid #ffe69c;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">🏃 Marathon</span>`
+            : `<span style="background:var(--bs-success-subtle);color:var(--bs-success-text);border:1px solid #a3cfbb;font-size:0.55rem;padding:2px 6px;border-radius:var(--bs-radius-pill);font-weight:700">⚡ Single</span>`;
+
+          // ← HOLD: badge merah jika row.isHold === true
+          const holdBadge = p.isHold
+            ? `<span style="background:#ef4444;color:#fff;font-size:0.55rem;font-weight:700;
+                            padding:2px 6px;border-radius:var(--bs-radius-pill);letter-spacing:.5px">
+                HOLD
+               </span>`
+            : '';
+
+          const rawHosts = (p.hosts && p.hosts.length > 0) ? p.hosts : [];
+          const hosts    = rawHosts.map(h => typeof h === 'string' ? { name: h, start: null, end: null } : h);
+
+          const matchedList   = [];
+          const unmatchedList = [];
+
+          hosts.forEach((h, hIdx) => {
+            const slotKey    = `${p.idLine}__${h.start || ''}__${h.name}`;
+            const allMatches = getClaimedForms(slotKey);
+
+            if (allMatches.length > 0) {
+              let endMs = null;
+              if (h.end && h.end !== '-' && data.date) {
+                try {
+                  const startMs = h.start ? new Date(`${data.date}T${h.start}:00+07:00`).getTime() : 0;
+                  endMs = new Date(`${data.date}T${h.end}:00+07:00`).getTime();
+                  if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
+                } catch(e) {}
+              }
+              const validMatches = endMs
+                ? allMatches.filter(r => !r.submittedAt || r.submittedAt >= endMs)
+                : allMatches;
+              const falseMatches = endMs
+                ? allMatches.filter(r =>  r.submittedAt && r.submittedAt < endMs)
+                : [];
+
+              if (validMatches.length > 0) {
+                matchedList.push({ h, match: validMatches[0], isValid: true,  falseMatches, endMs });
+              } else {
+                matchedList.push({ h, match: falseMatches[0], isValid: false, falseMatches, endMs });
+              }
+            } else {
+              unmatchedList.push({ h, hIdx });
+            }
+          });
+
+          html += `
+            <div style="padding:12px 14px;border-bottom:1px solid var(--bs-border-subtle)">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+                <div>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+                    <span style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${p.brand}</span>
+                    ${typeBadge}
+                    ${holdBadge}
+                  </div>
+                  <div style="font-size:0.63rem;color:var(--bs-muted);display:flex;gap:10px;flex-wrap:wrap">
+                    <span>🕐 ${sessionTime}</span><span>📍 ${p.studio} · ${p.mp}</span>
+                  </div>
+                </div>
+                <div style="font-size:0.6rem;color:#adb5bd;font-family:monospace;flex-shrink:0;padding-top:2px">${p.idLine}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">`;
+
+          if (hosts.length === 0) {
+            html += `<div style="font-size:0.62rem;color:#adb5bd;font-style:italic;padding:4px 0">⚠️ Tidak ada data host</div>`;
+          } else {
+            matchedList.forEach(({ h, match, isValid, falseMatches, endMs }) => {
+              const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+              const slotTime = h.start
+                ? `<span style="color:var(--bs-muted)">${h.start}${h.end ? ' → ' + h.end : ''}</span>`
+                : (match.startLive ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive ? ' → ' + match.endLive : ''}</span>` : '');
+
+              if (isValid) {
+                const prevFalseNote = falseMatches.length > 0
+                  ? `<div style="font-size:0.58rem;color:#856404;margin-top:3px;opacity:0.85">⚠️ ${falseMatches.length}x false upload sebelumnya terdeteksi</div>`
+                  : '';
+                html += `
+                  <div style="background:var(--bs-success-subtle);border:1px solid #a3cfbb;border-radius:var(--bs-radius);padding:7px 10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                      <div>
+                        <div style="font-size:0.72rem;font-weight:700;color:var(--bs-success-text)">✅ ${h.name}</div>
+                        <div style="font-size:0.6rem;margin-top:2px">${slotTime}</div>
+                        ${prevFalseNote}
+                      </div>
+                      <div style="display:flex;gap:5px;flex-shrink:0">
+                        ${links.map((lnk, li) => lnk
+                          ? `<a href="${lnk}" target="_blank"
+                               style="padding:3px 8px;background:white;border:1px solid #a3cfbb;
+                                      border-radius:var(--bs-radius-pill);color:var(--bs-primary);
+                                      font-size:0.62rem;font-weight:700;text-decoration:none">
+                               📎${links.length > 1 ? li + 1 : ''}
+                             </a>` : '').join('')}
+                      </div>
+                    </div>
+                  </div>`;
+              } else {
+                let endLabel = '-';
+                if (endMs) {
+                  try {
+                    const d = new Date(endMs);
+                    endLabel = d.toLocaleDateString("id-ID", { day:"numeric", month:"short", timeZone:"Asia/Jakarta" })
+                      + ", " + d.toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", timeZone:"Asia/Jakarta" });
+                  } catch(e) {}
+                }
+                html += `
+                  <div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:var(--bs-radius);padding:7px 10px">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                      <div style="flex:1;min-width:0">
+                        <div style="font-size:0.72rem;font-weight:700;color:#b91c1c">⚠️ ${h.name}</div>
+                        <div style="font-size:0.6rem;margin-top:2px;color:#b91c1c;opacity:0.75">${slotTime}</div>
+                        <div style="background:white;border:1px solid #fca5a5;border-radius:var(--bs-radius);padding:5px 8px;margin-top:6px">
+                          <div style="font-size:0.62rem;font-weight:700;color:#b91c1c">❌ False form upload terdeteksi (${falseMatches.length}x)</div>
+                          <div style="font-size:0.58rem;color:#b91c1c;opacity:0.8;margin-top:1px">
+                            Disubmit ${_fmtSubmitTime(match.submittedAt)} — sesi belum selesai (end: ${endLabel})
+                          </div>
+                        </div>
+                        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--bs-radius);padding:5px 8px;margin-top:5px;display:flex;align-items:center;gap:6px">
+                          <span style="font-size:0.85rem">⏳</span>
+                          <div>
+                            <div style="font-size:0.62rem;font-weight:700;color:#c2410c">Menunggu form upload yang benar</div>
+                            <div style="font-size:0.58rem;color:#c2410c;opacity:0.85;margin-top:1px">Hubungi host: <strong>${h.name}</strong></div>
+                          </div>
+                        </div>
+                      </div>
+                      ${links.length > 0 ? `
+                        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;padding-top:2px">
+                          ${links.map((lnk, li) => lnk
+                            ? `<a href="${lnk}" target="_blank"
+                                 style="padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;
+                                        border-radius:var(--bs-radius-pill);color:#b91c1c;
+                                        font-size:0.62rem;font-weight:700;text-decoration:none;opacity:0.75">
+                                 📎${links.length > 1 ? li + 1 : ''}
+                               </a>` : '').join('')}
+                        </div>` : ''}
+                    </div>
+                  </div>`;
+              }
+            });
+
+            unmatchedList.forEach(({ h, hIdx }) => {
+              const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
+              const candidates = findSessionCandidates(p, h);
+              const slotTime   = h.start ? `${h.start}${h.end ? ' → ' + h.end : ''}` : null;
+
+              if (candidates.length > 0) {
+                html += `
+                  <div style="background:#fffbeb;border:1px solid #ffe69c;border-radius:var(--bs-radius);overflow:hidden">
+                    <div onclick="toggleCandidates('${candId}')"
+                      style="padding:7px 10px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:8px">
+                      <div>
+                        <div style="font-size:0.72rem;font-weight:700;color:#92400e">❓ ${h.name}</div>
+                        ${slotTime ? `<div style="font-size:0.6rem;color:#a0832a;margin-top:2px">${slotTime}</div>` : ''}
+                      </div>
+                      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
+                        <span style="background:#92400e;color:white;font-size:0.58rem;padding:2px 7px;border-radius:var(--bs-radius-pill);font-weight:700">${candidates.length} kandidat</span>
+                        <span id="cand-icon-${candId}" style="font-size:0.72rem;color:#92400e">▸</span>
+                      </div>
+                    </div>
+                    <div id="cand-${candId}" style="display:none;border-top:1px solid #ffe69c;background:#fffdf0;padding:6px 10px;flex-direction:column;gap:5px">
+                      ${candidates.map(c => {
+                        const links = c.screenshot.split(',').map(l => l.trim()).filter(Boolean);
+                        return `
+                          <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:white;border-radius:var(--bs-radius);border:1px solid #ffe69c;gap:8px">
+                            <div style="min-width:0">
+                              <div style="font-size:0.7rem;font-weight:700;color:#92400e">${c.host}</div>
+                              <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}</div>
+                            </div>
+                            <div style="display:flex;gap:4px;flex-shrink:0">
+                              ${links.map((lnk,li) => lnk
+                                ? `<a href="${lnk}" target="_blank"
+                                     style="padding:3px 8px;background:#fffbeb;border:1px solid #ffe69c;border-radius:var(--bs-radius-pill);color:var(--bs-primary);font-size:0.62rem;font-weight:700;text-decoration:none">
+                                     📎${links.length>1?li+1:''}
+                                   </a>` : '').join('')}
+                            </div>
+                          </div>`;
+                      }).join('')}
+                    </div>
+                  </div>`;
+              } else {
+                html += `
+                  <div style="background:var(--bs-danger-subtle);border:1px solid #f1aeb5;border-radius:var(--bs-radius);padding:7px 10px">
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--bs-danger-text)">⏳ ${h.name}</div>
+                    ${slotTime ? `<div style="font-size:0.6rem;color:var(--bs-danger-text);opacity:0.7;margin-top:2px">${slotTime}</div>` : ''}
+                  </div>`;
+              }
+            });
+          }
+
+          html += `</div></div>`;
+        });
+
+        html += `</div></div>`;
+      });
+
+      html += `<div style="margin-bottom:14px"></div>`;
+    });
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+
+// ─────────────────────────────────────────────
+// TOGGLE HELPERS
+// ─────────────────────────────────────────────
+function toggleCandidates(id) {
+  const el   = document.getElementById("cand-" + id);
+  const icon = document.getElementById("cand-icon-" + id);
+  if (!el) return;
+  const isOpen = el.style.display === "flex" || el.style.display === "block";
+  el.style.display = isOpen ? "none" : "flex";
+  el.style.flexDirection = "column";
+  if (icon) icon.textContent = isOpen ? "▸" : "▾";
+}
+
+function togglePicDropdown(safeKey) {
+  const content = document.getElementById(`pic-content-${safeKey}`);
+  const icon    = document.getElementById(`pic-icon-${safeKey}`);
+  if (!content) return;
+  const isOpen = content.style.maxHeight !== '0px';
+  content.style.maxHeight = isOpen ? '0px' : '1000px';
+  if (icon) icon.textContent = isOpen ? '▸' : '▾';
+}
+
+function copyShiftPending(shift) {
+  const shiftGroups = window._hariHShiftGroups;
+  const date        = window._hariHDate || '';
+  if (!shiftGroups) return;
+  const picMap = shiftGroups[shift];
+  const pics   = Object.values(picMap);
+  if (!pics.length) { showBanner('Tidak ada pending di shift ini', 'warning'); return; }
+  const label = { pagi:'PAGI', siang:'SIANG', malam:'MALAM' };
+  let text = `📋 PENDING SHIFT ${label[shift]} — ${date}\n\n`;
+  pics.sort((a,b) => b.rows.length - a.rows.length).forEach(picData => {
+    const rows = [...picData.rows].sort((a,b) => a.startTime.localeCompare(b.startTime));
+    text += `${formatPic(picData.pic)} (${rows.length} sesi)\n`;
+    rows.forEach(p => {
+      const timeRange = (p.endTime && p.endTime !== '-') ? `${p.startTime}→${p.endTime}` : p.startTime;
+      text += `• ${p.brand} | ${p.studio} | ${p.mp} | ${timeRange} | ID: ${p.idLine}\n`;
+    });
+    text += '\n';
+  });
+  navigator.clipboard.writeText(text.trim())
+    .then(() => showBanner(`✅ Data pending shift ${label[shift]} di-copy!`, 'success'))
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
+
+function copyIdLines(picName, idLines) {
+  if (!idLines || idLines.length === 0) return;
+  navigator.clipboard.writeText(idLines.join("\n"))
+    .then(() => showBanner(`✅ ${formatPic(picName)}: ${idLines.length} ID Line di-copy!`, "success"))
+    .catch(() => showBanner("❌ Gagal copy", "error"));
+}
+
+// ─────────────────────────────────────────────
+// COPY STANDBY TEXT
+// ─────────────────────────────────────────────
+function copyStandbyText(){
+  const dateStr=sessions[0]?.date||"";
+  let dateLabel="";
+  try{dateLabel=new Date(dateStr+"T12:00:00+07:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"}).toUpperCase();}catch(e){}
+  const picShift=buildPicShiftData(),standbyList=buildStandbyData();
+  let text=`REMINDER ${dateLabel}\n\n`;
+  ["pagi","siang"].forEach(shift=>{
+    const data=picShift[shift];if(!data||!Object.keys(data).length)return;
+    text+=`PIC SHIFT ${shift.toUpperCase()}\n`;
+    Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([,d])=>{text+=`${d.name.replace("@","")}\t${[...d.studios].sort((a,b)=>a-b).join(",")}\n`;});
+    text+="\n";
+  });
+  standbyList.forEach(b=>{
+    text+=`STANDBY ${b.key.toUpperCase()}\n`;
+    b.slots.forEach(slot=>{text+=`${slot.label} ${slot.pic}\n`;});
+    text+="\n";
+  });
+  text+=`1. BACK UP HOST SELAIN ASICS, AT, dan SAMSO WAJIB HAND TALENT\n2. CEK KEHADIRAN HOST BAIK SINGLE HOST/MARATHON DAN LAPOR KE GRUP HOST TAG TALCO KALO 30 SEBELUM LIVE HOST SELANJUTNYA BELUM DATANG\n3. PASTIKAN SEMUA STUDIO ADA AKUN ABSEN HOST\n\n`;
+  text+=`Form bukti tayang:\nhttps://forms.gle/J8WG4kmQap7h6V\n
+  LINK Data Report Terbaru dan link LIST HOST:\nhttps://docs.google.com/spreadsheets/d/1vbjwOFg_vmyJNs9UXuLMJF-TekN6xfomAzXy-zoDP7o/edit?gid=0\n\nBACKUP Screenshot LS Streamlab Upload BY HOST\nhttps://docs.google.com/spreadsheets/d/1XhC8QOC9loOCODjMRkdNa4yfl8BeDVZct8wsFbeeIz0/edit?gid=743892642\n\nLINK Insight American Tourister dan Samsonite:\nhttps://docs.google.com/spreadsheets/d/1dTDvRuYPYZ5_5Z4t6sUAP3myjE_mo23RlVkhU-rPk0E/edit?gid=1067791791`;
+  navigator.clipboard.writeText(text)
+    .then(()=>showBanner("✅ Teks di-copy!","success"))
+    .catch(()=>showBanner("❌ Gagal copy","error"));
+}
+
+// ─────────────────────────────────────────────
+// NOTIF PANEL
+// ─────────────────────────────────────────────
+function showNotifPanel(){
+  const panel=document.getElementById("notif-panel");
+  if(panel.style.display!=="none"){panel.style.display="none";return;}
+  const now=Date.now(),list=document.getElementById("notif-time-list");
+  list.innerHTML="";
+  const startTimes=new Set(),endTimes=new Set();
+  sessions.forEach(s=>{
+    if(s.startTime&&s.startTime!=="-")startTimes.add(s.startTime);
+    if(s.endTime&&s.endTime!=="-")endTimes.add(s.endTime);
+  });
+  const makeBtn=(time,type)=>{
+    const ms=timeToMs(sessions[0]?.date,time);if(!ms)return;
+    const diff=ms-now;if(diff<-60*60*1000)return;
+    const diffMin=Math.round(diff/60000);
+    const btn=document.createElement("button");
+    btn.className="notif-time-btn";
+    if(type==="start"){btn.style.background="var(--bs-success-subtle)";btn.style.color="var(--bs-success-text)";btn.style.border="1px solid #a3cfbb";}
+    else{btn.style.background="var(--bs-danger-subtle)";btn.style.color="var(--bs-danger-text)";btn.style.border="1px solid #f1aeb5";}
+    btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
+    btn.onclick=()=>sendManualNotifFor(time,type);
+    list.appendChild(btn);
+  };
+  [...startTimes].sort().forEach(t=>makeBtn(t,"start"));
+  [...endTimes].sort().forEach(t=>makeBtn(t,"end"));
+  panel.style.display="block";
+}
+
+function closeNotifPanel(){document.getElementById("notif-panel").style.display="none";}
+
+function sendManualNotifFor(time,type="start"){
+  const group=sessions.filter(s=>type==="start"?s.startTime===time:s.endTime===time);
+  if(!group.length){showBanner("Tidak ada sesi di jam ini","warning");return;}
+  const lines=buildNotifLines(group,type,time);
+  broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${time}`,lines.join("\n"),false);
+  closeNotifPanel();
+}
+
+function sendManualNotifAll(){
+  const now=Date.now();
+  const upStart={},upEnd={};
+  sessions.forEach(s=>{
+    const add=(map,time)=>{
+      const ms=timeToMs(s.date,time);if(!ms)return;
+      const diff=ms-now;if(diff<-5*60*1000||diff>2*60*60*1000)return;
+      if(!map[time])map[time]=[];map[time].push(s);
+    };
+    if(s.startTime&&s.startTime!=="-")add(upStart,s.startTime);
+    if(s.endTime&&s.endTime!=="-")add(upEnd,s.endTime);
+  });
+  const entries=[
+    ...Object.entries(upStart).map(([t,g])=>({t,g,type:"start"})),
+    ...Object.entries(upEnd).map(([t,g])=>({t,g,type:"end"})),
+  ].sort((a,b)=>toMinJS(a.t)-toMinJS(b.t));
+  if(!entries.length){showBanner("Tidak ada sesi upcoming (2 jam ke depan)","warning");return;}
+  entries.forEach(({t,g,type},idx)=>{
+    setTimeout(()=>{
+      const lines=buildNotifLines(g,type,t);
+      broadcastNotif(`${type==="start"?"▶ START":"⏹ END"} ${t}`,lines.join("\n"),false);
+    },idx*2000);
+  });
+  closeNotifPanel();
+  showBanner(`🔔 ${entries.length} notif dikirim (start+end)!`,"success");
+}
+
+// ─────────────────────────────────────────────
+// STATS & SCHEDULING
+// ─────────────────────────────────────────────
+function updateStats(){
+  const m=sessions.filter(s=>s.isMarathon).length;
+  const sg=sessions.filter(s=>!s.isMarathon).length;
+  document.getElementById("stat-total").textContent   =sessions.length;
+  document.getElementById("stat-marathon").textContent=m;
+  document.getElementById("stat-single").textContent  =sg;
+}
+
+function scheduleAllNotifications(list){
+  const now=Date.now();let count=0;
+  const startGroups={},endGroups={};
+  list.forEach(s=>{
+    if(s.startTime&&s.startTime!=="-"){if(!startGroups[s.startTime])startGroups[s.startTime]=[];startGroups[s.startTime].push(s);}
+    if(s.endTime&&s.endTime!=="-"){if(!endGroups[s.endTime])endGroups[s.endTime]=[];endGroups[s.endTime].push(s);}
+  });
+  Object.entries(startGroups).forEach(([time,group])=>{
+    const startMs=timeToMs(group[0].date,time);if(!startMs)return;
+    [{min:60,prefix:"🔔 SETUP",urgent:false},{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},{min:5,prefix:"🚨 5 MENIT LAGI",urgent:true}]
+    .forEach(({min,prefix,urgent})=>{
+      const t=startMs-min*60*1000;
+      if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — START ${time}`,group,"start",urgent),t-now));count++;}
+    });
+  });
+  Object.entries(endGroups).forEach(([time,group])=>{
+    const effectiveTime=time==="23:59/00:00"?"23:59":time;
+    let endMs=timeToMs(group[0].date,effectiveTime);
+    const sMs=timeToMs(group[0].date,group[0].startTime);
+    if(endMs&&sMs&&endMs<=sMs)endMs+=24*60*60*1000;
+    if(!endMs)return;
+    [{min:10,prefix:"⏰ 10 MENIT LAGI",urgent:false},{min:5,prefix:"🚨 5 MENIT LAGI",urgent:true}]
+    .forEach(({min,prefix,urgent})=>{
+      const t=endMs-min*60*1000;
+      if(t>now){scheduledTasks.push(setTimeout(()=>fireGroupNotif(`${prefix} — END ${time}`,group,"end",urgent),t-now));count++;}
+    });
+  });
+  document.getElementById("notif-count").textContent=`🔔 ${count} notif terjadwal`;
+}
+
+function buildNotifLines(group,type,eventTime){
+  const copies=group.map(s=>({...s,picForEvent:type==="start"?(s.hosts?.[0]?.picData||"-"):(s.hosts?.[s.hosts.length-1]?.picData||"-")}));
+  const validPics=eventTime?getAvailableOps(sessions,eventTime):null;
+  if(type==="start")assignPics(copies,[],validPics);
+  else              assignPics([],copies,validPics);
+  return copies.map((s,i)=>{
+    const h=type==="start"?s.hosts?.[0]:s.hosts?.[s.hosts.length-1];
+    const host=h?.host||"-";
+    const pic=s.assignedPic||"LSC";
+    return type==="start"
+      ?`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio}\n   👤 ${host} ${pic}`
+      :`${i+1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${pic}`;
+  });
+}
+
+function cancelAllScheduled(){scheduledTasks.forEach(id=>clearTimeout(id));scheduledTasks=[];}
+
+function fireGroupNotif(title,group,type,urgent=false){
+  const timeMatch=/(\d{2}:\d{2})/.exec(title);
+  const eventTime=timeMatch?timeMatch[1]:null;
+  const lines=buildNotifLines(group,type,eventTime);
+  sendNotification(title,lines.join("\n"),`grp-${type}-${title}-${Date.now()}`,urgent);
+}
+
+// ─────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────
+function getCurrentHostIdx(session){
+  const now=Date.now();
+  for(let i=0;i<session.hosts.length;i++){
+    const h=session.hosts[i];
+    const startMs=timeToMs(session.date,h.startTime);
+    let endMs=timeToMs(session.date,h.endTime);
+    if(!startMs||!endMs)continue;
+    if(endMs<=startMs)endMs+=24*60*60*1000;
+    if(now>=startMs&&now<endMs)return i;
+  }
+  return -1;
+}
+
+function toMinJS(t){
+  if(!t||t==="-")return 9999;
+  const[h,m]=t.split(":").map(Number);
+  return h*60+m;
+}
+
+function timeToMs(dateStr,timeStr){
+  try{
+    if(!timeStr||timeStr==="-")return null;
+    const t=timeStr.length===4?"0"+timeStr:timeStr;
+    return new Date(`${dateStr}T${t}:00+07:00`).getTime();
+  }catch{return null;}
+}
+
+function updateClock(){
+  const now=new Date();
+  const el=document.getElementById("clock");
+  const de=document.getElementById("date-display");
+  if(el)el.textContent=now.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",second:"2-digit",timeZone:"Asia/Jakarta"});
+  if(de)de.textContent=now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"});
+}
+
+function showLoading(show){document.getElementById("loading").style.display=show?"flex":"none";}
+
+function showBanner(msg,type="info"){
+  const el=document.getElementById("banner");
+  el.textContent=msg;
+  const map={success:"alert alert-success",error:"alert alert-danger",warning:"alert alert-warning"};
+  el.className=map[type]||"alert alert-primary";
+  el.style.display="block";
+  setTimeout(()=>el.style.display="none",4000);
+}
+
+async function debugNotif(){
+  const lines=[
+    `URL: ${location.href}`,`Permission: ${Notification.permission}`,
+    `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
+    `ntfy: ${ntfySource?.readyState===1?"connected":"disconnected"}`,
+    `User: ${currentUserEmail||"tidak login"}`,
+    `Online: ${Object.keys(onlineUsers).length} users`,
+  ];
+  alert(lines.join("\n"));
+  if(Notification.permission!=="granted"){
+    const r=await Notification.requestPermission();
+    if(r!=="granted")return;
+  }
+  sendNotification("🔔 Debug Test","Notif berhasil dari "+location.hostname,"debug-"+Date.now());
+}
+
+// ─────────────────────────────────────────────
+// BUKTI TAYANG
+// ─────────────────────────────────────────────
+let _lastBuktiTayangData = null;
+
+async function loadBuktiTayang() {
+  if (activeTab !== 'buktiTayang') return;
+  const container = document.getElementById('schedule-list');
+  if (_lastBuktiTayangData) { renderBuktiTayang(_lastBuktiTayangData); }
+  else { container.innerHTML = _bsLoadingHTML('Memuat bukti tayang...'); }
+  try {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 20000);
+    const res        = await fetch(API_URL + '?action=buktitayang&t=' + Date.now(), { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error || 'Unknown error');
+    if (activeTab !== 'buktiTayang') return;
+    _lastBuktiTayangData = data;
+    renderBuktiTayang(data);
+  } catch(err) {
+    if (activeTab !== 'buktiTayang') return;
+    if (!_lastBuktiTayangData)
+      container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.name === 'AbortError' ? 'Timeout, coba refresh' : err.message}</div>`;
+    else
+      showBanner(err.name === 'AbortError' ? '⚠️ Timeout — menampilkan data terakhir' : '⚠️ Gagal update: ' + err.message, 'warning');
+  }
+}
+
+async function forceRefreshBuktiTayang() {
+  if (activeTab !== 'buktiTayang') return;
+  const container = document.getElementById('schedule-list');
+  _lastBuktiTayangData = null;
+  container.innerHTML = _bsLoadingHTML('Force refresh...');
+  try {
+    const res  = await fetch(API_URL + '?action=buktitayang&nocache=1&t=' + Date.now());
+    const data = JSON.parse(await res.text());
+    if (!data.success) throw new Error(data.error);
+    if (activeTab !== 'buktiTayang') return;
+    _lastBuktiTayangData = data;
+    renderBuktiTayang(data);
+    showBanner('✅ Bukti tayang diperbarui!', 'success');
+  } catch(err) {
+    if (activeTab !== 'buktiTayang') return;
+    container.innerHTML = `<div class="empty"><span class="empty-icon">❌</span>${err.message}</div>`;
+  }
+}
+// ─────────────────────────────────────────────────────
+// BUKTI TAYANG — HELPERS
+// ─────────────────────────────────────────────────────
+
+// SESUDAH (benar — 3 shift, split di 08:00 dan 16:00):
+function getShiftBT(startTime) {
+  if (!startTime) return 'pagi';
+  const m = toMin(startTime);
+  if (m < 480)  return 'malam';  // 00:00–07:59
+  if (m < 960)  return 'pagi';   // 08:00–15:59
+  return 'siang';                 // 16:00–23:59
+}
+
+function toggleBtShift(shift) {
+  const body    = document.getElementById('bt-shift-body-' + shift);
+  const chevron = document.getElementById('bt-shift-chevron-' + shift);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+}
+
+function toggleBtStatus(shift, status) {
+  const body    = document.getElementById(`bt-status-body-${shift}-${status}`);
+  const chevron = document.getElementById(`bt-status-chevron-${shift}-${status}`);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▸' : '▾';
+}
+
+// ─────────────────────────────────────────────────────
+// BUKTI TAYANG — RENDER
+// ─────────────────────────────────────────────────────
+
+function renderBuktiTayang(data) {
+  const container = document.getElementById('schedule-list');
+  if (!container) return;
+
+  if (!data || !data.sessions || data.sessions.length === 0) {
+    container.innerHTML = '<div class="empty"><span class="empty-icon">🎬</span>Tidak ada data Bukti Tayang hari ini.</div>';
+    return;
+  }
+
+  const sessions   = data.sessions;
+  const uploaded   = sessions.filter(s => s.status === 'uploaded');
+  const linkKosong = sessions.filter(s => s.status === 'pending');
+  const missing    = sessions.filter(s => s.status === 'missing');
+
+  // ─── FIX: 3 shift berdasarkan START LIVE ───────────────
+  const shifts = {
+    malam: {
+      done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'malam'),
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'malam'),
+    },
+    pagi: {
+      done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'pagi'),
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'pagi'),
+    },
+    siang: {
+      done:    sessions.filter(s => s.status === 'uploaded' && getShiftBT(s.startTime) === 'siang'),
+      notDone: sessions.filter(s => s.status !== 'uploaded' && getShiftBT(s.startTime) === 'siang'),
+    },
+  };
+  // ───────────────────────────────────────────────────────
+
+  function renderCard(s) {
+    const isUploaded = s.status === 'uploaded';
+    const isPending  = s.status === 'pending';
+
+    const cardBg      = isUploaded ? '#f0fff4' : isPending ? '#fffef0' : '#fff5f5';
+    const borderColor = isUploaded ? '#28a745' : isPending ? '#ffc107' : '#dc3545';
+    const statusIcon  = isUploaded ? '✅' : '✖';
+
+    const typeBadge = s.isMarathon
+      ? `<span style="background:#fff3cd;color:#856404;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">👤 Marathon</span>`
+      : `<span style="background:#ffe5d9;color:#c77700;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">⚡ Single</span>`;
+
+    const statusBadge = isUploaded
+      ? `<span style="background:#d4edda;color:#155724;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Uploaded</span>`
+      : isPending
+      ? `<span style="background:#fff3cd;color:#856404;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Link Kosong</span>`
+      : `<span style="background:#f8d7da;color:#721c24;border-radius:12px;padding:3px 10px;font-size:12px;font-weight:600;">Belum Upload</span>`;
+
+    let uploadInfo = '';
+    if (isUploaded) {
+      const picNames = (s.pics || []).join(', ') || '-';
+      const linkHtml = (s.links || []).map(l =>
+        `<a href="${l}" target="_blank" style="color:#1a73e8;">👁</a>`
+      ).join(' ');
+      uploadInfo = `<div style="font-size:12px;color:#555;margin-top:4px;">📎 ${s.links?.length || 0} file diupload oleh ${picNames} ${linkHtml}</div>`;
+    } else if (isPending) {
+      uploadInfo = `<div style="font-size:12px;color:#856404;margin-top:4px;">⏳ Form masuk tapi link kosong</div>`;
+    } else {
+      uploadInfo = `<div style="font-size:12px;color:#dc3545;margin-top:4px;">✖ Belum ada form upload yang masuk</div>`;
+    }
+
+    return `
+      <div style="background:${cardBg};border-left:4px solid ${borderColor};border-radius:6px;padding:10px 14px;margin:6px 0;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-weight:700;font-size:14px;">${statusIcon} ${s.brand}</span>
+            ${typeBadge}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:#aaa;">${s.idLine || ''}</span>
+            ${statusBadge}
+          </div>
+        </div>
+        <div style="font-size:12px;color:#666;margin-top:4px;">🕐 ${s.startTime} → ${s.endTime} · 📍 ${s.studio} · ${s.mp}</div>
+        ${uploadInfo}
+      </div>`;
+  }
+
+  function renderDoneSection(shiftKey, done) {
+    if (done.length === 0) return '';
+    return `
+      <div style="margin:8px 0;">
+        <button onclick="toggleBtStatus('${shiftKey}','done')"
+          style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#d4edda;color:#155724;font-weight:600;font-size:13px;cursor:pointer;border:none;border-radius:6px;text-align:left;">
+          ✅ Done
+          <span style="background:rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px;font-size:12px;">${done.length}</span>
+          <span id="bt-status-chevron-${shiftKey}-done" style="margin-left:auto;">▸</span>
+        </button>
+        <div id="bt-status-body-${shiftKey}-done" style="display:none;padding:4px 0;">
+          ${done.map(renderCard).join('')}
+        </div>
+      </div>`;
+  }
+
+  function renderNotDoneSection(shiftKey, notDone) {
+    if (notDone.length === 0) return '';
+    return `
+      <div style="margin:8px 0;">
+        <button onclick="toggleBtStatus('${shiftKey}','notdone')"
+          style="width:100%;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f8d7da;color:#721c24;font-weight:600;font-size:13px;cursor:pointer;border:none;border-radius:6px;text-align:left;">
+          ✖ Belum Upload / Link Kosong
+          <span style="background:rgba(0,0,0,0.12);border-radius:10px;padding:1px 8px;font-size:12px;">${notDone.length}</span>
+          <span id="bt-status-chevron-${shiftKey}-notdone" style="margin-left:auto;">▸</span>
+        </button>
+        <div id="bt-status-body-${shiftKey}-notdone" style="display:none;padding:4px 0;">
+          ${notDone.map(renderCard).join('')}
+        </div>
+      </div>`;
+  }
+
+  function renderShiftGroup(shiftKey, label, emoji, shiftData) {
+    const { done, notDone } = shiftData;
+    if (done.length === 0 && notDone.length === 0) return '';
+
+    const pillDone    = done.length > 0
+      ? `<span style="background:#28a745;color:white;border-radius:12px;padding:2px 8px;font-size:12px;">${done.length} uploaded</span>` : '';
+    const pillNotDone = notDone.length > 0
+      ? `<span style="background:#dc3545;color:white;border-radius:12px;padding:2px 8px;font-size:12px;">${notDone.length} belum</span>` : '';
+
+    return `
+      <div style="margin:12px 0;border-radius:8px;overflow:hidden;border:1px solid #e0e0e0;">
+        <button onclick="toggleBtShift('${shiftKey}')"
+          style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f0f4ff;font-weight:700;font-size:15px;cursor:pointer;border:none;text-align:left;">
+          ${emoji} ${label}
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+            ${pillDone}${pillNotDone}
+            <span id="bt-shift-chevron-${shiftKey}">▾</span>
+          </span>
+        </button>
+        <div id="bt-shift-body-${shiftKey}" style="padding:8px 12px 12px;background:#fafafa;">
+          ${renderDoneSection(shiftKey, done)}
+          ${renderNotDoneSection(shiftKey, notDone)}
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = `
+    <div style="padding:0 10px 24px;">
+      <div style="text-align:center;margin-bottom:12px;padding-top:8px;">
+        <strong style="font-size:16px;">🎬 Bukti Tayang</strong><br>
+        <span style="color:#888;font-size:13px;">${data.date || ''}</span>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <div style="flex:1;background:#d4edda;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:#155724;">${uploaded.length}</div>
+          <div style="font-size:11px;color:#155724;">✅ UPLOADED</div>
+        </div>
+        <div style="flex:1;background:#fff3cd;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:#856404;">${linkKosong.length}</div>
+          <div style="font-size:11px;color:#856404;">⏳ LINK KOSONG</div>
+        </div>
+        <div style="flex:1;background:#f8d7da;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:#721c24;">${missing.length}</div>
+          <div style="font-size:11px;color:#721c24;">✖ BELUM UPLOAD</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:4px;">
+        <button onclick="forceRefreshBuktiTayang()"
+          style="flex:1;padding:9px;background:#e8f0fe;border:1px solid #4285f4;border-radius:6px;cursor:pointer;font-weight:600;color:#1a73e8;font-size:13px;">
+          🔄 Refresh
+        </button>
+        <button id="btn-copy-wa" onclick="copyBuktiTayangWA()"
+          style="flex:1;padding:9px;background:#f0fff4;border:1px solid #28a745;border-radius:6px;cursor:pointer;font-weight:600;color:#155724;font-size:13px;">
+          📋 Copy Tagihan WA
+        </button>
+      </div>
+
+      ${renderShiftGroup('malam', 'Shift Malam  00:00 – 07:59', '🌙', shifts.malam)}
+      ${renderShiftGroup('pagi',  'Shift Pagi   08:00 – 15:59', '🌅', shifts.pagi)}
+      ${renderShiftGroup('siang', 'Shift Siang  16:00 – 23:59', '☀️', shifts.siang)}
+    </div>
+  `;
+}
+
+
+// ─────────────────────────────────────────────────────
+// BUKTI TAYANG — COPY WA
+// ─────────────────────────────────────────────────────
+
+function copyBuktiTayangWA() {
+  const data = _lastBuktiTayangData;
+  if (!data || !data.sessions) { alert('Data belum loaded.'); return; }
+
+  const belum = data.sessions.filter(s => s.status !== 'uploaded');
+  if (belum.length === 0) { alert('Semua sudah upload! 🎉'); return; }
+
+  // ─── FIX: 3 shift ───────────────────────────────────────
+  const malam = belum.filter(s => getShiftBT(s.startTime) === 'malam');
+  const pagi  = belum.filter(s => getShiftBT(s.startTime) === 'pagi');
+  const siang = belum.filter(s => getShiftBT(s.startTime) === 'siang');
+  // ─────────────────────────────────────────────────────────
+
+  const d      = new Date();
+  const bulan  = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const dateStr = `${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
+
+  let text = `📋 *Bukti Tayang ${dateStr} — ${belum.length} Belum Upload*`;
+
+  if (malam.length > 0) {
+    text += `\n\n🌙 *Shift Malam (00:00–07:59)*\n`;
+    text += malam.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
+  }
+  if (pagi.length > 0) {
+    text += `\n\n🌅 *Shift Pagi (08:00–15:59)*\n`;
+    text += pagi.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
+  }
+  if (siang.length > 0) {
+    text += `\n\n☀️ *Shift Siang (16:00–23:59)*\n`;
+    text += siang.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
+  }
+
+  navigator.clipboard.writeText(text.trim())
+    .then(() => {
+      const btn = document.getElementById('btn-copy-wa');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copied!';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+      }
+    })
+    .catch(() => alert('Gagal copy. Coba lagi.'));
+}
+
+
+
+
+
+
+// ─────────────────────────────────────────────
+// COPY TIMELINE
+// ─────────────────────────────────────────────
+function copyTimeline() {
+  if (!sessions.length) { showBanner('Data belum loaded', 'warning'); return; }
+
+  // Build events — sama persis dengan renderTimeline()
+  const events = {};
+  sessions.forEach(s => {
+    if (s.startTime && s.startTime !== '-') {
+      if (!events[s.startTime]) events[s.startTime] = { starts: [], ends: [] };
+      events[s.startTime].starts.push(s);
+    }
+    if (s.endTime && s.endTime !== '-') {
+      const endKey = (s.endTime === '00:00' || s.endTime === '23:59') ? '23:59/00:00' : s.endTime;
+      if (!events[endKey]) events[endKey] = { starts: [], ends: [] };
+      events[endKey].ends.push(s);
+    }
+  });
+
+  // Sort waktu
+  const sorted = Object.keys(events).sort((a, b) => {
+    const f = t => t === '23:59/00:00' ? 1441 : (([h, m]) => h * 60 + m)(t.split(':').map(Number));
+    return f(a) - f(b);
+  });
+
+  const lines = [];
+
+  sorted.forEach(time => {
+    const ev      = events[time];
+    const display = time === '23:59/00:00' ? '23:59 / 00:00' : time;
+
+    if (ev.starts.length > 0) {
+      lines.push(`start ${display}`);
+      ev.starts.forEach(s => {
+        lines.push(`${s.brand}\t${s.marketplace}\t\t\t\t${s.studio}`);
+      });
+      lines.push('');
+    }
+
+    if (ev.ends.length > 0) {
+      lines.push(`end ${display}`);
+      ev.ends.forEach(s => {
+        lines.push(`${s.brand}\t${s.marketplace}\t\t\t\t${s.studio}`);
+      });
+      lines.push('');
+    }
+  });
+
+  const text = lines.join('\n').trim();
+
+  navigator.clipboard.writeText(text)
+    .then(() => {
+      const btn = document.getElementById('btn-copy-timeline');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '✅ Copied!';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+      }
+      showBanner('✅ Timeline di-copy!', 'success');
+    })
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
+
+
+function copyTimeBlock(time, type, items, btn) {
+  if (!items || !items.length) return;
+
+  const display = time === '23:59/00:00' ? '23:59 / 00:00' : time;
+  const lines   = [];
+
+  lines.push(`${type.toUpperCase()} ${display}`);
+
+  items.forEach((s, i) => {
+    const picStr = formatPicForCopy(s.assignedPic || 'LSC');
+
+    if (type === 'start') {
+      // START: brand | mp | studio  host  @pic
+      const host = s.hosts?.[0]?.host || '-';
+      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio} ${host}`);
+    } else {
+      // END: brand | mp | studio  @pic  (no host)
+      lines.push(`${i + 1}. ${s.brand} | ${s.marketplace} | ${s.studio}`);
+    }
+  });
+
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(() => {
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = '✅';
+        setTimeout(() => btn.textContent = orig, 2000);
+      }
+      showBanner(`✅ ${type === 'start' ? 'Start' : 'End'} ${display} di-copy!`, 'success');
+    })
+    .catch(() => showBanner('❌ Gagal copy', 'error'));
+}
+
+
+
+// ══════════════════════════════════════════════════════════════════
+//  OPSTANDBY — CONFIG & HELPERS
+// ══════════════════════════════════════════════════════════════════
+
+const STANDBY_BRANDS_CFG = [
+  // type:'floating'   → semua operator di pool floating+intern untuk shift tsb
+  // type:'dedicated'  → operator dari section tertentu saja, merged per shift
+  // perOperator:true  → round-robin 1 operator per host-slot (Samsonite Shopee)
+  { label:'AMERICAN TOURISTER TIKTOK', brand:'american tourister', mp:'tiktok',  type:'floating',  perOperator:false },
+  { label:'SAMSONITE TIKTOK',          brand:'samsonite',          mp:'tiktok',  type:'floating',  perOperator:false },
+  { label:'AMERICAN TOURISTER SHOPEE', brand:'american tourister', mp:'shopee',  type:'dedicated', section:'amtour'  },
+  { label:'SAMSONITE SHOPEE',          brand:'samsonite',          mp:'shopee',  type:'floating',  perOperator:true  },
+  { label:'ASICS SHOPEE',              brand:'asics',              mp:'shopee',  type:'dedicated', section:'asics'   },
+];
+
+// State
+let _lastPicScheduleData = null;
+let _standbyRrIndex = {}; // round-robin counter per brand label
+
+// Konversi "HH:MM" → menit
+function toMin(t) {
+  if (!t) return 0;
+  const [h, m] = String(t).split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// Menit → "HH:MM"
 function minToTime(min) {
   const h = Math.floor(min / 60) % 24;
   const m = min % 60;
-  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
 
-function normalizeBrand(str) {
-  if (!str) return '';
-  return str.replace(/[^a-zA-Z0-9\s]/g,'').toLowerCase().trim();
-}
-
-function normalizeMp(str) {
-  if (!str) return '';
-  return str.replace(/\s+/g,'').toLowerCase().trim();
-}
-
-function normalizeHost(h) {
-  const name      = h.name      || h.host      || '-';
-  const startTime = h.start     || h.startTime  || '-';
-  const endTime   = h.end       || h.endTime    || '-';
-  const picData   = h.pic       || h.picData    || '-';
-  return { host:name, startTime, endTime, picData, name, start:startTime, end:endTime, pic:picData };
-}
-
+// Klasifikasi shift berdasarkan start time
 function getShiftByStart(t) {
   if (!t) return 'siang';
   const m = toMin(t);
-  if (m < 480) return 'malam';
-  if (m < 960) return 'pagi';
+  if (m < 480) return 'malam';   // 00:00–07:59
+  if (m < 960) return 'pagi';    // 08:00–15:59
+  return 'siang';                // 16:00–23:59
+}
+
+// Shift boundary dalam menit: pagi/siang = 480 (08:00), siang/malam = 960 (16:00)
+const SHIFT_BOUNDS = [480, 960, 1440];
+
+function getBoundShift(min) {
+  if (min < 480)  return 'malam';
+  if (min < 960)  return 'pagi';
   return 'siang';
 }
 
-function getShiftBT(startTime) { return getShiftByStart(startTime); }
-
-function getHariHShift(endTime) {
-  if (!endTime || endTime === '00:00') return 'siang';
-  const m = toMin(endTime);
-  if (m === 0) return 'siang';
-  if (m < 480) return 'malam';
-  if (m < 960) return 'pagi';
-  return 'siang';
-}
-
-function formatStandbyDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  const days   = ['MINGGU','SENIN','SELASA','RABU','KAMIS','JUMAT','SABTU'];
-  const months = ['JANUARI','FEBRUARI','MARET','APRIL','MEI','JUNI','JULI','AGUSTUS','SEPTEMBER','OKTOBER','NOVEMBER','DESEMBER'];
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-}
-
+/**
+ * Split slot host yang melintasi boundary shift.
+ * Contoh: 14:00–17:00 → [{start:'14:00',end:'16:00',shift:'pagi'}, {start:'16:00',end:'17:00',shift:'siang'}]
+ * Contoh: 08:00–10:00 → [{start:'08:00',end:'10:00',shift:'pagi'}]  (tidak split)
+ */
 function splitAtShiftBoundary(startStr, endStr) {
-  const BOUNDS = [480, 960, 1440];
-  let s = toMin(startStr), e = toMin(endStr);
-  if (e === 0) e = 1440;
-  if (e <= s) e += 1440;
-  const results = []; let cur = s;
-  for (const b of BOUNDS) {
-    if (cur >= b) continue;
-    if (e <= b) { results.push({ start:minToTime(cur%1440), end:minToTime(e%1440), shift:getShiftByStart(minToTime(cur%1440)) }); cur=e; break; }
-    results.push({ start:minToTime(cur%1440), end:minToTime(b%1440), shift:getShiftByStart(minToTime(cur%1440)) }); cur=b;
+  let s = toMin(startStr);
+  const e = toMin(endStr) || 1440;
+  const result = [];
+
+  for (const bound of SHIFT_BOUNDS) {
+    if (s >= e) break;
+    const segEnd = Math.min(e, bound);
+    if (segEnd > s) {
+      result.push({ start: minToTime(s), end: minToTime(segEnd), shift: getBoundShift(s) });
+    }
+    s = segEnd;
   }
-  if (cur < e) results.push({ start:minToTime(cur%1440), end:minToTime(e%1440), shift:getShiftByStart(minToTime(cur%1440)) });
-  return results;
+  return result.length ? result : [{ start: startStr, end: endStr, shift: getShiftByStart(startStr) }];
 }
 
+/**
+ * Fuzzy match session ke brand config.
+ * Return true jika brand & marketplace cocok.
+ */
 function matchBrandConfig(session, cfg) {
-  const sb = normalizeBrand(session.brand || '');
-  const sm = normalizeMp(session.mp || session.marketplace || '');
-  return sb.includes(normalizeBrand(cfg.brand)) && sm.includes(normalizeMp(cfg.mp));
+  const brand = String(session.brand || session.Brand || '').toLowerCase();
+  const mp    = String(session.marketplace || session.Marketplace || '').toLowerCase();
+  return brand.includes(cfg.brand) && mp.includes(cfg.mp);
 }
 
-function mergeSessionTime(sessions, shift) {
-  const slots = sessions.filter(s => getShiftByStart(s.hosts?.[0]?.start || s.hosts?.[0]?.startTime) === shift);
-  if (!slots.length) return null;
-  let minStart = 9999, maxEnd = 0;
-  for (const s of slots) for (const h of (s.hosts||[])) {
-    const hs = toMin(h.start||h.startTime); let he = toMin(h.end||h.endTime); if(he===0)he=1440;
-    if(hs<minStart)minStart=hs; if(he>maxEnd)maxEnd=he;
-  }
-  return { start:minToTime(minStart), end:minToTime(maxEnd%1440) };
+/**
+ * Dari array segment [{start,end,shift}], merge per shift → earliest start, latest end.
+ */
+function mergeSessionTime(segments, shift) {
+  const filtered = segments.filter(s => s.shift === shift);
+  if (!filtered.length) return null;
+  const starts = filtered.map(s => toMin(s.start));
+  const ends   = filtered.map(s => toMin(s.end));
+  return { start: minToTime(Math.min(...starts)), end: minToTime(Math.max(...ends)) };
 }
 
-function nowMin() { const n=new Date(); return n.getHours()*60+n.getMinutes(); }
-
-function getHostStatus(startTime, endTime) {
-  const nm=nowMin(), s=toMin(startTime); let e=toMin(endTime); if(e===0)e=1440;
-  if(nm>=s&&nm<e) return 'current';
-  if(nm<s)        return 'next';
-  return 'past';
+/**
+ * Ambil pool operator untuk shift tertentu dari picData.
+ * sections: array section yang di-include, e.g. ['floating','intern']
+ */
+function getPoolForShift(picData, sections, shift) {
+  return (picData || []).filter(p => sections.includes(p.section) && p.shift === shift);
 }
 
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: showBanner — pakai #banner + class alert-*
-// ════════════════════════════════════════════════════════════
-function showBanner(msg, type = 'success') {
-  const el = document.getElementById('banner');
+// ══════════════════════════════════════════════════════════════════
+//  LOAD & FETCH
+// ══════════════════════════════════════════════════════════════════
+
+async function loadStandby(force = false) {
+  const el = document.getElementById('schedule-list');
   if (!el) return;
-  el.className = `alert alert-${type === 'error' ? 'danger' : type}`;
-  el.textContent = msg;
-  clearTimeout(el._t);
-  el._t = setTimeout(() => { el.className = 'alert'; el.textContent = ''; }, 2800);
-}
 
-// ════════════════════════════════════════════════════════════
-//  ★ NEW: showLoading / hideLoading / updateStats / updateClock
-// ════════════════════════════════════════════════════════════
-function showLoading() {
-  const ld = document.getElementById('loading');
-  const sl = document.getElementById('schedule-list');
-  if (ld) ld.style.display = 'flex';
-  if (sl) sl.innerHTML = '';
-}
+  // Jika ada cache PIC & tidak force → pakai cache PIC, refresh schedule saja
+  if (_lastPicScheduleData && !force) {
+    renderStandby(null, _lastPicScheduleData); // render pakai cache dulu
+  } else {
+    el.innerHTML = '<p class="loading">Memuat data standby...</p>';
+  }
 
-function hideLoading() {
-  const ld = document.getElementById('loading');
-  if (ld) ld.style.display = 'none';
-}
-
-function updateStats(data) {
-  const sessions = data?.sessions || [];
-  const total    = sessions.length;
-  const marathon = sessions.filter(s => s.isMarathon).length;
-  const set = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
-  set('stat-total',    total);
-  set('stat-marathon', marathon);
-  set('stat-single',   total - marathon);
-}
-
-function updateClock() {
-  const now  = new Date();
-  const pad  = n => String(n).padStart(2,'0');
-  const days   = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const clk = document.getElementById('clock');
-  const dsp = document.getElementById('date-display');
-  if (clk) clk.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  if (dsp) dsp.textContent = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: switchTab — pakai id="tab-{name}" bukan .tab-btn
-// ════════════════════════════════════════════════════════════
-function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active'));
-  const btn = document.getElementById('tab-' + tab);
-  if (btn) btn.classList.add('active');
-  renderTab(tab);
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: renderTab — tab names hariH & buktiTayang
-// ════════════════════════════════════════════════════════════
-function renderTab(tab) {
-  if      (tab === 'marathon')    { if (scheduleData) renderMarathon(scheduleData);   else loadSchedule(); }
-  else if (tab === 'single')      { if (scheduleData) renderSingle(scheduleData);     else loadSchedule(); }
-  else if (tab === 'timeline')    { if (scheduleData) renderTimeline(scheduleData);   else loadSchedule(); }
-  else if (tab === 'standby')     { if (_lastPicScheduleData) renderStandby(scheduleData, _lastPicScheduleData); loadStandby(); }
-  else if (tab === 'klasemen')    { if (_lastKlasemenData) renderKlasemen(_lastKlasemenData); loadKlasemen(); }
-  else if (tab === 'hariH')       { if (_lastHariHData) renderHariH(_lastHariHData, _lastFormData); loadHariH(); }       // ★ hariH
-  else if (tab === 'buktiTayang') { if (_lastBuktiTayangData) renderBuktiTayang(_lastBuktiTayangData); loadBuktiTayang(); } // ★ buktiTayang
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: loadSchedule — showLoading/hideLoading/updateStats
-// ════════════════════════════════════════════════════════════
-async function loadSchedule(force = false) {
-  showLoading(); // ★
   try {
-    const url = API_URL + '?action=schedule' + (force ? '&nocache=1' : '');
-    const res  = await fetch(url, { signal: AbortSignal.timeout(30000) });
-    const data = await res.json();
-    if (!data.sessions) throw new Error('No sessions');
-    data.sessions = data.sessions.map(s => {
-      s.isMarathon = (s.hosts||[]).length > 1;
-      s.hosts = (s.hosts||[]).map(normalizeHost);
-      return s;
-    });
-    scheduleData = data;
-    updateStats(data); // ★
-    hideLoading();     // ★
-    renderTab(currentTab);
-  } catch (e) {
-    hideLoading(); // ★
-    const el = document.getElementById('schedule-list');
-    if (el) el.innerHTML = `<div class="empty"><span class="empty-icon">⚠️</span>Gagal memuat jadwal<br><small>${e.message}</small></div>`;
-  }
-}
+    const base = API_URL;
+    const ts   = force ? `&nocache=${Date.now()}` : '';
 
-function forceRefreshSchedule() { scheduleData = null; loadSchedule(true); }
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: renderMarathon — Bootstrap marathon card HTML
-// ════════════════════════════════════════════════════════════
-function renderMarathon(data) {
-  const el = document.getElementById('schedule-list');
-  if (!el) return;
-  const list = (data.sessions||[]).filter(s => s.isMarathon);
-  if (!list.length) { el.innerHTML = '<div class="empty"><span class="empty-icon">🏃</span>Tidak ada sesi marathon hari ini.</div>'; return; }
-
-  el.innerHTML = list.map(s => {
-    const h0    = s.hosts[0];
-    const hLast = s.hosts[s.hosts.length-1];
-    const start = h0.startTime||h0.start||'-';
-    const end   = hLast.endTime||hLast.end||'-';
-    const isEnded = nowMin() >= (toMin(end)||1440);
-
-    const hostRows = s.hosts.map((h, hi) => {
-      const status    = getHostStatus(h.startTime||h.start, h.endTime||h.end);
-      const rowCls    = status==='current'?'host-current':status==='next'?'host-next':'host-past';
-      const liveBadge = status==='current'
-        ? '<span class="live-badge">● LIVE</span>'
-        : status==='next' ? '<span class="next-badge">NEXT</span>' : '';
-      return `
-        <div class="host-row ${rowCls}">
-          <div class="hr-num">${hi+1}</div>
-          <div class="hr-time">
-            <span class="hr-start">${h.startTime||h.start||'-'}</span>
-            <span class="hr-arrow">→</span>
-            <span class="hr-end">${h.endTime||h.end||'-'}</span>
-          </div>
-          <div class="hr-info">
-            <div class="hr-name">${h.host||h.name||'-'}${liveBadge}</div>
-            <div class="hr-pic">${h.picData||h.pic||'-'}</div>
-          </div>
-        </div>`;
-    }).join('');
-
-    return `
-      <div class="marathon-session-card${isEnded?' ms-ended':''}">
-        <div class="ms-card-header">
-          <div class="ms-brand">${s.brand||'-'}</div>
-          <div class="ms-meta">
-            <span class="badge marketplace">${s.mp||s.marketplace||'-'}</span>
-            <span class="badge studio">Studio ${s.studio||'-'}</span>
-            ${s.idLine?`<span class="badge idline">${s.idLine}</span>`:''}
-          </div>
-          <div class="ms-time">${start} – ${end}</div>
-        </div>
-        <div class="ms-card-body">${hostRows}</div>
-      </div>`;
-  }).join('');
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: renderSingle — Bootstrap session card HTML
-// ════════════════════════════════════════════════════════════
-function renderSingle(data) {
-  const el = document.getElementById('schedule-list');
-  if (!el) return;
-  const list = (data.sessions||[]).filter(s => !s.isMarathon);
-  if (!list.length) { el.innerHTML = '<div class="empty"><span class="empty-icon">👤</span>Tidak ada sesi single hari ini.</div>'; return; }
-
-  el.innerHTML = list.map((s, i) => {
-    const h      = (s.hosts||[])[0] || {};
-    const start  = h.startTime||h.start||'-';
-    const end    = h.endTime||h.end||'-';
-    const status = getHostStatus(start, end);
-    const cls    = status==='current'?' soon':status==='past'?' past':'';
-    const pic    = h.picData||h.pic||'-';
-    const isLsc  = ['jonathan','hamzah','tyo','hanif','andityo'].some(n=>pic.toLowerCase().includes(n));
-    const liveBadge = status==='current'?'<span class="live-badge">● LIVE</span>':'';
-    return `
-      <div class="session-card${cls}">
-        <div class="session-num">${i+1}</div>
-        <div class="session-info">
-          <div class="session-brand">${s.brand||'-'}${liveBadge}</div>
-          <div class="session-meta">
-            <span class="badge marketplace">${s.mp||s.marketplace||'-'}</span>
-            <span class="badge studio">Studio ${s.studio||'-'}</span>
-            ${s.idLine?`<span class="badge idline">${s.idLine}</span>`:''}
-          </div>
-          <div class="session-host">${h.host||h.name||'-'}</div>
-          <div class="session-time-small">${start} – ${end}</div>
-        </div>
-        <div class="session-pic-right${isLsc?' lsc':''}">${pic}</div>
-      </div>`;
-  }).join('');
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: renderTimeline + makeBlock — Bootstrap HTML
-// ════════════════════════════════════════════════════════════
-function renderTimeline(data) {
-  const el = document.getElementById('schedule-list');
-  if (!el) return;
-  const events = [];
-  for (const s of (data.sessions||[])) {
-    for (const h of (s.hosts||[])) {
-      const st=h.startTime||h.start, en=h.endTime||h.end;
-      if(st) events.push({type:'start',time:st,session:s,host:h});
-      if(en) events.push({type:'end',  time:en,session:s,host:h});
-    }
-  }
-  events.sort((a,b)=>toMin(a.time)-toMin(b.time));
-  const grouped={};
-  for(const ev of events){
-    const key=ev.time+'_'+ev.type;
-    if(!grouped[key]) grouped[key]={time:ev.time,type:ev.type,items:[]};
-    grouped[key].items.push(ev);
-  }
-  const blocks=Object.values(grouped).sort((a,b)=>{
-    const ta=toMin(a.time),tb=toMin(b.time);
-    return ta!==tb?ta-tb:(a.type==='start'?-1:1);
-  });
-  if(!blocks.length){el.innerHTML='<div class="empty"><span class="empty-icon">📅</span>Tidak ada data timeline.</div>';return;}
-  el.innerHTML=blocks.map(b=>makeBlock(b)).join('');
-}
-
-function makeBlock(b) {
-  const hdrCls = b.type==='start'?'start-header':'end-header';
-  const dotCls = b.type==='start'?'start-dot':'end-dot';
-  const nm     = nowMin();
-  const isPast = nm > toMin(b.time) + (b.type==='end'?5:0);
-
-  const copyItems = b.items.map(ev=>({
-    brand:ev.session.brand||'-', mp:ev.session.mp||ev.session.marketplace||'-',
-    studio:ev.session.studio||'-', host:ev.host.host||ev.host.name||'-', pic:ev.host.picData||ev.host.pic||'-'
-  }));
-  const copyAttr = JSON.stringify(copyItems).replace(/"/g,'&quot;');
-
-  const itemsHtml = b.items.map((ev,i) => {
-    const s=ev.session,h=ev.host;
-    return `
-      <div class="session-card${isPast?' past':''}">
-        <div class="session-num">${i+1}</div>
-        <div class="session-info">
-          <div class="session-brand">${s.brand||'-'}</div>
-          <div class="session-meta">
-            <span class="badge marketplace">${s.mp||s.marketplace||'-'}</span>
-            <span class="badge studio">Studio ${s.studio||'-'}</span>
-          </div>
-          ${b.type==='start'?`<div class="session-host">${h.host||h.name||'-'}</div>`:''}
-        </div>
-        <div class="session-pic-right">${h.picData||h.pic||'-'}</div>
-      </div>`;
-  }).join('');
-
-  return `
-    <div class="time-block">
-      <div class="time-header ${hdrCls}" onclick="toggleTimeBlock(this)">
-        <div class="dot ${dotCls}"></div>
-        <span>${b.type==='start'?'START':'END'} ${b.time}</span>
-        <span class="count-badge">${b.items.length}</span>
-        <button class="btn btn-outline-secondary btn-sm" style="padding:2px 8px;font-size:0.6rem;margin-left:4px"
-          onclick="event.stopPropagation();copyTimeBlock('${b.time}','${b.type}','${copyAttr}',this)">📋</button>
-        <span class="toggle-icon">▾</span>
-      </div>
-      <div class="sessions-container" style="max-height:2000px">${itemsHtml}</div>
-    </div>`;
-}
-
-function toggleTimeBlock(header) {
-  header.closest('.time-block').classList.toggle('collapsed');
-}
-
-function copyTimeBlock(time, type, itemsAttr, btn) {
-  let items; try{items=JSON.parse(itemsAttr.replace(/&quot;/g,'"'));}catch{return;}
-  const header=`${type.toUpperCase()} ${time}`;
-  const lines=items.map((it,i)=>type==='start'
-    ?`${i+1}. ${it.brand} | ${it.mp} | Studio ${it.studio} ${it.host} ${it.pic}`
-    :`${i+1}. ${it.brand} | ${it.mp} | Studio ${it.studio} ${it.pic}`);
-  navigator.clipboard.writeText(header+'\n'+lines.join('\n'))
-    .then(()=>showBanner('Copied: '+header,'success'))
-    .catch(()=>showBanner('Gagal copy','danger'));
-}
-
-// ─── Klasemen (TIDAK BERUBAH struktur, hanya loading) ────────
-async function loadKlasemen(force = false) {
-  if (!force && _lastKlasemenData) { renderKlasemen(_lastKlasemenData); return; }
-  showLoading();
-  try {
-    const res  = await fetch(API_URL+'?action=leaderboard'+(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)});
-    const data = await res.json();
-    _lastKlasemenData = data;
-    hideLoading();
-    renderKlasemen(data);
-  } catch(e) {
-    hideLoading();
-    document.getElementById('schedule-list').innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Gagal memuat klasemen</div>`;
-  }
-}
-
-function forceRefreshKlasemen() { _lastKlasemenData=null; loadKlasemen(true); }
-
-function renderKlasemen(data) {
-  const el = document.getElementById('schedule-list');
-  if (!el) return;
-  const lb = data.leaderboard||[];
-  if (!lb.length) { el.innerHTML='<div class="empty"><span class="empty-icon">🏆</span>Tidak ada data klasemen.</div>'; return; }
-
-  const totalHH = lb.reduce((a,p)=>a+(p.hariHCount||0),0);
-  const totalH1 = lb.reduce((a,p)=>a+(p.h1Count||0),0);
-  const totalBL = lb.reduce((a,p)=>a+(p.pendingBelumLengkap||0),0);
-
-  const summaryHtml = `
-    <div style="display:flex;gap:8px;padding:8px 0 6px;flex-wrap:wrap">
-      <div class="card" style="flex:1;min-width:80px;padding:10px 8px;text-align:center">
-        <div style="font-size:1.3rem;font-weight:800;color:var(--bs-danger)">${totalHH}</div>
-        <div style="font-size:0.58rem;color:var(--bs-muted);text-transform:uppercase">🔴 Hari H</div>
-      </div>
-      <div class="card" style="flex:1;min-width:80px;padding:10px 8px;text-align:center">
-        <div style="font-size:1.3rem;font-weight:800;color:#e65100">${totalH1}</div>
-        <div style="font-size:0.58rem;color:var(--bs-muted);text-transform:uppercase">🟡 H+1</div>
-      </div>
-      <div class="card" style="flex:1;min-width:80px;padding:10px 8px;text-align:center">
-        <div style="font-size:1.3rem;font-weight:800;color:#f57f17">${totalBL}</div>
-        <div style="font-size:0.58rem;color:var(--bs-muted);text-transform:uppercase">⚠ Blm Lgkp</div>
-      </div>
-    </div>
-    <button class="btn btn-outline-secondary btn-sm" style="width:100%;margin-bottom:8px" onclick="forceRefreshKlasemen()">🔄 Force Refresh</button>`;
-
-  const rows = lb.map(p => {
-    const hasPending=(p.hariHCount||0)>0||(p.h1Count||0)>0;
-    let parts=[];
-    if(p.hariHCount>0){const bl=p.pendingBelumLengkap||0;parts.push(`${p.hariHCount} Hari H${bl>0?` (${bl} ⚠)`:''}`)}
-    if(p.h1Count>0) parts.push(`${p.h1Count} H+1`);
-    const statusText=parts.join(' · ')||'✅ Bersih';
-
-    const pendingHtml=(p.pending||[]).map(row=>{
-      const isBL=row.belumLengkap;
-      const bg=isBL?'#fffbeb':'#fff8f8';
-      const badge=isBL
-        ?`<span class="badge" style="background:#fef3c7;color:#92400e">⚠ Blm Lgkp</span>`
-        :`<span class="badge" style="background:var(--bs-danger-subtle);color:var(--bs-danger-text)">Hari H</span>`;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:${bg};border-bottom:1px solid #f5f5f5;font-size:0.73rem">
-        ${badge}
-        <span style="font-weight:600;flex:1">${row.brand||'-'}</span>
-        <span style="color:var(--bs-primary)">${row.mp||'-'}</span>
-        <span style="color:#adb5bd;min-width:76px;text-align:right">${row.date||'-'}</span>
-      </div>`;
-    }).join('');
-
-    return `<div class="card" style="${hasPending?'border-left:4px solid var(--bs-danger)':''}">
-      <div style="display:flex;align-items:center;padding:9px 12px;cursor:pointer;background:${hasPending?'#fff5f5':'#fafafa'}"
-           onclick="this.nextElementSibling.classList.toggle('hidden')">
-        <span style="font-weight:700;font-size:0.84rem;flex:1">${p.pic||'-'}</span>
-        <span style="font-size:0.72rem;color:var(--bs-muted)">${statusText}</span>
-      </div>
-      <div class="hidden">${pendingHtml||'<div style="padding:8px 12px;color:#adb5bd;font-size:0.73rem">Tidak ada pending ✅</div>'}</div>
-    </div>`;
-  }).join('');
-
-  el.innerHTML = summaryHtml + rows;
-}
-
-// ─── Hari H (loading fix) ─────────────────────────────────────
-async function loadHariH(force = false) {
-  if (!force && _lastHariHData) { renderHariH(_lastHariHData, _lastFormData); return; }
-  showLoading();
-  try {
-    const [todayRes, formRes] = await Promise.allSettled([
-      fetch(API_URL+'?action=today'    +(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)}),
-      fetch(API_URL+'?action=formcheck'+(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)})
+    // Parallel fetch schedule + picschedule
+    const [schedResp, picResp] = await Promise.all([
+      fetch(`${base}?action=schedule${ts}`).then(r => r.json()),
+      fetch(`${base}?action=picschedule${ts}`).then(r => r.json()),
     ]);
-    if(todayRes.status==='fulfilled') _lastHariHData = await todayRes.value.json();
-    if(formRes.status ==='fulfilled') _lastFormData  = await formRes.value.json();
-    hideLoading();
-    renderHariH(_lastHariHData, _lastFormData);
-  } catch(e) {
-    hideLoading();
-    document.getElementById('schedule-list').innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Gagal memuat Hari H</div>`;
+
+    if (picResp && picResp.pics) {
+      _lastPicScheduleData = picResp.pics;
+    }
+
+    renderStandby(schedResp, _lastPicScheduleData);
+
+  } catch(err) {
+    console.error('loadStandby error:', err);
+    if (!_lastPicScheduleData) {
+      el.innerHTML = `<p class="error">Gagal memuat data: ${err.message}</p>`;
+    }
+    // Jika ada cache → biarkan render lama tetap tampil
   }
 }
 
-function forceRefreshHariH() { _lastHariHData=null; _lastFormData=null; loadHariH(true); }
+async function forceRefreshStandby() {
+  _lastPicScheduleData = null;
+  _standbyRrIndex = {};
+  await loadStandby(true);
+}
 
-function renderHariH(data, formData) {
+// ══════════════════════════════════════════════════════════════════
+//  RENDER STANDBY
+// ══════════════════════════════════════════════════════════════════
+
+function renderStandby(schedData, picData) {
   const el = document.getElementById('schedule-list');
   if (!el) return;
-  if (!data) { el.innerHTML='<div class="empty"><span class="empty-icon">📋</span>Belum ada data.</div>'; return; }
 
-  const formResponses = formData?.responses||[];
-  const dedupedForms  = deduplicateResponses(formResponses);
-  const allSlots      = (data.leaderboard||[]).flatMap(p=>(p.rows||[]).map(r=>({brand:r.brand,mp:r.mp,hostObj:r})));
-  buildExclusiveClaims(dedupedForms, allSlots);
+  if (!picData || !picData.length) {
+    el.innerHTML = '<p class="empty">Data PIC belum tersedia.</p>';
+    return;
+  }
 
-  const shifts = {pagi:[],siang:[],malam:[]};
-  for(const p of (data.leaderboard||[])) for(const r of (p.rows||[])) shifts[getHariHShift(r.endTime)].push({...r,pic:p.pic});
+  const sessions = (schedData && schedData.sessions) ? schedData.sessions : [];
+  const SHIFTS   = ['pagi', 'siang', 'malam'];
 
-  const shiftIcon={pagi:'🌅',siang:'☀️',malam:'🌙'};
-  let html=`<button class="btn btn-outline-secondary btn-sm" style="width:100%;margin:6px 0 10px" onclick="forceRefreshHariH()">🔄 Force Refresh</button>`;
+  let html = '';
 
-  for(const shift of ['pagi','siang','malam']){
-    if(!shifts[shift].length) continue;
-    const rowsHtml = shifts[shift].map(r=>{
-      const slotKey=`${r.brand}__${r.mp}__${r.host||r.name}__${r.startTime||r.start}`;
-      const claimed =getClaimedForms(slotKey, dedupedForms);
-      const isHold  =r.isHold;
-      let uploadHtml;
-      if(claimed.length){
-        const valid=claimed.find(f=>(f.submittedAt||0)>toMin(r.endTime||'00:00')*60000);
-        uploadHtml=valid
-          ?`<span class="badge" style="background:var(--bs-success-subtle);color:var(--bs-success-text)">✅ Uploaded</span>`
-          :`<span class="badge" style="background:var(--bs-danger-subtle);color:var(--bs-danger-text)">⚠️ False Upload</span>`;
+  // ── SECTION 1: PIC SHIFT ─────────────────────────────────────
+  html += `<div class="standby-section"><h3>👤 PIC SHIFT</h3>`;
+  for (const shift of SHIFTS) {
+    // Semua operator dari SEMUA section yang punya shift ini
+    const ops = picData.filter(p => p.shift === shift);
+    if (!ops.length) continue;
+
+    const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+    html += `<div class="shift-block shift-${shift}">`;
+    html += `<div class="shift-header">${shiftEmoji(shift)} Shift ${shiftLabel}</div>`;
+    html += `<ul>`;
+    for (const op of ops) {
+      const studioStr = op.studios.length ? ` <span class="studio-badge">Studio ${op.studios.join(', ')}</span>` : '';
+      html += `<li><strong>${op.name}</strong> <span class="section-tag">${op.section}</span>${studioStr}</li>`;
+    }
+    html += `</ul></div>`;
+  }
+  html += `</div>`; // end PIC SHIFT section
+
+  // ── SECTION 2: STANDBY BRAND ──────────────────────────────────
+  html += `<div class="standby-section"><h3>🎯 STANDBY BRAND</h3>`;
+
+  for (const cfg of STANDBY_BRANDS_CFG) {
+    html += `<div class="brand-standby-block">`;
+    html += `<div class="brand-standby-header">${cfg.label}</div>`;
+
+    // Filter sessions yang cocok dengan brand ini
+    const brandSessions = sessions.filter(s => matchBrandConfig(s, cfg));
+
+    if (cfg.type === 'dedicated') {
+      // ── DEDICATED: operator dari section tertentu, tampil per shift ──
+      const sectionKey = cfg.section; // 'amtour' atau 'asics'
+      const sectionOps = picData.filter(p => p.section === sectionKey);
+
+      if (!sectionOps.length) {
+        html += `<p class="empty-ops">Tidak ada operator ${sectionKey} hari ini.</p>`;
       } else {
-        uploadHtml=`<span class="badge" style="background:var(--bs-secondary-subtle);color:#495057">⏳ Belum</span>`;
+        for (const shift of SHIFTS) {
+          const ops = sectionOps.filter(p => p.shift === shift);
+          if (!ops.length) continue;
+
+          // Hitung merged time dari sessions brand ini untuk shift ini
+          const allSegs = brandSessions.flatMap(s =>
+            splitAtShiftBoundary(s.start || s.startTime, s.end || s.endTime)
+          );
+          const merged = mergeSessionTime(allSegs, shift);
+          const timeStr = merged ? ` (${merged.start}–${merged.end})` : '';
+
+          const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+          html += `<div class="standby-row">`;
+          html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${shiftLabel}${timeStr}</span>`;
+          html += `<span class="ops-list">${ops.map(o => o.name).join(', ')}</span>`;
+          html += `</div>`;
+        }
       }
-      const holdBadge=isHold?`<span class="badge" style="background:var(--bs-danger);color:#fff">HOLD</span>`:'';
-      return `<div class="card" style="padding:8px 12px;margin-bottom:5px">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-          ${holdBadge}
-          <span style="font-weight:700;font-size:0.84rem;flex:1">${r.brand||'-'}</span>
-          <span class="badge marketplace">${r.mp||'-'}</span>
-          <span class="badge studio">Studio ${r.studio||'-'}</span>
-          <span style="font-size:0.72rem;font-weight:600;color:var(--bs-muted)">${r.startTime||r.start||'-'} – ${r.endTime||r.end||'-'}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:0.75rem;color:var(--bs-dark);flex:1">${r.host||r.name||'-'}</span>
-          <span style="font-size:0.72rem;color:var(--bs-muted)">${r.pic||'-'}</span>
-          ${uploadHtml}
-        </div>
-      </div>`;
-    }).join('');
-    html+=`<div class="section-header">${shiftIcon[shift]} ${shift.toUpperCase()}</div>${rowsHtml}`;
-  }
-  el.innerHTML=html||'<div class="empty"><span class="empty-icon">✅</span>Semua data sudah lengkap!</div>';
-}
 
-// ─── Form Upload Matching (TIDAK BERUBAH) ────────────────────
-function parseFormHosts(hostStr) {
-  if(!hostStr) return [];
-  return hostStr.split(/\s+(?:with|dan|bareng|sama|&|,)\s+/i)
-    .flatMap(p=>p.replace(/[()]/g,'').split(/,\s*/))
-    .map(s=>s.trim()).filter(Boolean);
-}
-
-function hostNameMatchesSlot(name,h){
-  const hn=normalizeBrand(name),sn=normalizeBrand(h.host||h.name||'');
-  return hn.split(/\s+/).filter(w=>w.length>=3).some(w=>sn.includes(w));
-}
-
-function getOverlapRatio(fStart,fEnd,hStart,hEnd){
-  let fs=toMin(fStart),fe=toMin(fEnd||''),hs=toMin(hStart),he=toMin(hEnd||'');
-  if(fe===0)fe=1440;if(he===0)he=1440;
-  return Math.max(0,Math.min(fe,he)-Math.max(fs,hs))/(he-hs||1);
-}
-
-function getTimeMatchScore(f,hStart,hEnd){
-  let sc=0;
-  const fS=toMin(f.startLive||''),fE=toMin(f.endLive||''),hS=toMin(hStart),hE=toMin(hEnd);
-  if(Math.abs(fE-hE)<=30)sc+=3;if(Math.abs(fS-hS)<=30)sc+=2;
-  if(getOverlapRatio(f.startLive,f.endLive,hStart,hEnd)>=0.5)sc+=1;
-  return sc;
-}
-
-function sessionMatch(f,p,h){
-  const fb=normalizeBrand(f.brand||''),fm=normalizeMp(f.mp||'');
-  const pb=normalizeBrand(p.brand||''),pm=normalizeMp(p.mp||'');
-  if(!fb.includes(pb.slice(0,5))&&!pb.includes(fb.slice(0,5)))return false;
-  if(!fm.includes(pm.slice(0,4))&&!pm.includes(fm.slice(0,4)))return false;
-  if(!parseFormHosts(f.host||'').some(hn=>hostNameMatchesSlot(hn,h)))return false;
-  return getTimeMatchScore(f,h.startTime||h.start,h.endTime||h.end)>=2;
-}
-
-function deduplicateResponses(responses){
-  const map={};
-  for(const r of responses){
-    const key=[r.host,r.brand,r.mp,r.startLive,r.endLive].join('|');
-    if(!map[key]) map[key]={...r,links:r.link?[r.link]:[]};
-    else{if(r.link)map[key].links.push(r.link);if((r.submittedAt||0)>(map[key].submittedAt||0))map[key].submittedAt=r.submittedAt;}
-  }
-  return Object.values(map);
-}
-
-function buildExclusiveClaims(dedupedResponses,allSlots){
-  exclusiveClaims={};
-  for(let ri=0;ri<dedupedResponses.length;ri++){
-    const f=dedupedResponses[ri];
-    for(const{brand,mp,hostObj:h}of allSlots){
-      const slotKey=`${brand}__${mp}__${h.host||h.name}__${h.startTime||h.start}`;
-      if(sessionMatch(f,{brand,mp},h)){
-        if(!exclusiveClaims[ri])exclusiveClaims[ri]=[];
-        if(!exclusiveClaims[ri].includes(slotKey))exclusiveClaims[ri].push(slotKey);
+    } else if (cfg.type === 'floating' && !cfg.perOperator) {
+      // ── FLOATING: per host-slot, tampilkan pool operator shift tsb ──
+      if (!brandSessions.length) {
+        html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
+      } else {
+        for (const session of brandSessions) {
+          const segs = splitAtShiftBoundary(session.start || session.startTime, session.end || session.endTime);
+          for (const seg of segs) {
+            const pool = getPoolForShift(picData, ['floating','intern'], seg.shift);
+            const poolNames = pool.map(o => o.name).join(', ') || '—';
+            const shiftLabel = seg.shift.charAt(0).toUpperCase() + seg.shift.slice(1);
+            html += `<div class="standby-row">`;
+            html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
+            html += `<span class="ops-list">${poolNames}</span>`;
+            html += `</div>`;
+          }
+        }
       }
-    }
-  }
-}
 
-// ★ CHANGED: terima dedupedForms sebagai parameter
-function getClaimedForms(slotKey, dedupedForms) {
-  return Object.entries(exclusiveClaims)
-    .filter(([,slots])=>slots.includes(slotKey))
-    .map(([ri])=>dedupedForms?.[parseInt(ri)]).filter(Boolean);
-}
+    } else if (cfg.type === 'floating' && cfg.perOperator) {
+      // ── FLOATING PER-OPERATOR: round-robin 1 operator per slot ──
+      if (!brandSessions.length) {
+        html += `<p class="empty-ops">Tidak ada jadwal live hari ini.</p>`;
+      } else {
+        if (!_standbyRrIndex[cfg.label]) _standbyRrIndex[cfg.label] = {};
+        const rrState = _standbyRrIndex[cfg.label];
 
-function findSessionCandidates(p,h){ return []; }
+        for (const session of brandSessions) {
+          const segs = splitAtShiftBoundary(session.start || session.startTime, session.end || session.endTime);
+          for (const seg of segs) {
+            const pool = getPoolForShift(picData, ['floating','intern'], seg.shift);
+            if (!pool.length) {
+              html += `<div class="standby-row">`;
+              html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
+              html += `<span class="ops-list">— (tidak ada operator shift ${seg.shift})</span>`;
+              html += `</div>`;
+              continue;
+            }
+            // Round-robin per shift
+            const rrKey = seg.shift;
+            if (rrState[rrKey] === undefined) rrState[rrKey] = 0;
+            const assigned = pool[rrState[rrKey] % pool.length];
+            rrState[rrKey]++;
 
-// ─── Bukti Tayang (loading fix) ───────────────────────────────
-async function loadBuktiTayang(force=false){
-  if(!force&&_lastBuktiTayangData){renderBuktiTayang(_lastBuktiTayangData);return;}
-  showLoading();
-  try{
-    const res=await fetch(API_URL+'?action=buktitayang'+(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)});
-    const data=await res.json();
-    _lastBuktiTayangData=data;
-    hideLoading();
-    renderBuktiTayang(data);
-    loadBuktiTayangHistory(force);
-  }catch(e){
-    hideLoading();
-    document.getElementById('schedule-list').innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Gagal memuat bukti tayang</div>`;
-  }
-}
-
-function forceRefreshBuktiTayang(){_lastBuktiTayangData=null;_lastBuktiTayangHistoryData=null;loadBuktiTayang(true);}
-
-function renderBuktiTayang(data){
-  const el=document.getElementById('schedule-list');
-  if(!el)return;
-  const sessions=data.sessions||[],dateStr=data.date||'';
-  const totalBelum=sessions.filter(s=>s.status!=='uploaded').length;
-  const shifts={malam:[],pagi:[],siang:[]};
-  for(const s of sessions)shifts[getShiftBT(s.start||s.startTime||'')].push(s);
-  const shiftIcon={malam:'🌙',pagi:'🌅',siang:'☀️'};
-  const hdrCls={malam:'header-purple',pagi:'header-warning',siang:'header-primary'};
-
-  const renderCard=s=>{
-    const icon=s.status==='uploaded'?'✅':'⏳';
-    const links=(s.links||[]).map(l=>`<a href="${l}" target="_blank" style="font-size:0.7rem">📸</a>`).join(' ');
-    return `<div class="bt-card ${s.status||'missing'}">
-      <span>${icon}</span>
-      <span class="bt-brand">${s.brand||'-'}</span>
-      <span class="bt-mp">${s.mp||s.marketplace||'-'}</span>
-      <span style="font-size:0.68rem;color:var(--bs-muted)">${s.start||s.startTime||'-'} – ${s.end||s.endTime||'-'}</span>
-      ${links||'<span class="bt-nolink">Belum ada link</span>'}
-    </div>`;
-  };
-
-  let html=`
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0 10px;flex-wrap:wrap">
-      <span style="font-weight:700;font-size:0.85rem">📋 Bukti Tayang — ${dateStr}</span>
-      <span class="badge" style="background:var(--bs-danger);color:#fff">${totalBelum} Belum Upload</span>
-      <button class="btn btn-outline-secondary btn-sm" onclick="copyBuktiTayangWA()">📲 Copy WA</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="forceRefreshBuktiTayang()">🔄</button>
-    </div>`;
-
-  for(const shift of ['malam','pagi','siang']){
-    if(!shifts[shift].length)continue;
-    const done=shifts[shift].filter(s=>s.status==='uploaded');
-    const notDone=shifts[shift].filter(s=>s.status!=='uploaded');
-    html+=`<div class="card" style="margin-bottom:8px">
-      <div class="card-header ${hdrCls[shift]}">${shiftIcon[shift]} ${shift.charAt(0).toUpperCase()+shift.slice(1)} (${shifts[shift].length})</div>
-      <div class="card-body" style="padding:8px">
-        ${notDone.length?notDone.map(renderCard).join(''):'<p style="font-size:0.73rem;color:#adb5bd;margin:0">Semua sudah upload ✅</p>'}
-        ${done.length?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--bs-border-subtle)">
-          <div style="font-size:0.68rem;color:var(--bs-muted);font-weight:600;cursor:pointer;margin-bottom:4px"
-               onclick="this.nextElementSibling.classList.toggle('hidden')">✅ Sudah Upload (${done.length}) ▸</div>
-          <div class="hidden">${done.map(renderCard).join('')}</div>
-        </div>`:''}
-      </div>
-    </div>`;
-  }
-  el.innerHTML=html+'<div id="bukti-tayang-history"></div>';
-}
-
-function copyBuktiTayangWA(){
-  if(!_lastBuktiTayangData)return;
-  const sessions=(_lastBuktiTayangData.sessions||[]).filter(s=>s.status!=='uploaded');
-  const dateStr=_lastBuktiTayangData.date||'';
-  const byShift={malam:[],pagi:[],siang:[]};
-  for(const s of sessions)byShift[getShiftBT(s.start||s.startTime||'')].push(s);
-  const icons={malam:'🌙',pagi:'🌅',siang:'☀️'};
-  let text=`📋 *Bukti Tayang ${dateStr} — ${sessions.length} Belum Upload*\n`;
-  for(const sh of ['malam','pagi','siang']){
-    if(!byShift[sh].length)continue;
-    text+=`\n${icons[sh]} *Shift ${sh.charAt(0).toUpperCase()+sh.slice(1)}*\n`;
-    for(const s of byShift[sh]) text+=`• ${s.brand||'-'} - ${s.mp||'-'} (${s.start||s.startTime||'-'}–${s.end||s.endTime||'-'})\n`;
-  }
-  navigator.clipboard.writeText(text.trim()).then(()=>showBanner('Copied!','success')).catch(()=>showBanner('Gagal copy','danger'));
-}
-
-// ─── Bukti Tayang History (TIDAK BERUBAH) ────────────────────
-async function loadBuktiTayangHistory(force=false){
-  const el=document.getElementById('bukti-tayang-history');
-  if(!el)return;
-  if(!force&&_lastBuktiTayangHistoryData){renderBuktiTayangHistory(_lastBuktiTayangHistoryData);return;}
-  el.innerHTML='<p style="font-size:0.73rem;color:var(--bs-muted);padding:6px 0">⏳ Memuat history H-7...</p>';
-  try{
-    const res=await fetch(API_URL+'?action=buktitayanghistory'+(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)});
-    const data=await res.json();
-    _lastBuktiTayangHistoryData=data;
-    renderBuktiTayangHistory(data);
-  }catch(e){el.innerHTML=`<p style="font-size:0.72rem;color:var(--bs-danger)">Gagal: ${e.message}</p>`;}
-}
-
-function renderBuktiTayangHistory(data){
-  const el=document.getElementById('bukti-tayang-history');
-  if(!el)return;
-  const dates=data.dates||[];
-  if(!dates.length){el.innerHTML='';return;}
-  el.innerHTML=`<div style="font-weight:700;font-size:0.76rem;color:var(--bs-muted);padding:10px 0 6px;border-top:2px solid var(--bs-border);margin-top:10px">📅 History H-7 s/d H-1</div>`+
-    dates.map(d=>{
-      const safe=d.date.replace(/-/g,'');
-      const total=(d.pics||[]).reduce((a,p)=>a+(p.missing||[]).length+(p.pending||[]).length,0);
-      return `<div class="card" style="margin-bottom:6px">
-        <div style="padding:8px 12px;cursor:pointer;font-size:0.78rem;font-weight:600;display:flex;justify-content:space-between;align-items:center;background:var(--bs-light)"
-             onclick="this.nextElementSibling.classList.toggle('hidden')">
-          📆 ${d.date}
-          <span class="badge" style="background:var(--bs-danger-subtle);color:var(--bs-danger-text)">${total} belum</span>
-        </div>
-        <div class="hidden">
-          ${(d.pics||[]).map(p=>`<div style="border-top:1px solid var(--bs-border-subtle)">
-            <div style="padding:6px 16px;cursor:pointer;font-size:0.73rem;font-weight:600;color:var(--bs-muted)"
-                 onclick="this.nextElementSibling.classList.toggle('hidden')">
-              👤 ${p.pic} <span style="color:var(--bs-danger)">(${(p.missing||[]).length+(p.pending||[]).length})</span>
-            </div>
-            <div class="hidden" style="padding:0 16px 8px">
-              ${(p.missing||[]).map(s=>`<div style="font-size:0.72rem;color:var(--bs-danger);padding:2px 0">❌ ${s.brand} - ${s.mp} ${s.start||''}-${s.end||''}</div>`).join('')}
-              ${(p.pending||[]).map(s=>`<div style="font-size:0.72rem;color:#e65100;padding:2px 0">⏳ ${s.brand} - ${s.mp} ${s.start||''}-${s.end||''}</div>`).join('')}
-            </div>
-          </div>`).join('')}
-        </div>
-      </div>`;
-    }).join('');
-}
-
-// ─── OPStandby (loading fix + FIX-C/D/E/G) ──────────────────
-async function loadStandby(force=false){
-  const el=document.getElementById('schedule-list');
-  if(!el)return;
-  if(!force&&_lastPicScheduleData&&scheduleData){renderStandby(scheduleData,_lastPicScheduleData);return;}
-  showLoading();
-  try{
-    const[schedRes,picRes]=await Promise.allSettled([
-      scheduleData
-        ?Promise.resolve(scheduleData)
-        :fetch(API_URL+'?action=schedule'+(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)}).then(r=>r.json()),
-      fetch(API_URL+'?action=picschedule'+(force?'&nocache=1':''),{signal:AbortSignal.timeout(30000)}).then(r=>r.json())
-    ]);
-    if(schedRes.status==='fulfilled'&&!scheduleData){
-      const sd=schedRes.value;
-      if(sd?.sessions){sd.sessions=sd.sessions.map(s=>{s.isMarathon=(s.hosts||[]).length>1;s.hosts=(s.hosts||[]).map(normalizeHost);return s;});scheduleData=sd;updateStats(sd);}
-    }
-    if(picRes.status==='fulfilled') _lastPicScheduleData=picRes.value;
-    hideLoading();
-    renderStandby(scheduleData,_lastPicScheduleData);
-  }catch(e){
-    hideLoading();
-    el.innerHTML=`<div class="empty"><span class="empty-icon">⚠️</span>Gagal memuat standby</div>`;
-  }
-}
-
-async function forceRefreshStandby(){_lastPicScheduleData=null;_standbyRrIndex={};loadStandby(true);}
-
-function renderStandby(schedData,picData){
-  _standbyRrIndex={};
-  const el=document.getElementById('schedule-list');
-  if(!el)return;
-  const pics=picData?.pics||[],sessions=schedData?.sessions||[];
-  const dateStr=picData?.date||schedData?.date||'',sheetNm=picData?.sheetName||'';
-
-  if(!pics.length&&!sessions.length){el.innerHTML='<div class="empty"><span class="empty-icon">🧑‍💼</span>Data PIC belum tersedia.</div>';return;}
-
-  const picByShift={pagi:[],siang:[],malam:[]};
-  for(const op of pics){const sh=op.shift||'pagi';if(picByShift[sh])picByShift[sh].push(op);}
-
-  const shiftColors={pagi:'shift-pagi',siang:'shift-siang',malam:'shift-malam'};
-  const shiftIcon={pagi:'🌅',siang:'☀️',malam:'🌙'};
-  const days=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-  const months=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  let dateDisplay='';
-  if(dateStr){const d=new Date(dateStr+'T00:00:00');dateDisplay=`${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;}
-
-  let html=`<div class="standby-wrapper">
-    <div class="date-banner">
-      <div class="date-title">OPStandby${sheetNm?' — '+sheetNm:''}</div>
-      <div class="date-value">${dateDisplay}</div>
-    </div>
-    <div class="standby-section"><h3>🧑‍💼 PIC per Shift</h3>`;
-
-  for(const shift of ['pagi','siang','malam']){
-    if(!picByShift[shift].length)continue;
-    html+=`<div class="shift-block ${shiftColors[shift]}">
-      <div class="shift-header">${shiftIcon[shift]} ${shift.charAt(0).toUpperCase()+shift.slice(1)}</div>
-      <ul>${picByShift[shift].map(op=>`<li><strong>${op.name}</strong><span class="section-tag">${op.section||''}</span>${(op.studios||[]).map(n=>`<span class="studio-badge">Studio ${n}</span>`).join('')}</li>`).join('')}</ul>
-    </div>`;
-  }
-  html+=`</div><div class="standby-section"><h3>📦 Standby Brand</h3>`;
-
-  for(const cfg of STANDBY_BRANDS_CFG){
-    html+=`<div class="brand-standby-block"><div class="brand-standby-header">${cfg.label}</div>`;
-    if(cfg.type==='dedicated'){
-      const sp=pics.filter(p=>p.section===cfg.section);
-      for(const shift of ['pagi','siang']){
-        const spSh=sp.filter(p=>p.shift===shift);if(!spSh.length)continue;
-        const merged=mergeSessionTime(sessions.filter(s=>matchBrandConfig(s,cfg)),shift);
-        const tStr=merged?`${merged.start}–${merged.end}`:'-';
-        html+=`<div class="standby-row"><span class="shift-pill ${shiftColors[shift]}">${shift.toUpperCase()}</span><span style="color:var(--bs-muted);font-size:0.78rem">${tStr}</span><span class="ops-list">${spSh.map(p=>p.name).join(', ')}</span></div>`;
-      }
-    } else {
-      const brandSessions=sessions.filter(s=>matchBrandConfig(s,cfg));
-      const pool=pics.filter(p=>['floating','intern'].includes(p.section));
-      if(!brandSessions.length){html+=`<div class="empty-ops">Tidak ada sesi hari ini</div>`;}
-      else for(const s of brandSessions) for(const h of (s.hosts||[])){
-        const segs=splitAtShiftBoundary(h.startTime||h.start,h.endTime||h.end);
-        for(const seg of segs){
-          const shiftPool=pool.filter(p=>p.shift===seg.shift);
-          let nm='-';
-          if(cfg.perOperator){const key=cfg.label+'_'+seg.shift;if(!_standbyRrIndex[key])_standbyRrIndex[key]=0;if(shiftPool.length){nm=shiftPool[_standbyRrIndex[key]%shiftPool.length].name;_standbyRrIndex[key]++;}}
-          else{nm=shiftPool.map(p=>p.name).join(', ')||'-';}
-          const cpTxt=`${cfg.label}\n${seg.start}–${seg.end} → ${nm}`;
-          html+=`<div class="standby-row">
-            <span class="shift-pill ${shiftColors[seg.shift]}">${seg.shift.toUpperCase()}</span>
-            <span style="font-size:0.75rem;color:var(--bs-muted)">${seg.start}–${seg.end}</span>
-            <span class="ops-list">${nm}</span>
-            <button class="copy-btn-sm" onclick="navigator.clipboard.writeText(${JSON.stringify(cpTxt)}).then(()=>showBanner('Copied!','success'))">📋</button>
-          </div>`;
+            html += `<div class="standby-row">`;
+            html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
+            html += `<span class="ops-list"><strong>${assigned.name}</strong></span>`;
+            html += `</div>`;
+          }
         }
       }
     }
-    html+=`</div>`;
+
+    // Tombol copy per brand
+    html += `<button class="copy-btn-sm" onclick="copyBrandStandby('${cfg.label}')">📋 Copy</button>`;
+    html += `</div>`; // end brand-standby-block
   }
-  html+=`</div>
-    <button class="btn-copy-standby" onclick="copyStandbyReminder()">📲 Copy Reminder Standby</button>
-    <div style="margin-top:8px;text-align:right"><button class="refresh-btn" onclick="forceRefreshStandby()">🔄 Refresh</button></div>
+
+  html += `</div>`; // end STANDBY BRAND section
+
+  // Tombol force refresh
+  html += `<div class="standby-actions">
+    <button class="refresh-btn" onclick="forceRefreshStandby()">🔄 Refresh</button>
   </div>`;
-  el.innerHTML=html;
+
+  el.innerHTML = html;
 }
 
-function copyStandbyReminder(){
-  const pics=_lastPicScheduleData?.pics||[],sessions=scheduleData?.sessions||[],dateStr=_lastPicScheduleData?.date||scheduleData?.date||'';
-  const picByShift={pagi:[],siang:[],malam:[]};
-  for(const op of pics){if(picByShift[op.shift])picByShift[op.shift].push(op);}
-  const icons={pagi:'🌅',siang:'☀️',malam:'🌙'};
-  let text=`📋 *OPStandby ${dateStr}*\n`;
-  for(const sh of ['pagi','siang','malam']){
-    if(!picByShift[sh].length)continue;
-    text+=`\n${icons[sh]} *PIC ${sh.toUpperCase()}*\n`;
-    for(const op of picByShift[sh]) text+=`• ${op.name}${(op.studios||[]).length?` (${op.studios.map(n=>`St.${n}`).join(',')})`:''}\n`;
+// ── Emoji helper per shift
+function shiftEmoji(shift) {
+  return shift === 'pagi' ? '🌅' : shift === 'siang' ? '☀️' : '🌙';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  COPY REMINDER WA
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * Copy full reminder OPStandby untuk WA.
+ * Format:
+ * 📋 *OPS STANDBY — [TANGGAL]*
+ * ...
+ */
+function copyStandbyReminder() {
+  if (!_lastPicScheduleData) {
+    alert('Data PIC belum dimuat. Refresh dulu.');
+    return;
   }
-  text+='\n📦 *STANDBY BRAND*\n';
-  for(const cfg of STANDBY_BRANDS_CFG){
-    const bs=sessions.filter(s=>matchBrandConfig(s,cfg));if(!bs.length)continue;
-    const pool=pics.filter(p=>['floating','intern'].includes(p.section));
-    if(cfg.type==='dedicated'){for(const sh of ['pagi','siang']){const sp=pics.filter(p=>p.section===cfg.section&&p.shift===sh);if(sp.length)text+=`• ${cfg.label} (${sh}): ${sp.map(p=>p.name).join(', ')}\n`;}}
-    else{let rr=0;for(const s of bs)for(const h of (s.hosts||[])){const segs=splitAtShiftBoundary(h.startTime||h.start,h.endTime||h.end);for(const seg of segs){const shPool=pool.filter(p=>p.shift===seg.shift);const nm=cfg.perOperator?(shPool.length?shPool[rr++%shPool.length].name:'-'):shPool.map(p=>p.name).join(',')||'-';text+=`• ${cfg.label} ${seg.start}–${seg.end} (${seg.shift}): ${nm}\n`;}}}
+
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('id-ID', { weekday:'long', day:'numeric', month:'long', year:'numeric' }).toUpperCase();
+
+  let lines = [];
+  lines.push(`📋 *OPS STANDBY — ${dateStr}*`);
+  lines.push('');
+
+  const SHIFTS = ['pagi','siang','malam'];
+
+  // PIC SHIFT
+  lines.push('*👤 PIC SHIFT*');
+  for (const shift of SHIFTS) {
+    const ops = _lastPicScheduleData.filter(p => p.shift === shift);
+    if (!ops.length) continue;
+    const shiftLabel = shift.charAt(0).toUpperCase() + shift.slice(1);
+    lines.push(`${shiftEmoji(shift)} *Shift ${shiftLabel}:* ${ops.map(o => o.name).join(', ')}`);
   }
-  navigator.clipboard.writeText(text.trim()).then(()=>showBanner('Reminder copied!','success')).catch(()=>showBanner('Gagal','danger'));
+  lines.push('');
+
+  // STANDBY BRAND
+  lines.push('*🎯 STANDBY BRAND*');
+
+  // Rebuild dari state terakhir — kita ambil dari DOM karena schedule data mungkin sudah di-render
+  // Cara paling reliable: re-compute dari _lastScheduleData
+  // → Karena renderStandby() sudah render, kita copy teks dari elemen DOM
+  const brandBlocks = document.querySelectorAll('.brand-standby-block');
+  for (const block of brandBlocks) {
+    const header = block.querySelector('.brand-standby-header')?.textContent || '';
+    lines.push(`\n*${header}*`);
+    const rows = block.querySelectorAll('.standby-row');
+    for (const row of rows) {
+      const pill = row.querySelector('.shift-pill')?.textContent?.trim() || '';
+      const ops  = row.querySelector('.ops-list')?.textContent?.trim() || '';
+      lines.push(`  ${pill}: ${ops}`);
+    }
+  }
+
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text)
+    .then(() => showBanner('✅ Reminder OPStandby berhasil dicopy!', 'success'))
+    .catch(() => {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta);
+      showBanner('✅ Reminder OPStandby berhasil dicopy!', 'success');
+    });
+
 }
 
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: SSO — hapus #user-name yg tidak ada di HTML
-// ════════════════════════════════════════════════════════════
-function onGsiLoad(){
-  if(!window.google?.accounts?.id)return;
-  google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID,callback:handleCredentialResponse,auto_select:false});
-  const btnEl=document.getElementById('google-signin-btn');
-  if(btnEl)google.accounts.id.renderButton(btnEl,{theme:'outline',size:'medium'});
-  const wrapper=document.getElementById('user-login-wrapper');
-  if(wrapper)wrapper.style.display='flex';
-}
+/**
+ * Copy reminder untuk 1 brand spesifik.
+ */
+function copyBrandStandby(label) {
+  const blocks = document.querySelectorAll('.brand-standby-block');
+  for (const block of blocks) {
+    const header = block.querySelector('.brand-standby-header')?.textContent || '';
+    if (header !== label) continue;
 
-function handleCredentialResponse(resp){
-  const payload=parseJwt(resp.credential);
-  if(!payload)return;
-  currentUser={name:payload.name,email:payload.email,picture:payload.picture};
-  // ★ HAPUS: getElementById('user-name') — tidak ada di HTML
-  if(!presenceStarted)startPresence();
-}
+    let lines = [`*${label}*`];
+    const rows = block.querySelectorAll('.standby-row');
+    for (const row of rows) {
+      const pill = row.querySelector('.shift-pill')?.textContent?.trim() || '';
+      const ops  = row.querySelector('.ops-list')?.textContent?.trim() || '';
+      lines.push(`  ${pill}: ${ops}`);
+    }
+    const text = lines.join('\n');
+    navigator.clipboard.writeText(text)
+      .then(() => showBanner(`✅ Copy ${label} berhasil!`, 'success'))
+      .catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+        showBanner(`✅ Copy ${label} berhasil!`, 'success');
+      });
 
-function parseJwt(token){
-  try{return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}
-  catch{return null;}
+    return;
+  }
 }
-
-function startPresence(){
-  if(presenceStarted)return;
-  presenceStarted=true;
-  if(currentUser){onlineUsers[currentUser.email]={name:currentUser.name,ts:Date.now()};renderOnlineUsers();}
-  sendPresence();setInterval(sendPresence,3*60*1000);listenPresence();
-}
-
-function sendPresence(){
-  if(!currentUser)return;
-  fetch('https://ntfy.sh/'+NTFY_PRESENCE_TOPIC,{method:'POST',body:JSON.stringify({email:currentUser.email,name:currentUser.name,ts:Date.now()}),headers:{'Content-Type':'application/json'}}).catch(()=>{});
-}
-
-function listenPresence(){
-  const es=new EventSource('https://ntfy.sh/'+NTFY_PRESENCE_TOPIC+'/sse');
-  es.onmessage=e=>{try{const d=JSON.parse(JSON.parse(e.data).message);onlineUsers[d.email]={name:d.name,ts:d.ts};cleanupPresence();renderOnlineUsers();}catch{}};
-}
-
-function cleanupPresence(){
-  const cut=Date.now()-6*60*1000;
-  for(const k of Object.keys(onlineUsers))if(onlineUsers[k].ts<cut)delete onlineUsers[k];
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: renderOnlineUsers — querySelectorAll (ada 2 id)
-// ════════════════════════════════════════════════════════════
-function renderOnlineUsers(){
-  document.querySelectorAll('#online-users').forEach(el=>{
-    const users=Object.values(onlineUsers);
-    el.innerHTML=users.length
-      ?users.map(u=>`<span class="online-badge">🟢 ${u.name.split(' ')[0]}</span>`).join(' ')
-      :'👤 —';
-  });
-}
-
-// ════════════════════════════════════════════════════════════
-//  ★ CHANGED: Init — loadSchedule() + updateClock tiap detik
-// ════════════════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {
-  updateClock();
-  setInterval(updateClock, 1000);
-  loadSchedule(); // ★ loadSchedule langsung, bukan switchTab
-});
