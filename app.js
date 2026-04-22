@@ -3174,6 +3174,7 @@ async function initMCRConnections() {
 
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
+                console.log("DATA AUDIO DARI OBS:", data);
                 let nowTime = Date.now();
                 let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
                 lastAudioCheckTime = nowTime; 
