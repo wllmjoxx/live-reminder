@@ -3197,7 +3197,7 @@ async function initMCRConnections() {
                 let audioProblem = null;
 
                 // A. Deteksi Mic Mati (90 Detik)
-                if (currentDb < -45) {
+                if (currentDb < -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) { 
                         audioProblem = "Mic Mati / Tidak ada suara";
