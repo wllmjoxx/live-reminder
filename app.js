@@ -2548,29 +2548,6 @@ async function loadStandby(force = false) {
       fetch(`${base}?action=picschedule${ts}`).then(r => r.json()),
     ]);
 
-    // ✅ Normalize schedResp: fix field names + fix session.start ke host pertama
-    if (schedResp && schedResp.sessions) {
-      schedResp.sessions = schedResp.sessions.map(s => {
-        if (!s.hosts || !s.hosts.length) return s;
-
-        // 1. Normalize field names tiap host (support lama & baru dari API)
-        s.hosts = s.hosts.map(h => ({
-          host:      h.host      ?? h.name  ?? '-',
-          startTime: h.startTime ?? h.start ?? '-',
-          endTime:   h.endTime   ?? h.end   ?? '-',
-          picData:   h.picData   ?? h.pic   ?? '-',
-        }));
-
-        // 2. Fix session.start = startTime host pertama (biar chaining akurat)
-        const firstStart = s.hosts[0].startTime;
-        if (firstStart && firstStart !== '-') {
-          s.start    = firstStart;
-          s.startTime = firstStart;
-        }
-        return s;
-      });
-    }
-
     // GANTI:
     if (picResp && picResp.pics) {
       // ✅ Swap pagi↔siang karena API label-nya kebalik
