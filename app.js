@@ -2482,6 +2482,7 @@ function splitAtShiftBoundary(startStr, endStr) {
 
   for (const bound of SHIFT_BOUNDS) {
     if (s >= e) break;
+    if (bound <= s) continue; // ✅ SKIP boundary yang sudah terlewat
     const segEnd = Math.min(e, bound);
     if (segEnd > s) {
       result.push({ start: minToTime(s), end: minToTime(segEnd), shift: getBoundShift(s) });
@@ -2490,6 +2491,7 @@ function splitAtShiftBoundary(startStr, endStr) {
   }
   return result.length ? result : [{ start: startStr, end: endStr, shift: getShiftByStart(startStr) }];
 }
+
 
 /**
  * Fuzzy match session ke brand config.
@@ -2919,28 +2921,27 @@ async function copyAllStandby() {
 function getStandbyHostSlots(brandSessions) {
   const raw = [];
   for (const s of brandSessions) {
-    const sStart = s.start ?? s.startTime ?? null;
-    if (!sStart || sStart === '-') continue;
     const hosts = (s.hosts && s.hosts.length) ? s.hosts : null;
     if (!hosts) {
-      const e = s.end ?? s.endTime;
-      if (e && e !== '-') raw.push({ start: sStart, end: e });
+      const st = s.start ?? s.startTime ?? null;
+      const en = s.end   ?? s.endTime   ?? null;
+      if (st && en && st !== '-' && en !== '-') raw.push({ start: st, end: en });
       continue;
     }
-    let prev = sStart; // ← start pertama = session.start
     for (const h of hosts) {
-      const e = h.endTime ?? h.end ?? null;
-      if (!e || e === '-') continue;
-      raw.push({ start: prev, end: e });
-      prev = e; // ← start berikutnya = end sekarang
+      // ✅ h.start & h.end sudah benar dari API — pakai langsung, JANGAN chain!
+      const st = h.startTime ?? h.start ?? null;
+      const en = h.endTime   ?? h.end   ?? null;
+      if (!st || !en || st === '-' || en === '-') continue;
+      raw.push({ start: st, end: en });
     }
   }
-  // Dedup SETELAH chaining, sort by start
   const seen = new Set();
   return raw
     .filter(s => { const k=`${s.start}|${s.end}`; if(seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => toMin(a.start) - toMin(b.start));
 }
+
 
 // Pick operator: prefer yang belum dipakai brand lain (globalAssigned)
 function pickStandbyOp(pool, shift, globalAssigned, rrState) {
