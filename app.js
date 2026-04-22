@@ -2549,8 +2549,13 @@ async function loadStandby(force = false) {
       fetch(`${base}?action=picschedule${ts}`).then(r => r.json()),
     ]);
 
+    // GANTI:
     if (picResp && picResp.pics) {
-      _lastPicScheduleData = picResp.pics;
+      // ✅ Swap pagi↔siang karena API label-nya kebalik
+      _lastPicScheduleData = picResp.pics.map(p => ({
+        ...p,
+        shift: p.shift === 'pagi' ? 'siang' : p.shift === 'siang' ? 'pagi' : p.shift
+      }));
     }
 
     // ✅ FIX-7b: Setelah await selesai, cek lagi — user mungkin sudah pindah tab
