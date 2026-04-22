@@ -299,7 +299,17 @@ async function loadSchedule(){
       const cached=localStorage.getItem("lastSchedule");
       if(cached){
         const data=JSON.parse(cached);
-        sessions=data.sessions.map(s=>{s.isMarathon=s.hosts.length>1;return s;});
+        sessions=data.sessions.map(s=>{
+        s.isMarathon=s.hosts.length>1;
+        s.hosts=(s.hosts||[]).map(h=>({
+          host:      h.host      ?? h.name  ?? '-',
+          startTime: h.startTime ?? h.start ?? '-',
+          endTime:   h.endTime   ?? h.end   ?? '-',
+          picData:   h.picData   ?? h.pic   ?? '-',
+        }));
+        return s;
+      });
+
         renderTab(activeTab);updateStats();
       }
     }catch(e){}
@@ -313,7 +323,16 @@ async function loadSchedule(){
     const data=JSON.parse(await res.text());
     if(!data.success)throw new Error(data.error);
     localStorage.setItem("lastSchedule",JSON.stringify(data));
-    sessions=data.sessions.map(s=>{s.isMarathon=s.hosts.length>1;return s;});
+    sessions=data.sessions.map(s=>{
+        s.isMarathon=s.hosts.length>1;
+        s.hosts=(s.hosts||[]).map(h=>({
+          host:      h.host      ?? h.name  ?? '-',
+          startTime: h.startTime ?? h.start ?? '-',
+          endTime:   h.endTime   ?? h.end   ?? '-',
+          picData:   h.picData   ?? h.pic   ?? '-',
+        }));
+        return s;
+      });
     renderTab(activeTab);cancelAllScheduled();scheduleAllNotifications(sessions);updateStats();
     showBanner(`✅ ${data.date} — ${sessions.length} sesi`,"success");
   }catch(err){
