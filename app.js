@@ -3061,24 +3061,45 @@ function detectMarketplace(serverUrl) {
     return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
 }
 
-// Handler Alt+Tab (VisibilityChange) agar UI tidak bengong status Offline
+// Handler Alt+Tab (VisibilityChange) agar UI tidak bengong status Offline & MP tidak hilang
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized) {
-        MCR_CONFIG.forEach(studio => {
+        MCR_CONFIG.forEach(async (studio) => {
             const obsState = _mcrStudios[studio.id];
+            
             if (obsState && obsState.isConnected) {
+                // 1. Kembalikan status Online
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                 const cardEl = document.getElementById(`mcr-card-${studio.id}`);
+                
                 if (statusEl) statusEl.innerText = "🟢 Online";
                 if (cardEl && !cardEl.style.borderLeftColor.includes("dc3545")) {
                     cardEl.style.borderLeftColor = "var(--bs-success)";
                 }
+
+                // 2. Kembalikan Badge Marketplace
+                try {
+                    const streamSettings = await obsState.obs.call('GetStreamServiceSettings');
+                    const serverUrl = streamSettings.streamServiceSettings?.server || "";
+                    
+                    const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
+                    if (mpBadge) {
+                        let mpInfo = detectMarketplace(serverUrl);
+                        mpBadge.innerText = mpInfo.name;
+                        mpBadge.style.color = mpInfo.color;
+                        mpBadge.style.background = mpInfo.bg;
+                        
+                        if (mpInfo.name !== "CUSTOM" || serverUrl !== "") {
+                            mpBadge.style.display = "inline-block";
+                        } else {
+                            mpBadge.style.display = "none";
+                        }
+                    }
+                } catch (err) {}
             }
         });
     }
 });
-
-// Ganti HANYA bagian initMCRConnections di app.js Anda dengan kode di bawah ini:
 
 async function initMCRConnections() {
     if (_mcrInitialized) {
@@ -3092,8 +3113,8 @@ async function initMCRConnections() {
     MCR_CONFIG.forEach(async (studio) => {
         _mcrStudios[studio.id] = { 
             obs: new OBSWebSocket(), 
-            silentSeconds: 0,       // <-- Diubah jadi hitungan detik nyata
-            staticNoiseSeconds: 0,  // <-- Diubah jadi hitungan detik nyata
+            silentSeconds: 0,       
+            staticNoiseSeconds: 0,  
             lastDbHistory: [],
             alarmPlayed: false,
             lastUiUpdate: 0,
@@ -3103,7 +3124,7 @@ async function initMCRConnections() {
         };
         
         const obs = _mcrStudios[studio.id].obs;
-        let lastAudioCheckTime = Date.now(); // Untuk menghitung detik nyata (Delta Time)
+        let lastAudioCheckTime = Date.now(); 
 
         obs.on('ConnectionClosed', () => {
             _mcrStudios[studio.id].isConnected = false;
@@ -3125,7 +3146,7 @@ async function initMCRConnections() {
             if(statusEl) statusEl.innerText = "🟢 Online";
             if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
 
-            // AMBIL DATA MARKETPLACE
+            // AMBIL DATA MARKETPLACE PERTAMA KALI
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
@@ -3136,17 +3157,18 @@ async function initMCRConnections() {
                     mpBadge.innerText = mpInfo.name;
                     mpBadge.style.color = mpInfo.color;
                     mpBadge.style.background = mpInfo.bg;
-                    mpBadge.style.display = "inline-block";
+                    if (mpInfo.name !== "CUSTOM" || serverUrl !== "") {
+                        mpBadge.style.display = "inline-block";
+                    }
                 }
             } catch (err) {}
 
             // 1. PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
                 let nowTime = Date.now();
-                let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; // Selisih waktu dalam detik
-                lastAudioCheckTime = nowTime; // Update waktu terakhir
+                let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
+                lastAudioCheckTime = nowTime; 
                 
-                // Cegah penambahan timer yang aneh jika web baru bangun dari sleep
                 if (deltaTimeSec > 2) deltaTimeSec = 0; 
 
                 if (_mcrStudios[studio.id].isConnected && activeTab === "mcr") {
@@ -3174,40 +3196,33 @@ async function initMCRConnections() {
 
                 let audioProblem = null;
 
-                // --- A. Deteksi Mic Mati (90 Detik / 1.5 Menit) ---
+                // A. Deteksi Mic Mati (90 Detik)
                 if (currentDb < -45) {
-                    studioState.silentSeconds += deltaTimeSec; // Tambah sesuai waktu nyata
-                    
-                    if (studioState.silentSeconds >= 90) { // 90 DETIK = 1.5 Menit
+                    studioState.silentSeconds += deltaTimeSec; 
+                    if (studioState.silentSeconds >= 90) { 
                         audioProblem = "Mic Mati / Tidak ada suara";
                     }
                 } else {
-                    studioState.silentSeconds = 0; // Reset langsung kalau ada suara sedikit
+                    studioState.silentSeconds = 0; 
                 }
 
-                // --- B. Deteksi Dengung Statis (30 Detik Riwayat) ---
-                // Simpan sampel riwayat 1 kali per detik saja
+                // B. Deteksi Dengung Statis
                 if (Math.floor(nowTime / 1000) !== Math.floor((nowTime - deltaTimeSec*1000) / 1000)) { 
                     studioState.lastDbHistory.push(currentDb);
-                    
-                    // Simpan maksimal 30 riwayat (30 detik terakhir)
-                    if (studioState.lastDbHistory.length > 30) {
-                        studioState.lastDbHistory.shift(); 
-                    }
+                    if (studioState.lastDbHistory.length > 30) studioState.lastDbHistory.shift(); 
 
                     if (studioState.lastDbHistory.length === 30) {
                         let highest = Math.max(...studioState.lastDbHistory);
                         let lowest = Math.min(...studioState.lastDbHistory);
                         let difference = highest - lowest;
 
-                        // Jika selama 30 detik suaranya sangat kencang (> -30dB) dan tidak dinamis (beda <= 3dB)
                         if (difference <= 3 && highest > -30) {
                             studioState.staticNoiseSeconds++;
-                            if (studioState.staticNoiseSeconds > 60) { // Jika statis bertahan selama 60 detik (1 menit)
+                            if (studioState.staticNoiseSeconds > 60) { 
                                 audioProblem = "Terdeteksi Noise atau Dengung Statis";
                             }
                         } else {
-                            studioState.staticNoiseSeconds = 0; // Reset jika ada dinamika (orang ngomong)
+                            studioState.staticNoiseSeconds = 0; 
                         }
                     }
                 }
@@ -3274,7 +3289,6 @@ async function initMCRConnections() {
                     if (status.outputActive) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             netProblem = "Koneksi Macet Parah";
-                            // Kurangi kemungkinan trigger agar tidak terlalu berisik (hanya 10% peluang per siklus 2 detik)
                             if (Math.random() > 0.9) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             netProblem = "Jaringan Tidak Stabil";
@@ -3327,7 +3341,6 @@ async function initMCRConnections() {
         }
     });
 }
-
 
 function triggerMCRAlarm(studioId, masalah) {
     showBanner(`⚠️ Studio ${studioId}: ${masalah}`, "danger");
