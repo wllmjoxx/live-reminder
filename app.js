@@ -2997,7 +2997,7 @@ window.speechSynthesis.onvoiceschanged = () => {
 // Konfigurasi IP Studio (Testing Lokal)
 const MCR_CONFIG = [
     {
-        id: 1,
+        id: 7,
         ip: "ws://192.168.100.55:4455", 
         pw: "123456"               
     }
