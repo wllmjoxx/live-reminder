@@ -2990,7 +2990,7 @@ let _indoVoice = null;
 let _isMcrUnlocked = false; // State keamanan
 
 // PIN RAHASIA MCR (Silakan ganti sesuai keinginan)
-const MCR_SECRET_PIN = "123456"; 
+const MCR_SECRET_PIN = "134760"; 
 
 window.speechSynthesis.onvoiceschanged = () => {
     let voices = window.speechSynthesis.getVoices();
