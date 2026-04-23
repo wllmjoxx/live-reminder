@@ -3044,7 +3044,6 @@ function renderMCR() {
     const el = document.getElementById('schedule-list');
     if (!el) return;
     
-    // JIKA BELUM UNLOCK (TAMPILKAN FORM PIN)
     if (!_isMcrUnlocked) {
         el.innerHTML = `
             <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
@@ -3058,7 +3057,6 @@ function renderMCR() {
             </div>
         `;
         
-        // Fitur tekan Enter langsung submit
         setTimeout(() => {
             const input = document.getElementById('mcr-pin-input');
             if(input) input.addEventListener("keypress", function(e) {
@@ -3068,7 +3066,6 @@ function renderMCR() {
         return;
     }
 
-    // JIKA SUDAH UNLOCK (TAMPILKAN DASHBOARD MCR)
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
@@ -3078,17 +3075,38 @@ function renderMCR() {
     `;
 
     MCR_CONFIG.forEach(s => {
+        // === PERBAIKAN AUTO-HEAL SAAT PINDAH TAB ===
+        // Kita ambil state terakhir dari studio ini jika memang sudah berjalan
+        let st = _mcrStudios[s.id] || {};
+        
+        let isConnected = st.isConnected ? true : false;
+        let statusText = isConnected ? "🟢 Online" : "⚫ Offline";
+        
+        // Kembalikan logo Marketplace jika sebelumnya sudah dapat
+        let mpDisplay = "none";
+        let mpName = "UNKNOWN";
+        let mpColor = "#6c757d";
+        let mpBg = "#e9ecef";
+
+        if (isConnected && st.lastMpName && st.lastMpName !== "CUSTOM") {
+            mpDisplay = "inline-block";
+            mpName = st.lastMpName;
+            mpColor = st.lastMpColor;
+            mpBg = st.lastMpBg;
+        }
+        // ============================================
+
         html += `
             <div style="flex: 0 0 auto; width: 200px;">
-                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid gray; transition: all 0.3s ease; position: relative;">
+                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid ${isConnected ? 'var(--bs-success)' : 'gray'}; transition: all 0.3s ease; position: relative;">
                     <div style="font-weight: bold; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px;">Studio ${s.id}</div>
                     
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <div id="mcr-status-${s.id}" style="font-size: 0.8rem; color: gray;">⚫ Offline</div>
-                        <span id="mcr-mp-${s.id}" style="font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; background: #e9ecef; color: #6c757d; display: none; font-weight: bold;">UNKNOWN</span>
+                        <div id="mcr-status-${s.id}" style="font-size: 0.8rem; color: gray;">${statusText}</div>
+                        <span id="mcr-mp-${s.id}" style="font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; background: ${mpBg}; color: ${mpColor}; display: ${mpDisplay}; font-weight: bold;">${mpName}</span>
                     </div>
 
-                    <div id="mcr-help-alert-${s.id}" style="display: none; padding: 6px; border-radius: 5px; text-align: center; font-weight: bold; font-size: 0.8rem; margin-bottom: 10px; cursor: pointer;" title="Klik untuk mematikan peringatan">
+                    <div id="mcr-help-alert-${s.id}" style="display: none; padding: 6px; border-radius: 5px; text-align: center; font-weight: bold; font-size: 0.8rem; margin-bottom: 10px; cursor: pointer;">
                         🚨 BANTUAN
                     </div>
 
@@ -3116,7 +3134,19 @@ function renderMCR() {
 
     html += `</div>`;
     el.innerHTML = html;
+
+    // Perbarui state tombol connect saat kembali ke tab MCR
+    if (_mcrInitialized) {
+        const btn = document.getElementById('btn-connect-mcr');
+        if(btn) {
+            btn.innerText = "Mengawasi 27 Studio...";
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-secondary');
+            btn.disabled = true;
+        }
+    }
 }
+
 
 // FUNGSI VERIFIKASI PIN
 function verifyMcrPin() {
@@ -3175,6 +3205,7 @@ function detectMarketplace(serverUrl) {
     return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
 }
 
+
 async function initMCRConnections() {
     if (_mcrInitialized) {
         showBanner("MCR sudah berjalan di background", "success");
@@ -3193,6 +3224,7 @@ async function initMCRConnections() {
     _mcrInitialized = true;
 
     MCR_CONFIG.forEach(async (studio) => {
+        // === PERBAIKAN STATE PENYIMPANAN MARKETPLACE ===
         _mcrStudios[studio.id] = { 
             obs: new OBSWebSocket(), 
             silentSeconds: 0,       
@@ -3205,12 +3237,8 @@ async function initMCRConnections() {
             isConnected: false,
             toiletLastUsed: 0, 
             isHelpActive: false,
-            isCurrentlyStreaming: false,
-            
-            // State untuk mengatur warna Card
-            currentSeverity: 'inactive', // 'inactive', 'normal', 'warning', 'critical'
-            audioProblem: null,
-            netProblem: null
+            // Variabel untuk menyimpan profil MP selamanya
+            lastMpName: null, lastMpColor: null, lastMpBg: null 
         };
         
         const obs = _mcrStudios[studio.id].obs;
@@ -3223,7 +3251,7 @@ async function initMCRConnections() {
                 const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 if (statusEl) statusEl.innerText = "⚫ Disconnected";
                 if (cardEl) {
-                    cardEl.style.backgroundColor = "#e9ecef"; // Abu-abu gelap
+                    cardEl.style.backgroundColor = "#e9ecef";
                     cardEl.style.borderLeftColor = "gray";
                 }
             }
@@ -3238,7 +3266,9 @@ async function initMCRConnections() {
             
             if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
+                const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 if(statusEl) statusEl.innerText = "🟢 Online";
+                if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
             }
 
             try {
@@ -3246,6 +3276,12 @@ async function initMCRConnections() {
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
                 
                 let mpInfo = detectMarketplace(serverUrl);
+                
+                // Simpan ke memori agar ingat saat pindah tab
+                _mcrStudios[studio.id].lastMpName = mpInfo.name;
+                _mcrStudios[studio.id].lastMpColor = mpInfo.color;
+                _mcrStudios[studio.id].lastMpBg = mpInfo.bg;
+
                 const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
                 if (mpBadge && activeTab === "mcr" && _isMcrUnlocked) {
                     mpBadge.innerText = mpInfo.name;
@@ -3319,7 +3355,7 @@ async function initMCRConnections() {
                     st.silentSeconds += deltaTimeSec; 
                     if (st.silentSeconds >= 90) {
                         st.audioProblem = "Mic Mati / Tidak ada suara";
-                        isAudioCritical = true; // CRITICAL!
+                        isAudioCritical = true; 
                     }
                 } else {
                     st.silentSeconds = 0; 
@@ -3338,7 +3374,6 @@ async function initMCRConnections() {
                             st.staticNoiseSeconds++;
                             if (st.staticNoiseSeconds > 60) {
                                 st.audioProblem = "Terdeteksi Noise atau Dengung Statis";
-                                // Noise tidak critical, hanya warning
                             }
                         } else {
                             st.staticNoiseSeconds = 0; 
@@ -3353,15 +3388,15 @@ async function initMCRConnections() {
                     st.alarmPlayed = false;
                 }
 
-                // Update UI Audio Bar (Mulus 100ms)
                 if (nowTime - st.lastUiUpdate > 100) { 
                     st.lastUiUpdate = nowTime;
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
                         const audioBar = document.getElementById(`mcr-audio-bar-${studio.id}`);
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
+                        const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
-                        if (audioEl && audioBar && warnEl) {
+                        if (audioEl && audioBar && cardElement && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
@@ -3389,13 +3424,12 @@ async function initMCRConnections() {
                     }
                 }
 
-                // Tentukan Severity dari sisi Audio
                 if (isAudioCritical) st.currentSeverity = 'critical';
                 else if (st.audioProblem) st.currentSeverity = 'warning';
                 else st.currentSeverity = 'normal';
             });
 
-            // PANTAU BITRATE & TENTUKAN WARNA CARD KESELURUHAN
+            // PANTAU BITRATE
             setInterval(async () => {
                 if (!_mcrStudios[studio.id].isConnected) return; 
 
@@ -3431,7 +3465,7 @@ async function initMCRConnections() {
                     if (isCurrentlyStreaming) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             st.netProblem = "Koneksi Macet Parah";
-                            isNetCritical = true; // CRITICAL!
+                            isNetCritical = true; 
                             if (Math.random() > 0.9 && !st.isHelpActive) {
                                 triggerMCRAlarm(studio.id, "Koneksi macet. Potensi stream terputus.");
                             }
@@ -3440,7 +3474,6 @@ async function initMCRConnections() {
                         }
                     }
 
-                    // Gabungkan Severity Audio & Network
                     if (!isCurrentlyStreaming) {
                         st.currentSeverity = 'inactive';
                     } else if (isNetCritical || st.audioProblem === "Mic Mati / Tidak ada suara") {
@@ -3451,14 +3484,17 @@ async function initMCRConnections() {
                         st.currentSeverity = 'normal';
                     }
 
-                    // TERAPKAN WARNA CARD (CENTRALIZED UI UPDATE)
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
                         const netWarnEl = document.getElementById(`mcr-net-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
+                        const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                         
-                        if (bitEl && cardElement && netWarnEl) {
-                            // Tulis Angka Kbps
+                        if (bitEl && cardElement && netWarnEl && statusEl) {
+                            
+                            // Paksa Status Kembali Online (jika tertinggal)
+                            if (statusEl.innerText !== "🟢 Online") statusEl.innerText = "🟢 Online";
+
                             if (!isCurrentlyStreaming) {
                                 bitEl.innerText = "0 kbps";
                                 bitEl.style.color = "gray"; 
@@ -3484,30 +3520,23 @@ async function initMCRConnections() {
                                 }
                             }
 
-                            // WARNAI BACKGROUND CARD BERDASARKAN SEVERITY (JIKA TIDAK SEDANG PANIC)
                             if (!st.isHelpActive) {
-                                // Hapus animasi blink lama
                                 cardElement.classList.remove('blink-tech', 'blink-toilet');
 
                                 if (st.currentSeverity === 'critical') {
-                                    // Merah pudar agar teks masih terbaca, border merah pekat
                                     cardElement.style.backgroundColor = "#fff5f5";
                                     cardElement.style.borderLeftColor = "#dc3545";
-                                    cardElement.style.boxShadow = "0 0 10px rgba(220, 53, 69, 0.5)"; // Glow merah
+                                    cardElement.style.boxShadow = "0 0 10px rgba(220, 53, 69, 0.5)"; 
                                 } else if (st.currentSeverity === 'warning') {
-                                    // Kuning pudar
                                     cardElement.style.backgroundColor = "#fffdf5";
                                     cardElement.style.borderLeftColor = "#ffc107";
-                                    cardElement.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)"; // Normal shadow
+                                    cardElement.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)"; 
                                 } else if (st.currentSeverity === 'inactive') {
-                                    // Abu-abu
                                     cardElement.style.backgroundColor = "#f8f9fa";
                                     cardElement.style.borderLeftColor = "gray";
                                     cardElement.style.boxShadow = "none";
                                 } else {
-                                    // Normal (Putih / Biru Pudar jika di-Pin)
-                                    let isPinned = _pinnedStudios.includes(studio.id);
-                                    cardElement.style.backgroundColor = isPinned ? "#f8faff" : "white";
+                                    cardElement.style.backgroundColor = "white";
                                     cardElement.style.borderLeftColor = "var(--bs-success)";
                                     cardElement.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)";
                                 }
@@ -3520,9 +3549,11 @@ async function initMCRConnections() {
         } catch (error) {
             console.error(`Gagal konek Studio ${studio.id}`, error);
             _mcrStudios[studio.id].isConnected = false;
+            // ... (kode error UI)
         }
     });
 }
+
 
 
 function activatePanicAlert(studioId, tipeBantuan, jenisCard) {
