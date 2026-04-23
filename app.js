@@ -3030,8 +3030,8 @@ function renderMCR() {
         el.innerHTML = `
             <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
                 <div class="card p-4 shadow-sm" style="width: 350px; text-align: center; border-top: 5px solid #0d6efd;">
-                    <h4 class="mb-3">🔒 Area MCR</h4>
-                    <p class="text-muted small mb-4">Hanya personel Master Control Room (MCR) yang diizinkan mengakses panel ini.</p>
+                    <h4 class="mb-3">Login to MCR System</h4>
+                    <p class="text-muted small mb-4">Authorized Person Only.</p>
                     <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="Masukkan PIN 6 Angka" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
                     <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Buka Akses MCR</button>
                     <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">❌ PIN Salah!</div>
