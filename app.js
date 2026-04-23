@@ -2998,9 +2998,23 @@ window.speechSynthesis.onvoiceschanged = () => {
 };
 
 const MCR_CONFIG = [
-    { id: 1, ip: "ws://127.0.0.1:4455", pw: "123456" }
-    // Nanti tambahkan 2-27 di sini
+    {
+        id: 6,
+        ip: "ws://192.168.100.249:4455", 
+        pw: "123456"               
+    },
+    {
+        id: 7,
+        ip: "ws://192.168.100.55:4455", 
+        pw: "123456"               
+    },
+    {
+        id: 25,
+        ip: "ws://192.168.100.60:4455", 
+        pw: "123456"               
+    }
 ];
+
 
 const cssPulse = `
 @keyframes pulse-red {
