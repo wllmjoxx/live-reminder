@@ -2981,55 +2981,87 @@ function getStandbyShiftCoverage(slots) {
 
 
 /* =========================================
-   FITUR MCR MONITORING (OBS WEBSOCKET)
+   FITUR MCR MONITORING (PIN SECURITY)
 ========================================= */
 
 let _mcrInitialized = false;
 let _mcrStudios = {}; 
 let _indoVoice = null; 
+let _isMcrUnlocked = false; // State keamanan
 
-// Menyiapkan suara Text-to-Speech Indonesia
+// PIN RAHASIA MCR (Silakan ganti sesuai keinginan)
+const MCR_SECRET_PIN = "123456"; 
+
 window.speechSynthesis.onvoiceschanged = () => {
     let voices = window.speechSynthesis.getVoices();
     _indoVoice = voices.find(v => v.lang === 'id-ID' || v.name.includes('Indonesia'));
 };
 
-// Konfigurasi IP Studio (Testing Lokal)
 const MCR_CONFIG = [
-    {
-        id: 6,
-        ip: "ws://192.168.100.249:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 7,
-        ip: "ws://192.168.100.55:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 25,
-        ip: "ws://192.168.100.60:4455", 
-        pw: "123456"               
-    }
+    { id: 1, ip: "ws://127.0.0.1:4455", pw: "123456" }
+    // Nanti tambahkan 2-27 di sini
 ];
+
+const cssPulse = `
+@keyframes pulse-red {
+    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+@keyframes pulse-yellow {
+    0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+}
+.blink-tech { animation: pulse-red 1.5s infinite; border: 2px solid #dc3545 !important; }
+.blink-toilet { animation: pulse-yellow 1.5s infinite; border: 2px solid #ffc107 !important; }
+`;
+const styleSheet = document.createElement("style");
+styleSheet.innerText = cssPulse;
+document.head.appendChild(styleSheet);
+
 
 function renderMCR() {
     const el = document.getElementById('schedule-list');
     if (!el) return;
     
+    // JIKA BELUM UNLOCK (TAMPILKAN FORM PIN)
+    if (!_isMcrUnlocked) {
+        el.innerHTML = `
+            <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
+                <div class="card p-4 shadow-sm" style="width: 350px; text-align: center; border-top: 5px solid #0d6efd;">
+                    <h4 class="mb-3">🔒 Area MCR</h4>
+                    <p class="text-muted small mb-4">Hanya personel Master Control Room (MCR) yang diizinkan mengakses panel ini.</p>
+                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="Masukkan PIN 6 Angka" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
+                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Buka Akses MCR</button>
+                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">❌ PIN Salah!</div>
+                </div>
+            </div>
+        `;
+        
+        // Fitur tekan Enter langsung submit
+        setTimeout(() => {
+            const input = document.getElementById('mcr-pin-input');
+            if(input) input.addEventListener("keypress", function(e) {
+                if (e.key === "Enter") verifyMcrPin();
+            });
+        }, 100);
+        return;
+    }
+
+    // JIKA SUDAH UNLOCK (TAMPILKAN DASHBOARD MCR)
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
-            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()">🔌 Connect All Studios</button>
+            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">🔌 Connect All Studios</button>
         </div>
-        
         <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
 
     MCR_CONFIG.forEach(s => {
         html += `
             <div style="flex: 0 0 auto; width: 200px;">
-                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid gray; transition: border-color 0.3s ease; position: relative;">
+                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid gray; transition: all 0.3s ease; position: relative;">
                     <div style="font-weight: bold; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px;">Studio ${s.id}</div>
                     
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -3037,22 +3069,22 @@ function renderMCR() {
                         <span id="mcr-mp-${s.id}" style="font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; background: #e9ecef; color: #6c757d; display: none; font-weight: bold;">UNKNOWN</span>
                     </div>
 
+                    <div id="mcr-help-alert-${s.id}" style="display: none; padding: 6px; border-radius: 5px; text-align: center; font-weight: bold; font-size: 0.8rem; margin-bottom: 10px; cursor: pointer;" title="Klik untuk mematikan peringatan">
+                        🚨 BANTUAN
+                    </div>
+
                     <div style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 10px;">
-                        <!-- BAGIAN AUDIO DENGAN PROGRESS BAR -->
                         <div>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                                 <span>🔈</span>
                                 <span id="mcr-audio-${s.id}" style="font-weight: bold; font-size: 0.8rem; color: gray;">-60.0 dB</span>
                             </div>
-                            <!-- Background Bar (Abu-abu) -->
                             <div style="height: 6px; width: 100%; background-color: #e9ecef; border-radius: 3px; overflow: hidden;">
-                                <!-- Isi Bar (Akan bergerak dan berubah warna) -->
                                 <div id="mcr-audio-bar-${s.id}" style="height: 100%; width: 0%; background-color: #198754; transition: width 0.1s ease-out, background-color 0.2s;"></div>
                             </div>
                             <div id="mcr-audio-warn-${s.id}" style="font-size: 0.7rem; color: #dc3545; display: none; margin-top: 4px;">⚠️ Mic Mati / No Audio</div>
                         </div>
 
-                        <!-- BAGIAN BITRATE -->
                         <div>
                             📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold; color: gray;">0 kbps</span>
                             <div id="mcr-net-warn-${s.id}" style="font-size: 0.7rem; color: #ffc107; display: none; margin-top: 2px;">⚠️ Tidak Stabil</div>
@@ -3067,50 +3099,44 @@ function renderMCR() {
     el.innerHTML = html;
 }
 
-function detectMarketplace(serverUrl) {
-    if (!serverUrl) return { name: "CUSTOM", color: "#6c757d", bg: "#e9ecef" };
-    let url = serverUrl.toLowerCase();
+// FUNGSI VERIFIKASI PIN
+function verifyMcrPin() {
+    const inputVal = document.getElementById('mcr-pin-input').value;
+    const errorEl = document.getElementById('mcr-pin-error');
     
-    if (url.includes("tiktok")) return { name: "TIKTOK", color: "#ffffff", bg: "#000000" };
-    if (url.includes("shopee")) return { name: "SHOPEE", color: "#ffffff", bg: "#ee4d2d" };
-    if (url.includes("tokopedia")) return { name: "TOKOPEDIA", color: "#ffffff", bg: "#03ac0e" };
-    if (url.includes("lazada")) return { name: "LAZADA", color: "#ffffff", bg: "#0f136d" };
-    if (url.includes("youtube")) return { name: "YOUTUBE", color: "#ffffff", bg: "#ff0000" };
-    if (url.includes("facebook")) return { name: "FACEBOOK", color: "#ffffff", bg: "#1877f2" };
-    
-    return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
+    if (inputVal === MCR_SECRET_PIN) {
+        _isMcrUnlocked = true;
+        renderMCR(); // Render ulang ke dashboard asli
+        showBanner("Akses MCR Terbuka", "success");
+    } else {
+        errorEl.style.display = "block";
+        document.getElementById('mcr-pin-input').value = ""; // Kosongkan input
+        setTimeout(() => { errorEl.style.display = "none"; }, 3000);
+    }
 }
 
+// Handler Alt+Tab (VisibilityChange) agar UI tidak bengong status Offline
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized) {
+    if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized && _isMcrUnlocked) {
         MCR_CONFIG.forEach(async (studio) => {
             const obsState = _mcrStudios[studio.id];
-            
             if (obsState && obsState.isConnected) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                 const cardEl = document.getElementById(`mcr-card-${studio.id}`);
-                
                 if (statusEl) statusEl.innerText = "🟢 Online";
-                if (cardEl && !cardEl.style.borderLeftColor.includes("dc3545")) {
-                    cardEl.style.borderLeftColor = "var(--bs-success)";
-                }
+                if (cardEl && !cardEl.className.includes("blink")) cardEl.style.borderLeftColor = "var(--bs-success)";
 
                 try {
                     const streamSettings = await obsState.obs.call('GetStreamServiceSettings');
                     const serverUrl = streamSettings.streamServiceSettings?.server || "";
-                    
                     const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
                     if (mpBadge) {
                         let mpInfo = detectMarketplace(serverUrl);
+                        obsState.lastMpName = mpInfo.name;
                         mpBadge.innerText = mpInfo.name;
                         mpBadge.style.color = mpInfo.color;
                         mpBadge.style.background = mpInfo.bg;
-                        
-                        if (mpInfo.name !== "CUSTOM" || serverUrl !== "") {
-                            mpBadge.style.display = "inline-block";
-                        } else {
-                            mpBadge.style.display = "none";
-                        }
+                        if (mpInfo.name !== "CUSTOM" || serverUrl !== "") mpBadge.style.display = "inline-block";
                     }
                 } catch (err) {}
             }
@@ -3118,12 +3144,33 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
+function detectMarketplace(serverUrl) {
+    if (!serverUrl) return { name: "CUSTOM", color: "#6c757d", bg: "#e9ecef" };
+    let url = serverUrl.toLowerCase();
+    if (url.includes("tiktok")) return { name: "TIKTOK", color: "#ffffff", bg: "#000000" };
+    if (url.includes("shopee")) return { name: "SHOPEE", color: "#ffffff", bg: "#ee4d2d" };
+    if (url.includes("tokopedia")) return { name: "TOKOPEDIA", color: "#ffffff", bg: "#03ac0e" };
+    if (url.includes("lazada")) return { name: "LAZADA", color: "#ffffff", bg: "#0f136d" };
+    if (url.includes("youtube")) return { name: "YOUTUBE", color: "#ffffff", bg: "#ff0000" };
+    if (url.includes("facebook")) return { name: "FACEBOOK", color: "#ffffff", bg: "#1877f2" };
+    return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
+}
+
 async function initMCRConnections() {
     if (_mcrInitialized) {
         showBanner("MCR sudah berjalan di background", "success");
         return;
     }
     
+    // Ubah tombol jadi abu-abu/disabled agar tidak dipencet berkali-kali
+    const btn = document.getElementById('btn-connect-mcr');
+    if(btn) {
+        btn.innerText = "Mengawasi 27 Studio...";
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+        btn.disabled = true;
+    }
+
     showBanner("Menyambungkan ke OBS...", "success");
     _mcrInitialized = true;
 
@@ -3137,7 +3184,9 @@ async function initMCRConnections() {
             lastUiUpdate: 0,
             lastBytes: 0,
             lastDroppedFrames: 0,
-            isConnected: false
+            isConnected: false,
+            toiletLastUsed: 0, 
+            isHelpActive: false
         };
         
         const obs = _mcrStudios[studio.id].obs;
@@ -3145,9 +3194,9 @@ async function initMCRConnections() {
 
         obs.on('ConnectionClosed', () => {
             _mcrStudios[studio.id].isConnected = false;
-            if (activeTab === "mcr") {
+            if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                if (statusEl) statusEl.innerText = "⚫ Disconnected (Sleep)";
+                if (statusEl) statusEl.innerText = "⚫ Disconnected";
             }
         });
 
@@ -3158,19 +3207,21 @@ async function initMCRConnections() {
             
             _mcrStudios[studio.id].isConnected = true;
             
-            const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-            const cardEl = document.getElementById(`mcr-card-${studio.id}`);
-            if(statusEl) statusEl.innerText = "🟢 Online";
-            if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
+            if (activeTab === "mcr" && _isMcrUnlocked) {
+                const statusEl = document.getElementById(`mcr-status-${studio.id}`);
+                const cardEl = document.getElementById(`mcr-card-${studio.id}`);
+                if(statusEl) statusEl.innerText = "🟢 Online";
+                if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
+            }
 
             // AMBIL DATA MARKETPLACE
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
                 
+                let mpInfo = detectMarketplace(serverUrl);
                 const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
-                if (mpBadge) {
-                    let mpInfo = detectMarketplace(serverUrl);
+                if (mpBadge && activeTab === "mcr" && _isMcrUnlocked) {
                     mpBadge.innerText = mpInfo.name;
                     mpBadge.style.color = mpInfo.color;
                     mpBadge.style.background = mpInfo.bg;
@@ -3180,7 +3231,34 @@ async function initMCRConnections() {
                 }
             } catch (err) {}
 
-            // 1. PANTAU AUDIO
+            // CEK SCENE (PANIC BUTTON)
+            setInterval(async () => {
+                if (!_mcrStudios[studio.id].isConnected) return;
+                try {
+                    const sceneResponse = await obs.call('GetCurrentProgramScene');
+                    let currentSceneName = sceneResponse.sceneName.toUpperCase();
+                    let st = _mcrStudios[studio.id];
+                    let now = Date.now();
+
+                    if (currentSceneName.includes("BANTUAN") || currentSceneName.includes("TEKNIS") || currentSceneName.includes("HELP")) {
+                        if (!st.isHelpActive) {
+                            st.isHelpActive = true;
+                            activatePanicAlert(studio.id, "BANTUAN TEKNIS", "tech");
+                        }
+                    } else if (currentSceneName.includes("TOILET") || currentSceneName.includes("RESTROOM")) {
+                        let timeSinceLastToilet = now - st.toiletLastUsed;
+                        if (timeSinceLastToilet > 600000 || st.toiletLastUsed === 0) { // 10 Menit Cooldown
+                            if (!st.isHelpActive) {
+                                st.isHelpActive = true;
+                                st.toiletLastUsed = now; 
+                                activatePanicAlert(studio.id, "IZIN TOILET", "toilet");
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }, 3000);
+
+            // PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
                 let nowTime = Date.now();
                 let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
@@ -3188,64 +3266,41 @@ async function initMCRConnections() {
                 
                 if (deltaTimeSec > 2) deltaTimeSec = 0; 
 
-                if (_mcrStudios[studio.id].isConnected && activeTab === "mcr") {
+                if (_mcrStudios[studio.id].isConnected && activeTab === "mcr" && _isMcrUnlocked) {
                     const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                    if (statusEl && statusEl.innerText !== "🟢 Online") {
-                        statusEl.innerText = "🟢 Online";
-                    }
+                    if (statusEl && statusEl.innerText !== "🟢 Online") statusEl.innerText = "🟢 Online";
                 }
 
                 let currentDb = -60;
                 let studioState = _mcrStudios[studio.id];
                 
-                // Cari volume puncak
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
-                    
                     data.inputs.forEach(input => {
                         try {
                             if (input.inputLevelsMul && input.inputLevelsMul.length > 0) {
                                 let linearValue = 0;
                                 let channel0 = input.inputLevelsMul[0];
-                                
-                                if (Array.isArray(channel0)) {
-                                    linearValue = parseFloat(channel0[0]); // Ambil Peak
-                                } else {
-                                    linearValue = parseFloat(channel0);
-                                }
-                                
-                                if (!isNaN(linearValue) && linearValue > maxLinear) {
-                                    maxLinear = linearValue;
-                                }
+                                if (Array.isArray(channel0)) linearValue = parseFloat(channel0[0]); 
+                                else linearValue = parseFloat(channel0);
+                                if (!isNaN(linearValue) && linearValue > maxLinear) maxLinear = linearValue;
                             }
                         } catch(e) {}
                     });
-
-                    // Konversi Linear ke dB
-                    if (maxLinear > 0) { 
-                        currentDb = 20 * Math.log10(maxLinear);
-                    } else {
-                        currentDb = -60;
-                    }
+                    if (maxLinear > 0) currentDb = 20 * Math.log10(maxLinear);
                 }
                 
-                if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) {
-                    currentDb = -60;
-                }
+                if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) currentDb = -60;
 
                 let audioProblem = null;
 
-                // A. Deteksi Mic Mati (90 Detik)
                 if (currentDb <= -55) {
                     studioState.silentSeconds += deltaTimeSec; 
-                    if (studioState.silentSeconds >= 90) { 
-                        audioProblem = "Mic Mati / Tidak ada suara";
-                    }
+                    if (studioState.silentSeconds >= 90) audioProblem = "Mic Mati / Tidak ada suara";
                 } else {
                     studioState.silentSeconds = 0; 
                 }
 
-                // B. Deteksi Dengung Statis
                 if (Math.floor(nowTime / 1000) !== Math.floor((nowTime - deltaTimeSec*1000) / 1000)) { 
                     studioState.lastDbHistory.push(currentDb);
                     if (studioState.lastDbHistory.length > 30) studioState.lastDbHistory.shift(); 
@@ -3257,27 +3312,24 @@ async function initMCRConnections() {
 
                         if (difference <= 3 && highest > -30) {
                             studioState.staticNoiseSeconds++;
-                            if (studioState.staticNoiseSeconds > 60) { 
-                                audioProblem = "Terdeteksi Noise atau Dengung Statis";
-                            }
+                            if (studioState.staticNoiseSeconds > 60) audioProblem = "Terdeteksi Noise atau Dengung Statis";
                         } else {
                             studioState.staticNoiseSeconds = 0; 
                         }
                     }
                 }
 
-                if (audioProblem && !studioState.alarmPlayed) {
+                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive) {
                     triggerMCRAlarm(studio.id, audioProblem);
                     studioState.alarmPlayed = true;
                 } else if (!audioProblem) {
                     studioState.alarmPlayed = false;
                 }
 
-                // UPDATE UI BARS
                 if (nowTime - studioState.lastUiUpdate > 100) { 
                     studioState.lastUiUpdate = nowTime;
                     
-                    if (activeTab === "mcr") {
+                    if (activeTab === "mcr" && _isMcrUnlocked) {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
                         const audioBar = document.getElementById(`mcr-audio-bar-${studio.id}`);
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
@@ -3286,31 +3338,29 @@ async function initMCRConnections() {
                         if (audioEl && audioBar && cardElement && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             
-                            // Konversi range
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
-                            
                             audioBar.style.width = `${barPercent}%`;
 
                             if (currentDb > -9) {
-                                audioBar.style.backgroundColor = "#dc3545"; // Merah
+                                audioBar.style.backgroundColor = "#dc3545"; 
                                 audioEl.style.color = "#dc3545";
                             } else if (currentDb > -20) {
-                                audioBar.style.backgroundColor = "#ffc107"; // Kuning
+                                audioBar.style.backgroundColor = "#ffc107"; 
                                 audioEl.style.color = "#ffc107";
                             } else {
-                                audioBar.style.backgroundColor = "#198754"; // Hijau
+                                audioBar.style.backgroundColor = "#198754"; 
                                 audioEl.style.color = "gray"; 
                             }
                             
                             if (audioProblem) {
                                 warnEl.innerText = `⚠️ ${audioProblem}`;
                                 warnEl.style.display = "block";
-                                cardElement.style.borderLeftColor = "#dc3545"; 
+                                if(!cardElement.className.includes("blink")) cardElement.style.borderLeftColor = "#dc3545"; 
                             } else {
                                 warnEl.style.display = "none";
-                                if(cardElement.style.borderLeftColor !== "rgb(220, 53, 69)") {
+                                if(!cardElement.className.includes("blink") && cardElement.style.borderLeftColor !== "rgb(220, 53, 69)") {
                                     cardElement.style.borderLeftColor = "#198754"; 
                                 }
                             }
@@ -3345,13 +3395,13 @@ async function initMCRConnections() {
                     if (status.outputActive) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             netProblem = "Koneksi Macet Parah";
-                            if (Math.random() > 0.9) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
+                            if (Math.random() > 0.9 && !_mcrStudios[studio.id].isHelpActive) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             netProblem = "Jaringan Tidak Stabil";
                         }
                     }
 
-                    if (activeTab === "mcr") {
+                    if (activeTab === "mcr" && _isMcrUnlocked) {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
                         const netWarnEl = document.getElementById(`mcr-net-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
@@ -3369,13 +3419,13 @@ async function initMCRConnections() {
                                     netWarnEl.innerText = "⚠️ Macet (Drop Frame)";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
-                                    cardElement.style.borderLeftColor = "#dc3545"; 
+                                    if(!cardElement.className.includes("blink")) cardElement.style.borderLeftColor = "#dc3545"; 
                                 } else if (netProblem === "Jaringan Tidak Stabil") {
                                     bitEl.style.color = "#ffc107"; 
                                     netWarnEl.innerText = "⚠️ Tidak Stabil";
                                     netWarnEl.style.color = "#ffc107";
                                     netWarnEl.style.display = "block";
-                                    cardElement.style.borderLeftColor = "#ffc107"; 
+                                    if(!cardElement.className.includes("blink")) cardElement.style.borderLeftColor = "#ffc107"; 
                                 } else {
                                     bitEl.style.color = "#198754"; 
                                     netWarnEl.style.display = "none";
@@ -3389,7 +3439,7 @@ async function initMCRConnections() {
         } catch (error) {
             console.error(`Gagal konek Studio ${studio.id}`, error);
             _mcrStudios[studio.id].isConnected = false;
-            if (activeTab === "mcr") {
+            if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                 const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                 if(statusEl) statusEl.innerText = "🔴 Gagal Koneksi";
@@ -3399,14 +3449,43 @@ async function initMCRConnections() {
     });
 }
 
+function activatePanicAlert(studioId, tipeBantuan, jenisCard) {
+    if (activeTab !== "mcr" || !_isMcrUnlocked) return;
+
+    const cardEl = document.getElementById(`mcr-card-${studioId}`);
+    const alertEl = document.getElementById(`mcr-help-alert-${studioId}`);
+    
+    if (cardEl && alertEl) {
+        alertEl.style.display = "block";
+        
+        if (jenisCard === "tech") {
+            alertEl.innerText = "🚨 BANTUAN TEKNIS";
+            alertEl.style.backgroundColor = "#f8d7da";
+            alertEl.style.color = "#dc3545";
+            cardEl.className = "card p-2 shadow-sm blink-tech"; 
+            triggerMCRAlarm(studioId, "Meminta bantuan teknis.");
+        } else {
+            alertEl.innerText = "🚻 IZIN TOILET";
+            alertEl.style.backgroundColor = "#fff3cd";
+            alertEl.style.color = "#856404";
+            cardEl.className = "card p-2 shadow-sm blink-toilet"; 
+            triggerMCRAlarm(studioId, "Meminta izin toilet.");
+        }
+
+        alertEl.onclick = () => {
+            alertEl.style.display = "none";
+            cardEl.className = "card p-2 shadow-sm"; 
+            cardEl.style.borderLeftColor = "var(--bs-success)";
+            _mcrStudios[studioId].isHelpActive = false; 
+        };
+    }
+}
 
 function triggerMCRAlarm(studioId, masalah) {
     showBanner(`⚠️ Studio ${studioId}: ${masalah}`, "danger");
-
-    let speech = new SpeechSynthesisUtterance(`Perhatian. Studio ${studioId}, mengalami masalah. ${masalah}`);
+    let speech = new SpeechSynthesisUtterance(`Perhatian. Studio ${studioId}. ${masalah}`);
     speech.lang = "id-ID";
     if (_indoVoice) speech.voice = _indoVoice;
     speech.rate = 0.9;
-    
     window.speechSynthesis.speak(speech);
 }
