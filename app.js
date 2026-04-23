@@ -3181,7 +3181,6 @@ async function initMCRConnections() {
         return;
     }
     
-    // Ubah tombol jadi abu-abu/disabled agar tidak dipencet berkali-kali
     const btn = document.getElementById('btn-connect-mcr');
     if(btn) {
         btn.innerText = "Mengawasi 27 Studio...";
@@ -3205,7 +3204,13 @@ async function initMCRConnections() {
             lastDroppedFrames: 0,
             isConnected: false,
             toiletLastUsed: 0, 
-            isHelpActive: false
+            isHelpActive: false,
+            isCurrentlyStreaming: false,
+            
+            // State untuk mengatur warna Card
+            currentSeverity: 'inactive', // 'inactive', 'normal', 'warning', 'critical'
+            audioProblem: null,
+            netProblem: null
         };
         
         const obs = _mcrStudios[studio.id].obs;
@@ -3215,25 +3220,27 @@ async function initMCRConnections() {
             _mcrStudios[studio.id].isConnected = false;
             if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
+                const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 if (statusEl) statusEl.innerText = "⚫ Disconnected";
+                if (cardEl) {
+                    cardEl.style.backgroundColor = "#e9ecef"; // Abu-abu gelap
+                    cardEl.style.borderLeftColor = "gray";
+                }
             }
         });
 
         try {
             await obs.connect(studio.ip, studio.pw, {
-                eventSubscriptions: (1 | 65536) 
+                eventSubscriptions: (1 | 65536 | 64) 
             });
             
             _mcrStudios[studio.id].isConnected = true;
             
             if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 if(statusEl) statusEl.innerText = "🟢 Online";
-                if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
             }
 
-            // AMBIL DATA MARKETPLACE
             try {
                 const streamSettings = await obs.call('GetStreamServiceSettings');
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
@@ -3250,7 +3257,7 @@ async function initMCRConnections() {
                 }
             } catch (err) {}
 
-            // CEK SCENE (PANIC BUTTON)
+            // CEK PANIC BUTTON
             setInterval(async () => {
                 if (!_mcrStudios[studio.id].isConnected) return;
                 try {
@@ -3266,7 +3273,7 @@ async function initMCRConnections() {
                         }
                     } else if (currentSceneName.includes("TOILET") || currentSceneName.includes("RESTROOM")) {
                         let timeSinceLastToilet = now - st.toiletLastUsed;
-                        if (timeSinceLastToilet > 600000 || st.toiletLastUsed === 0) { // 10 Menit Cooldown
+                        if (timeSinceLastToilet > 600000 || st.toiletLastUsed === 0) { 
                             if (!st.isHelpActive) {
                                 st.isHelpActive = true;
                                 st.toiletLastUsed = now; 
@@ -3282,16 +3289,10 @@ async function initMCRConnections() {
                 let nowTime = Date.now();
                 let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
                 lastAudioCheckTime = nowTime; 
-                
                 if (deltaTimeSec > 2) deltaTimeSec = 0; 
 
-                if (_mcrStudios[studio.id].isConnected && activeTab === "mcr" && _isMcrUnlocked) {
-                    const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                    if (statusEl && statusEl.innerText !== "🟢 Online") statusEl.innerText = "🟢 Online";
-                }
-
                 let currentDb = -60;
-                let studioState = _mcrStudios[studio.id];
+                let st = _mcrStudios[studio.id];
                 
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
@@ -3311,52 +3312,57 @@ async function initMCRConnections() {
                 
                 if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) currentDb = -60;
 
-                let audioProblem = null;
+                st.audioProblem = null;
+                let isAudioCritical = false;
 
                 if (currentDb <= -55) {
-                    studioState.silentSeconds += deltaTimeSec; 
-                    if (studioState.silentSeconds >= 90) audioProblem = "Mic Mati / Tidak ada suara";
+                    st.silentSeconds += deltaTimeSec; 
+                    if (st.silentSeconds >= 90) {
+                        st.audioProblem = "Mic Mati / Tidak ada suara";
+                        isAudioCritical = true; // CRITICAL!
+                    }
                 } else {
-                    studioState.silentSeconds = 0; 
+                    st.silentSeconds = 0; 
                 }
 
                 if (Math.floor(nowTime / 1000) !== Math.floor((nowTime - deltaTimeSec*1000) / 1000)) { 
-                    studioState.lastDbHistory.push(currentDb);
-                    if (studioState.lastDbHistory.length > 30) studioState.lastDbHistory.shift(); 
+                    st.lastDbHistory.push(currentDb);
+                    if (st.lastDbHistory.length > 30) st.lastDbHistory.shift(); 
 
-                    if (studioState.lastDbHistory.length === 30) {
-                        let highest = Math.max(...studioState.lastDbHistory);
-                        let lowest = Math.min(...studioState.lastDbHistory);
+                    if (st.lastDbHistory.length === 30) {
+                        let highest = Math.max(...st.lastDbHistory);
+                        let lowest = Math.min(...st.lastDbHistory);
                         let difference = highest - lowest;
 
                         if (difference <= 3 && highest > -30) {
-                            studioState.staticNoiseSeconds++;
-                            if (studioState.staticNoiseSeconds > 60) audioProblem = "Terdeteksi Noise atau Dengung Statis";
+                            st.staticNoiseSeconds++;
+                            if (st.staticNoiseSeconds > 60) {
+                                st.audioProblem = "Terdeteksi Noise atau Dengung Statis";
+                                // Noise tidak critical, hanya warning
+                            }
                         } else {
-                            studioState.staticNoiseSeconds = 0; 
+                            st.staticNoiseSeconds = 0; 
                         }
                     }
                 }
 
-                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive) {
-                    triggerMCRAlarm(studio.id, audioProblem);
-                    studioState.alarmPlayed = true;
-                } else if (!audioProblem) {
-                    studioState.alarmPlayed = false;
+                if (st.audioProblem && !st.alarmPlayed && !st.isHelpActive) {
+                    triggerMCRAlarm(studio.id, st.audioProblem);
+                    st.alarmPlayed = true;
+                } else if (!st.audioProblem) {
+                    st.alarmPlayed = false;
                 }
 
-                if (nowTime - studioState.lastUiUpdate > 100) { 
-                    studioState.lastUiUpdate = nowTime;
-                    
+                // Update UI Audio Bar (Mulus 100ms)
+                if (nowTime - st.lastUiUpdate > 100) { 
+                    st.lastUiUpdate = nowTime;
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
                         const audioBar = document.getElementById(`mcr-audio-bar-${studio.id}`);
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
-                        const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
-                        if (audioEl && audioBar && cardElement && warnEl) {
+                        if (audioEl && audioBar && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
-                            
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
@@ -3373,81 +3379,137 @@ async function initMCRConnections() {
                                 audioEl.style.color = "gray"; 
                             }
                             
-                            if (audioProblem) {
-                                warnEl.innerText = `⚠️ ${audioProblem}`;
+                            if (st.audioProblem) {
+                                warnEl.innerText = `⚠️ ${st.audioProblem}`;
                                 warnEl.style.display = "block";
-                                if(!cardElement.className.includes("blink")) cardElement.style.borderLeftColor = "#dc3545"; 
                             } else {
                                 warnEl.style.display = "none";
-                                if(!cardElement.className.includes("blink") && cardElement.style.borderLeftColor !== "rgb(220, 53, 69)") {
-                                    cardElement.style.borderLeftColor = "#198754"; 
-                                }
                             }
                         }
                     }
                 }
+
+                // Tentukan Severity dari sisi Audio
+                if (isAudioCritical) st.currentSeverity = 'critical';
+                else if (st.audioProblem) st.currentSeverity = 'warning';
+                else st.currentSeverity = 'normal';
             });
 
-            // 2. PANTAU BITRATE
+            // PANTAU BITRATE & TENTUKAN WARNA CARD KESELURUHAN
             setInterval(async () => {
                 if (!_mcrStudios[studio.id].isConnected) return; 
 
                 try {
                     const status = await obs.call('GetStreamStatus');
+                    let st = _mcrStudios[studio.id];
                     let kbps = 0;
                     let congestion = status.outputCongestion || 0; 
-                    let framesDroppedNow = status.outputSkippedFrames - _mcrStudios[studio.id].lastDroppedFrames;
-                    _mcrStudios[studio.id].lastDroppedFrames = status.outputSkippedFrames;
+                    let framesDroppedNow = status.outputSkippedFrames - st.lastDroppedFrames;
+                    st.lastDroppedFrames = status.outputSkippedFrames;
 
-                    if (status.outputActive) {
+                    let isCurrentlyStreaming = status.outputActive;
+
+                    if (st.isCurrentlyStreaming === true && isCurrentlyStreaming === false) {
+                        triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
+                    }
+                    st.isCurrentlyStreaming = isCurrentlyStreaming;
+
+                    if (isCurrentlyStreaming) {
                         let currentBytes = status.outputBytes;
-                        if (_mcrStudios[studio.id].lastBytes > 0) {
-                            let byteDiff = currentBytes - _mcrStudios[studio.id].lastBytes;
+                        if (st.lastBytes > 0) {
+                            let byteDiff = currentBytes - st.lastBytes;
                             kbps = (byteDiff * 8) / 1000 / 2; 
                         }
-                        _mcrStudios[studio.id].lastBytes = currentBytes;
+                        st.lastBytes = currentBytes;
                     } else {
-                        _mcrStudios[studio.id].lastBytes = 0;
+                        st.lastBytes = 0;
                     }
 
-                    let netProblem = null;
-                    if (status.outputActive) {
+                    st.netProblem = null;
+                    let isNetCritical = false;
+
+                    if (isCurrentlyStreaming) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
-                            netProblem = "Koneksi Macet Parah";
-                            if (Math.random() > 0.9 && !_mcrStudios[studio.id].isHelpActive) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
+                            st.netProblem = "Koneksi Macet Parah";
+                            isNetCritical = true; // CRITICAL!
+                            if (Math.random() > 0.9 && !st.isHelpActive) {
+                                triggerMCRAlarm(studio.id, "Koneksi macet. Potensi stream terputus.");
+                            }
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
-                            netProblem = "Jaringan Tidak Stabil";
+                            st.netProblem = "Jaringan Tidak Stabil";
                         }
                     }
 
+                    // Gabungkan Severity Audio & Network
+                    if (!isCurrentlyStreaming) {
+                        st.currentSeverity = 'inactive';
+                    } else if (isNetCritical || st.audioProblem === "Mic Mati / Tidak ada suara") {
+                        st.currentSeverity = 'critical';
+                    } else if (st.netProblem || st.audioProblem) {
+                        st.currentSeverity = 'warning';
+                    } else {
+                        st.currentSeverity = 'normal';
+                    }
+
+                    // TERAPKAN WARNA CARD (CENTRALIZED UI UPDATE)
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
                         const netWarnEl = document.getElementById(`mcr-net-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
                         if (bitEl && cardElement && netWarnEl) {
-                            if (!status.outputActive) {
+                            // Tulis Angka Kbps
+                            if (!isCurrentlyStreaming) {
                                 bitEl.innerText = "0 kbps";
                                 bitEl.style.color = "gray"; 
-                                netWarnEl.style.display = "none";
+                                netWarnEl.innerText = "🔴 STREAM OFF / END LIVE";
+                                netWarnEl.style.color = "#dc3545";
+                                netWarnEl.style.display = "block";
                             } else {
                                 bitEl.innerText = Math.round(kbps) + " kbps";
                                 
-                                if (netProblem === "Koneksi Macet Parah") {
+                                if (st.netProblem === "Koneksi Macet Parah") {
                                     bitEl.style.color = "#dc3545"; 
                                     netWarnEl.innerText = "⚠️ Macet (Drop Frame)";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
-                                    if(!cardElement.className.includes("blink")) cardElement.style.borderLeftColor = "#dc3545"; 
-                                } else if (netProblem === "Jaringan Tidak Stabil") {
+                                } else if (st.netProblem === "Jaringan Tidak Stabil") {
                                     bitEl.style.color = "#ffc107"; 
                                     netWarnEl.innerText = "⚠️ Tidak Stabil";
                                     netWarnEl.style.color = "#ffc107";
                                     netWarnEl.style.display = "block";
-                                    if(!cardElement.className.includes("blink")) cardElement.style.borderLeftColor = "#ffc107"; 
                                 } else {
                                     bitEl.style.color = "#198754"; 
                                     netWarnEl.style.display = "none";
+                                }
+                            }
+
+                            // WARNAI BACKGROUND CARD BERDASARKAN SEVERITY (JIKA TIDAK SEDANG PANIC)
+                            if (!st.isHelpActive) {
+                                // Hapus animasi blink lama
+                                cardElement.classList.remove('blink-tech', 'blink-toilet');
+
+                                if (st.currentSeverity === 'critical') {
+                                    // Merah pudar agar teks masih terbaca, border merah pekat
+                                    cardElement.style.backgroundColor = "#fff5f5";
+                                    cardElement.style.borderLeftColor = "#dc3545";
+                                    cardElement.style.boxShadow = "0 0 10px rgba(220, 53, 69, 0.5)"; // Glow merah
+                                } else if (st.currentSeverity === 'warning') {
+                                    // Kuning pudar
+                                    cardElement.style.backgroundColor = "#fffdf5";
+                                    cardElement.style.borderLeftColor = "#ffc107";
+                                    cardElement.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)"; // Normal shadow
+                                } else if (st.currentSeverity === 'inactive') {
+                                    // Abu-abu
+                                    cardElement.style.backgroundColor = "#f8f9fa";
+                                    cardElement.style.borderLeftColor = "gray";
+                                    cardElement.style.boxShadow = "none";
+                                } else {
+                                    // Normal (Putih / Biru Pudar jika di-Pin)
+                                    let isPinned = _pinnedStudios.includes(studio.id);
+                                    cardElement.style.backgroundColor = isPinned ? "#f8faff" : "white";
+                                    cardElement.style.borderLeftColor = "var(--bs-success)";
+                                    cardElement.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)";
                                 }
                             }
                         }
@@ -3458,15 +3520,10 @@ async function initMCRConnections() {
         } catch (error) {
             console.error(`Gagal konek Studio ${studio.id}`, error);
             _mcrStudios[studio.id].isConnected = false;
-            if (activeTab === "mcr" && _isMcrUnlocked) {
-                const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                const cardElement = document.getElementById(`mcr-card-${studio.id}`);
-                if(statusEl) statusEl.innerText = "🔴 Gagal Koneksi";
-                if(cardElement) cardElement.style.borderLeftColor = "#dc3545";
-            }
         }
     });
 }
+
 
 function activatePanicAlert(studioId, tipeBantuan, jenisCard) {
     if (activeTab !== "mcr" || !_isMcrUnlocked) return;
