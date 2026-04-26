@@ -2981,16 +2981,17 @@ function getStandbyShiftCoverage(slots) {
 
 
 /* =========================================
-   FITUR MCR MONITORING (PIN SECURITY)
+   FITUR MCR MONITORING (Smart Sort, Pin, False Alarm Prevention)
 ========================================= */
 
 let _mcrInitialized = false;
 let _mcrStudios = {}; 
 let _indoVoice = null; 
-let _isMcrUnlocked = false; // State keamanan
+let _isMcrUnlocked = false; 
 
-// PIN RAHASIA MCR (Silakan ganti sesuai keinginan)
+// Daftar PIN dan Pinned Studios
 const MCR_SECRET_PIN = "134760"; 
+let _pinnedStudios = JSON.parse(localStorage.getItem('mcrPinnedStudios')) || [];
 
 window.speechSynthesis.onvoiceschanged = () => {
     let voices = window.speechSynthesis.getVoices();
@@ -2998,127 +2999,66 @@ window.speechSynthesis.onvoiceschanged = () => {
 };
 
 const MCR_CONFIG = [
-    
-    {
-        id: 2,
-        ip: "ws://192.168.100.208:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 5,
-        ip: "ws://192.168.100.131:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 6,
-        ip: "ws://192.168.100.63:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 7,
-        ip: "ws://192.168.100.55:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 8,
-        ip: "ws://192.168.100.71:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 9,
-        ip: "ws://192.168.100.70:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 10,
-        ip: "ws://192.168.100.65:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 11,
-        ip: "ws://192.168.100.162:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 12,
-        ip: "ws://192.168.100.224:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 15,
-        ip: "ws://192.168.100.130:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 17,
-        ip: "ws://192.168.100.201:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 18,
-        ip: "ws://192.168.100.136:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 19,
-        ip: "ws://192.168.100.61:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 20,
-        ip: "ws://192.168.100.125:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 21,
-        ip: "ws://192.168.100.188:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 22,
-        ip: "ws://192.168.100.113:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 23,
-        ip: "ws://192.168.100.214:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 25,
-        ip: "ws://192.168.100.60:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 26,
-        ip: "ws://192.168.100.228:4455", 
-        pw: "123456"               
-    },
-    {
-        id: 29,
-        ip: "ws://192.168.100.64:4455", 
-        pw: "123456"               
-    }
+    { id: 2, ip: "ws://192.168.100.208:4455", pw: "123456" },
+    { id: 5, ip: "ws://192.168.100.131:4455", pw: "123456" },
+    { id: 6, ip: "ws://192.168.100.63:4455", pw: "123456" },
+    { id: 7, ip: "ws://192.168.100.55:4455", pw: "123456" },
+    { id: 8, ip: "ws://192.168.100.71:4455", pw: "123456" },
+    { id: 9, ip: "ws://192.168.100.70:4455", pw: "123456" },
+    { id: 10, ip: "ws://192.168.100.65:4455", pw: "123456" },
+    { id: 11, ip: "ws://192.168.100.162:4455", pw: "123456" },
+    { id: 12, ip: "ws://192.168.100.224:4455", pw: "123456" },
+    { id: 15, ip: "ws://192.168.100.130:4455", pw: "123456" },
+    { id: 17, ip: "ws://192.168.100.201:4455", pw: "123456" },
+    { id: 18, ip: "ws://192.168.100.136:4455", pw: "123456" },
+    { id: 19, ip: "ws://192.168.100.61:4455", pw: "123456" },
+    { id: 20, ip: "ws://192.168.100.125:4455", pw: "123456" },
+    { id: 21, ip: "ws://192.168.100.188:4455", pw: "123456" },
+    { id: 22, ip: "ws://192.168.100.113:4455", pw: "123456" },
+    { id: 23, ip: "ws://192.168.100.214:4455", pw: "123456" },
+    { id: 25, ip: "ws://192.168.100.60:4455", pw: "123456" },
+    { id: 26, ip: "ws://192.168.100.228:4455", pw: "123456" },
+    { id: 29, ip: "ws://192.168.100.64:4455", pw: "123456" }
 ];
 
-
 const cssPulse = `
-@keyframes pulse-red {
-    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-}
-@keyframes pulse-yellow {
-    0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
-}
+@keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+@keyframes pulse-yellow { 0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); } }
 .blink-tech { animation: pulse-red 1.5s infinite; border: 2px solid #dc3545 !important; }
 .blink-toilet { animation: pulse-yellow 1.5s infinite; border: 2px solid #ffc107 !important; }
 `;
 const styleSheet = document.createElement("style");
 styleSheet.innerText = cssPulse;
 document.head.appendChild(styleSheet);
+
+
+// === FUNGSI BANTU JADWAL LIVES ===
+function isStudioSupposedToLive(studioId) {
+    if (!sessions || sessions.length === 0) return false;
+    let now = new Date();
+    let currentMin = now.getHours() * 60 + now.getMinutes();
+
+    for (let s of sessions) {
+        let schedStudioStr = s.studio ? String(s.studio).toLowerCase() : "";
+        let schedStudioNum = schedStudioStr.match(/\d+/);
+        
+        if (schedStudioNum && parseInt(schedStudioNum[0]) === studioId) {
+            if (s.hosts && s.hosts.length > 0) {
+                for (let h of s.hosts) {
+                    let start = toMin(h.startTime);
+                    let end = toMin(h.endTime);
+                    if (end === 0) end = 1440;
+                    
+                    // Toleransi 15 menit sebelum dan sesudah jadwal
+                    if (currentMin >= (start - 15) && currentMin <= (end + 15)) {
+                        return true; 
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
 
 
 function renderMCR() {
@@ -3137,12 +3077,9 @@ function renderMCR() {
                 </div>
             </div>
         `;
-        
         setTimeout(() => {
             const input = document.getElementById('mcr-pin-input');
-            if(input) input.addEventListener("keypress", function(e) {
-                if (e.key === "Enter") verifyMcrPin();
-            });
+            if(input) input.addEventListener("keypress", function(e) { if (e.key === "Enter") verifyMcrPin(); });
         }, 100);
         return;
     }
@@ -3155,32 +3092,65 @@ function renderMCR() {
         <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
 
-    MCR_CONFIG.forEach(s => {
-        // === PERBAIKAN AUTO-HEAL SAAT PINDAH TAB ===
-        // Kita ambil state terakhir dari studio ini jika memang sudah berjalan
-        let st = _mcrStudios[s.id] || {};
+    // === SMART SORTING ===
+    let now = Date.now();
+    let sortedConfig = [...MCR_CONFIG].sort((a, b) => {
+        let aState = _mcrStudios[a.id] || {};
+        let bState = _mcrStudios[b.id] || {};
+
+        let aPinned = _pinnedStudios.includes(a.id);
+        let bPinned = _pinnedStudios.includes(b.id);
         
+        // 1. Pinned teratas
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+
+        // 2. Active vs Inactive (Grace period 5 Menit / 300000ms)
+        let aIsAlive = (aState.isConnected && aState.isCurrentlyStreaming);
+        let bIsAlive = (bState.isConnected && bState.isCurrentlyStreaming);
+        
+        let aGracePeriod = (aState.lastAliveTime && (now - aState.lastAliveTime < 300000)) ? true : false;
+        let bGracePeriod = (bState.lastAliveTime && (now - bState.lastAliveTime < 300000)) ? true : false;
+
+        let aSortActive = aIsAlive || aGracePeriod;
+        let bSortActive = bIsAlive || bGracePeriod;
+
+        if (aSortActive && !bSortActive) return -1;
+        if (!aSortActive && bSortActive) return 1;
+
+        // 3. Normal berurutan
+        return a.id - b.id;
+    });
+
+    sortedConfig.forEach(s => {
+        let st = _mcrStudios[s.id] || {};
         let isConnected = st.isConnected ? true : false;
+        let isPinned = _pinnedStudios.includes(s.id);
+        
+        let pinIcon = isPinned ? '📌' : '📍';
+        let pinColor = isPinned ? '#0d6efd' : 'gray';
         let statusText = isConnected ? "🟢 Online" : "⚫ Offline";
         
-        // Kembalikan logo Marketplace jika sebelumnya sudah dapat
-        let mpDisplay = "none";
-        let mpName = "UNKNOWN";
-        let mpColor = "#6c757d";
-        let mpBg = "#e9ecef";
+        let bgStyle = 'background: white; border: 1px solid transparent; border-left: 4px solid gray;';
+        if (st.currentSeverity === 'critical') bgStyle = 'background: #fff5f5; border: 1px solid transparent; border-left: 4px solid #dc3545; box-shadow: 0 0 10px rgba(220,53,69,0.5);';
+        else if (st.currentSeverity === 'warning') bgStyle = 'background: #fffdf5; border: 1px solid transparent; border-left: 4px solid #ffc107;';
+        else if (st.currentSeverity === 'inactive') bgStyle = 'background: #f8f9fa; border: 1px solid transparent; border-left: 4px solid gray;';
+        else if (isConnected) bgStyle = `background: ${isPinned ? '#f8faff' : 'white'}; border: 1px solid ${isPinned ? '#cce5ff' : 'transparent'}; border-left: 4px solid var(--bs-success);`;
 
+        let mpDisplay = "none", mpName = "UNKNOWN", mpColor = "#6c757d", mpBg = "#e9ecef";
         if (isConnected && st.lastMpName && st.lastMpName !== "CUSTOM") {
-            mpDisplay = "inline-block";
-            mpName = st.lastMpName;
-            mpColor = st.lastMpColor;
-            mpBg = st.lastMpBg;
+            mpDisplay = "inline-block"; mpName = st.lastMpName; mpColor = st.lastMpColor; mpBg = st.lastMpBg;
         }
-        // ============================================
 
         html += `
-            <div style="flex: 0 0 auto; width: 200px;">
-                <div id="mcr-card-${s.id}" style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 4px solid ${isConnected ? 'var(--bs-success)' : 'gray'}; transition: all 0.3s ease; position: relative;">
-                    <div style="font-weight: bold; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px;">Studio ${s.id}</div>
+            <div style="flex: 0 0 auto; width: 200px;" id="mcr-wrap-${s.id}">
+                <div id="mcr-card-${s.id}" style="${bgStyle} border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: all 0.3s ease; position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px;">
+                        <div style="font-weight: bold; font-size: 1rem;">Studio ${s.id}</div>
+                        <button onclick="togglePinStudio(${s.id})" class="btn btn-sm" style="padding: 0 5px; font-size: 1rem; color: ${pinColor}; background: none; border: none;" title="Pin Studio ini ke atas">
+                            ${pinIcon}
+                        </button>
+                    </div>
                     
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <div id="mcr-status-${s.id}" style="font-size: 0.8rem; color: gray;">${statusText}</div>
@@ -3216,11 +3186,10 @@ function renderMCR() {
     html += `</div>`;
     el.innerHTML = html;
 
-    // Perbarui state tombol connect saat kembali ke tab MCR
     if (_mcrInitialized) {
         const btn = document.getElementById('btn-connect-mcr');
         if(btn) {
-            btn.innerText = "Mengawasi 27 Studio...";
+            btn.innerText = "Mengawasi 20 Studio...";
             btn.classList.remove('btn-primary');
             btn.classList.add('btn-secondary');
             btn.disabled = true;
@@ -3228,24 +3197,38 @@ function renderMCR() {
     }
 }
 
+// Timer Render untuk Mendorong Studio Mati ke Bawah tiap 30 Detik
+setInterval(() => {
+    if (_isMcrUnlocked && activeTab === "mcr") {
+        renderMCR();
+    }
+}, 30000);
 
-// FUNGSI VERIFIKASI PIN
+
+function togglePinStudio(studioId) {
+    if (_pinnedStudios.includes(studioId)) {
+        _pinnedStudios = _pinnedStudios.filter(id => id !== studioId);
+    } else {
+        _pinnedStudios.push(studioId);
+    }
+    localStorage.setItem('mcrPinnedStudios', JSON.stringify(_pinnedStudios));
+    renderMCR(); 
+}
+
 function verifyMcrPin() {
     const inputVal = document.getElementById('mcr-pin-input').value;
     const errorEl = document.getElementById('mcr-pin-error');
-    
     if (inputVal === MCR_SECRET_PIN) {
         _isMcrUnlocked = true;
-        renderMCR(); // Render ulang ke dashboard asli
+        renderMCR(); 
         showBanner("Akses MCR Terbuka", "success");
     } else {
         errorEl.style.display = "block";
-        document.getElementById('mcr-pin-input').value = ""; // Kosongkan input
+        document.getElementById('mcr-pin-input').value = ""; 
         setTimeout(() => { errorEl.style.display = "none"; }, 3000);
     }
 }
 
-// Handler Alt+Tab (VisibilityChange) agar UI tidak bengong status Offline
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized && _isMcrUnlocked) {
         MCR_CONFIG.forEach(async (studio) => {
@@ -3286,26 +3269,14 @@ function detectMarketplace(serverUrl) {
     return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
 }
 
-
 async function initMCRConnections() {
-    if (_mcrInitialized) {
-        showBanner("MCR sudah berjalan di background", "success");
-        return;
-    }
-    
-    const btn = document.getElementById('btn-connect-mcr');
-    if(btn) {
-        btn.innerText = "Mengawasi 27 Studio...";
-        btn.classList.remove('btn-primary');
-        btn.classList.add('btn-secondary');
-        btn.disabled = true;
-    }
+    if (_mcrInitialized) return;
 
     showBanner("Menyambungkan ke OBS...", "success");
     _mcrInitialized = true;
+    renderMCR(); // Kunci tombol connect
 
     MCR_CONFIG.forEach(async (studio) => {
-        // === PERBAIKAN STATE PENYIMPANAN MARKETPLACE ===
         _mcrStudios[studio.id] = { 
             obs: new OBSWebSocket(), 
             silentSeconds: 0,       
@@ -3318,8 +3289,10 @@ async function initMCRConnections() {
             isConnected: false,
             toiletLastUsed: 0, 
             isHelpActive: false,
-            // Variabel untuk menyimpan profil MP selamanya
-            lastMpName: null, lastMpColor: null, lastMpBg: null 
+            lastMpName: null, lastMpColor: null, lastMpBg: null,
+            lastAliveTime: Date.now(),
+            isCurrentlyStreaming: false,
+            currentSeverity: 'inactive'
         };
         
         const obs = _mcrStudios[studio.id].obs;
@@ -3334,6 +3307,7 @@ async function initMCRConnections() {
                 if (cardEl) {
                     cardEl.style.backgroundColor = "#e9ecef";
                     cardEl.style.borderLeftColor = "gray";
+                    cardEl.style.boxShadow = "none";
                 }
             }
         });
@@ -3344,12 +3318,11 @@ async function initMCRConnections() {
             });
             
             _mcrStudios[studio.id].isConnected = true;
+            _mcrStudios[studio.id].lastAliveTime = Date.now();
             
             if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
-                const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 if(statusEl) statusEl.innerText = "🟢 Online";
-                if(cardEl) cardEl.style.borderLeftColor = "var(--bs-success)";
             }
 
             try {
@@ -3357,8 +3330,6 @@ async function initMCRConnections() {
                 const serverUrl = streamSettings.streamServiceSettings?.server || "";
                 
                 let mpInfo = detectMarketplace(serverUrl);
-                
-                // Simpan ke memori agar ingat saat pindah tab
                 _mcrStudios[studio.id].lastMpName = mpInfo.name;
                 _mcrStudios[studio.id].lastMpColor = mpInfo.color;
                 _mcrStudios[studio.id].lastMpBg = mpInfo.bg;
@@ -3431,12 +3402,13 @@ async function initMCRConnections() {
 
                 st.audioProblem = null;
                 let isAudioCritical = false;
+                let isSupposedToLive = isStudioSupposedToLive(studio.id);
 
                 if (currentDb <= -55) {
                     st.silentSeconds += deltaTimeSec; 
                     if (st.silentSeconds >= 90) {
                         st.audioProblem = "Mic Mati / Tidak ada suara";
-                        isAudioCritical = true; 
+                        if (isSupposedToLive) isAudioCritical = true; 
                     }
                 } else {
                     st.silentSeconds = 0; 
@@ -3453,7 +3425,7 @@ async function initMCRConnections() {
 
                         if (difference <= 3 && highest > -30) {
                             st.staticNoiseSeconds++;
-                            if (st.staticNoiseSeconds > 60) {
+                            if (st.staticNoiseSeconds > 60 && isSupposedToLive) {
                                 st.audioProblem = "Terdeteksi Noise atau Dengung Statis";
                             }
                         } else {
@@ -3462,7 +3434,7 @@ async function initMCRConnections() {
                     }
                 }
 
-                if (st.audioProblem && !st.alarmPlayed && !st.isHelpActive) {
+                if (st.audioProblem && !st.alarmPlayed && !st.isHelpActive && isSupposedToLive) {
                     triggerMCRAlarm(studio.id, st.audioProblem);
                     st.alarmPlayed = true;
                 } else if (!st.audioProblem) {
@@ -3471,13 +3443,14 @@ async function initMCRConnections() {
 
                 if (nowTime - st.lastUiUpdate > 100) { 
                     st.lastUiUpdate = nowTime;
+                    
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
                         const audioBar = document.getElementById(`mcr-audio-bar-${studio.id}`);
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
-                        if (audioEl && audioBar && cardElement && warnEl) {
+                        if (audioEl && audioBar && warnEl && cardElement) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
@@ -3495,7 +3468,7 @@ async function initMCRConnections() {
                                 audioEl.style.color = "gray"; 
                             }
                             
-                            if (st.audioProblem) {
+                            if (st.audioProblem && isSupposedToLive) {
                                 warnEl.innerText = `⚠️ ${st.audioProblem}`;
                                 warnEl.style.display = "block";
                             } else {
@@ -3523,9 +3496,12 @@ async function initMCRConnections() {
                     st.lastDroppedFrames = status.outputSkippedFrames;
 
                     let isCurrentlyStreaming = status.outputActive;
+                    let isSupposedToLive = isStudioSupposedToLive(studio.id);
+
+                    if (isCurrentlyStreaming) st.lastAliveTime = Date.now();
 
                     if (st.isCurrentlyStreaming === true && isCurrentlyStreaming === false) {
-                        triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
+                        if (isSupposedToLive) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
                     }
                     st.isCurrentlyStreaming = isCurrentlyStreaming;
 
@@ -3543,27 +3519,20 @@ async function initMCRConnections() {
                     st.netProblem = null;
                     let isNetCritical = false;
 
-                    if (isCurrentlyStreaming) {
+                    if (isCurrentlyStreaming && isSupposedToLive) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             st.netProblem = "Koneksi Macet Parah";
-                            isNetCritical = true; 
-                            if (Math.random() > 0.9 && !st.isHelpActive) {
-                                triggerMCRAlarm(studio.id, "Koneksi macet. Potensi stream terputus.");
-                            }
+                            isNetCritical = true;
+                            if (Math.random() > 0.9 && !st.isHelpActive) triggerMCRAlarm(studio.id, "Koneksi macet. Potensi stream terputus.");
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
                         }
                     }
 
-                    if (!isCurrentlyStreaming) {
-                        st.currentSeverity = 'inactive';
-                    } else if (isNetCritical || st.audioProblem === "Mic Mati / Tidak ada suara") {
-                        st.currentSeverity = 'critical';
-                    } else if (st.netProblem || st.audioProblem) {
-                        st.currentSeverity = 'warning';
-                    } else {
-                        st.currentSeverity = 'normal';
-                    }
+                    if (!isCurrentlyStreaming) st.currentSeverity = 'inactive';
+                    else if (isNetCritical || (st.audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive)) st.currentSeverity = 'critical';
+                    else if ((st.netProblem || st.audioProblem) && isSupposedToLive) st.currentSeverity = 'warning';
+                    else st.currentSeverity = 'normal';
 
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
@@ -3572,16 +3541,20 @@ async function initMCRConnections() {
                         const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                         
                         if (bitEl && cardElement && netWarnEl && statusEl) {
-                            
-                            // Paksa Status Kembali Online (jika tertinggal)
                             if (statusEl.innerText !== "🟢 Online") statusEl.innerText = "🟢 Online";
 
                             if (!isCurrentlyStreaming) {
                                 bitEl.innerText = "0 kbps";
                                 bitEl.style.color = "gray"; 
-                                netWarnEl.innerText = "🔴 STREAM OFF / END LIVE";
-                                netWarnEl.style.color = "#dc3545";
-                                netWarnEl.style.display = "block";
+                                if (isSupposedToLive) {
+                                    netWarnEl.innerText = "🔴 ERROR: STREAM PUTUS";
+                                    netWarnEl.style.color = "#dc3545";
+                                    netWarnEl.style.display = "block";
+                                } else {
+                                    netWarnEl.innerText = "Stream Selesai";
+                                    netWarnEl.style.color = "gray";
+                                    netWarnEl.style.display = "block";
+                                }
                             } else {
                                 bitEl.innerText = Math.round(kbps) + " kbps";
                                 
@@ -3617,7 +3590,8 @@ async function initMCRConnections() {
                                     cardElement.style.borderLeftColor = "gray";
                                     cardElement.style.boxShadow = "none";
                                 } else {
-                                    cardElement.style.backgroundColor = "white";
+                                    let isPinned = _pinnedStudios.includes(studio.id);
+                                    cardElement.style.backgroundColor = isPinned ? "#f8faff" : "white";
                                     cardElement.style.borderLeftColor = "var(--bs-success)";
                                     cardElement.style.boxShadow = "0 2px 5px rgba(0,0,0,0.1)";
                                 }
@@ -3628,14 +3602,10 @@ async function initMCRConnections() {
             }, 2000);
 
         } catch (error) {
-            console.error(`Gagal konek Studio ${studio.id}`, error);
             _mcrStudios[studio.id].isConnected = false;
-            // ... (kode error UI)
         }
     });
 }
-
-
 
 function activatePanicAlert(studioId, tipeBantuan, jenisCard) {
     if (activeTab !== "mcr" || !_isMcrUnlocked) return;
