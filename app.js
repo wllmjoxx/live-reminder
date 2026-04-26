@@ -3128,32 +3128,43 @@ function renderMCR() {
         <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
 
-    // === SMART SORTING ===
+        // === SMART SORTING (Prioritas: Pin > Jadwal Live > OBS Online > Kosong) ===
     let now = Date.now();
     let sortedConfig = [...MCR_CONFIG].sort((a, b) => {
         let aState = _mcrStudios[a.id] || {};
         let bState = _mcrStudios[b.id] || {};
 
+        // 1. PIN SELALU NOMOR 1 (Paling Atas)
         let aPinned = _pinnedStudios.includes(a.id);
         let bPinned = _pinnedStudios.includes(b.id);
-        
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
-        let aIsAlive = (aState.isConnected && aState.isCurrentlyStreaming);
-        let bIsAlive = (bState.isConnected && bState.isCurrentlyStreaming);
+        // 2. CEK JADWAL LIVE (Yang ada jadwal live saat ini ditaruh DI ATAS)
+        let aHasSchedule = getStudioCurrentSchedule(a.id) !== null;
+        let bHasSchedule = getStudioCurrentSchedule(b.id) !== null;
         
-        let aGracePeriod = (aState.lastAliveTime && (now - aState.lastAliveTime < 300000)) ? true : false;
-        let bGracePeriod = (bState.lastAliveTime && (now - bState.lastAliveTime < 300000)) ? true : false;
+        if (aHasSchedule && !bHasSchedule) return -1;
+        if (!aHasSchedule && bHasSchedule) return 1;
 
-        let aSortActive = aIsAlive || aGracePeriod;
-        let bSortActive = bIsAlive || bGracePeriod;
+        // 3. JIKA SAMA-SAMA ADA JADWAL (Atau Sama-sama Kosong), URUTKAN BERDASARKAN OBS ONLINE
+        let aIsOnline = aState.isConnected;
+        let bIsOnline = bState.isConnected;
 
-        if (aSortActive && !bSortActive) return -1;
-        if (!aSortActive && bSortActive) return 1;
+        if (aIsOnline && !bIsOnline) return -1;
+        if (!aIsOnline && bIsOnline) return 1;
 
+        // 4. JIKA SAMA-SAMA ONLINE, URUTKAN BERDASARKAN STATUS STREAMING (Sedang Pancar vs Mati)
+        let aIsStreaming = aState.isCurrentlyStreaming;
+        let bIsStreaming = bState.isCurrentlyStreaming;
+
+        if (aIsStreaming && !bIsStreaming) return -1;
+        if (!aIsStreaming && bIsStreaming) return 1;
+
+        // 5. SISANYA: URUTKAN BERDASARKAN NOMOR STUDIO (1, 2, 3...)
         return a.id - b.id;
     });
+
 
     sortedConfig.forEach(s => {
         let st = _mcrStudios[s.id] || {};
