@@ -2981,7 +2981,7 @@ function getStandbyShiftCoverage(slots) {
 
 
 /* =========================================
-   FITUR MCR MONITORING (Smart Sort, Pin, False Alarm Prevention)
+   FITUR MCR MONITORING (PIN, SMART SORT, INFO JADWAL LIVE)
 ========================================= */
 
 let _mcrInitialized = false;
@@ -3032,9 +3032,9 @@ styleSheet.innerText = cssPulse;
 document.head.appendChild(styleSheet);
 
 
-// === FUNGSI BANTU JADWAL LIVES ===
-function isStudioSupposedToLive(studioId) {
-    if (!sessions || sessions.length === 0) return false;
+// === FUNGSI MENCARI JADWAL LIVE SEKARANG ===
+function getStudioCurrentSchedule(studioId) {
+    if (!sessions || sessions.length === 0) return null;
     let now = new Date();
     let currentMin = now.getHours() * 60 + now.getMinutes();
 
@@ -3049,15 +3049,20 @@ function isStudioSupposedToLive(studioId) {
                     let end = toMin(h.endTime);
                     if (end === 0) end = 1440;
                     
-                    // Toleransi 15 menit sebelum dan sesudah jadwal
+                    // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
                     if (currentMin >= (start - 15) && currentMin <= (end + 15)) {
-                        return true; 
+                        return {
+                            brand: s.brand || "Brand Unknown",
+                            startTime: h.startTime,
+                            endTime: h.endTime,
+                            host: h.host
+                        }; 
                     }
                 }
             }
         }
     }
-    return false;
+    return null; // Tidak ada jadwal
 }
 
 
@@ -3101,11 +3106,9 @@ function renderMCR() {
         let aPinned = _pinnedStudios.includes(a.id);
         let bPinned = _pinnedStudios.includes(b.id);
         
-        // 1. Pinned teratas
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
-        // 2. Active vs Inactive (Grace period 5 Menit / 300000ms)
         let aIsAlive = (aState.isConnected && aState.isCurrentlyStreaming);
         let bIsAlive = (bState.isConnected && bState.isCurrentlyStreaming);
         
@@ -3118,7 +3121,6 @@ function renderMCR() {
         if (aSortActive && !bSortActive) return -1;
         if (!aSortActive && bSortActive) return 1;
 
-        // 3. Normal berurutan
         return a.id - b.id;
     });
 
@@ -3142,8 +3144,29 @@ function renderMCR() {
             mpDisplay = "inline-block"; mpName = st.lastMpName; mpColor = st.lastMpColor; mpBg = st.lastMpBg;
         }
 
+        // --- MENGAMBIL DATA JADWAL (BRAND & JAM) ---
+        let currentSched = getStudioCurrentSchedule(s.id);
+        let infoJadwalHtml = "";
+        
+        if (currentSched) {
+            // ADA JADWAL
+            infoJadwalHtml = `
+                <div style="background: #eef2f5; padding: 6px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #0d6efd;">
+                    <div style="font-weight: bold; font-size: 0.75rem; color: #0d6efd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentSched.brand}</div>
+                    <div style="font-size: 0.7rem; color: #495057;">🕛 ${currentSched.startTime} - ${currentSched.endTime} | 🎤 ${currentSched.host}</div>
+                </div>
+            `;
+        } else {
+            // KOSONG
+            infoJadwalHtml = `
+                <div style="background: #f8f9fa; padding: 6px; border-radius: 4px; margin-bottom: 10px; border: 1px dashed #dee2e6; text-align: center;">
+                    <span style="font-size: 0.7rem; color: #adb5bd; font-style: italic;">Tidak ada sesi live</span>
+                </div>
+            `;
+        }
+
         html += `
-            <div style="flex: 0 0 auto; width: 200px;" id="mcr-wrap-${s.id}">
+            <div style="flex: 0 0 auto; width: 220px;" id="mcr-wrap-${s.id}">
                 <div id="mcr-card-${s.id}" style="${bgStyle} border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: all 0.3s ease; position: relative;">
                     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px;">
                         <div style="font-weight: bold; font-size: 1rem;">Studio ${s.id}</div>
@@ -3156,6 +3179,9 @@ function renderMCR() {
                         <div id="mcr-status-${s.id}" style="font-size: 0.8rem; color: gray;">${statusText}</div>
                         <span id="mcr-mp-${s.id}" style="font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; background: ${mpBg}; color: ${mpColor}; display: ${mpDisplay}; font-weight: bold;">${mpName}</span>
                     </div>
+
+                    <!-- BLOK INFORMASI JADWAL LIVE -->
+                    ${infoJadwalHtml}
 
                     <div id="mcr-help-alert-${s.id}" style="display: none; padding: 6px; border-radius: 5px; text-align: center; font-weight: bold; font-size: 0.8rem; margin-bottom: 10px; cursor: pointer;">
                         🚨 BANTUAN
@@ -3189,7 +3215,7 @@ function renderMCR() {
     if (_mcrInitialized) {
         const btn = document.getElementById('btn-connect-mcr');
         if(btn) {
-            btn.innerText = "Mengawasi 20 Studio...";
+            btn.innerText = "Mengawasi Studio...";
             btn.classList.remove('btn-primary');
             btn.classList.add('btn-secondary');
             btn.disabled = true;
@@ -3197,13 +3223,12 @@ function renderMCR() {
     }
 }
 
-// Timer Render untuk Mendorong Studio Mati ke Bawah tiap 30 Detik
+// Timer Render untuk Update Tampilan Jadwal dan Sort setiap 30 Detik
 setInterval(() => {
     if (_isMcrUnlocked && activeTab === "mcr") {
         renderMCR();
     }
 }, 30000);
-
 
 function togglePinStudio(studioId) {
     if (_pinnedStudios.includes(studioId)) {
@@ -3274,7 +3299,7 @@ async function initMCRConnections() {
 
     showBanner("Menyambungkan ke OBS...", "success");
     _mcrInitialized = true;
-    renderMCR(); // Kunci tombol connect
+    renderMCR(); 
 
     MCR_CONFIG.forEach(async (studio) => {
         _mcrStudios[studio.id] = { 
@@ -3345,7 +3370,6 @@ async function initMCRConnections() {
                 }
             } catch (err) {}
 
-            // CEK PANIC BUTTON
             setInterval(async () => {
                 if (!_mcrStudios[studio.id].isConnected) return;
                 try {
@@ -3372,15 +3396,20 @@ async function initMCRConnections() {
                 } catch(e) {}
             }, 3000);
 
-            // PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
                 let nowTime = Date.now();
                 let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
                 lastAudioCheckTime = nowTime; 
+                
                 if (deltaTimeSec > 2) deltaTimeSec = 0; 
 
+                if (_mcrStudios[studio.id].isConnected && activeTab === "mcr" && _isMcrUnlocked) {
+                    const statusEl = document.getElementById(`mcr-status-${studio.id}`);
+                    if (statusEl && statusEl.innerText !== "🟢 Online") statusEl.innerText = "🟢 Online";
+                }
+
                 let currentDb = -60;
-                let st = _mcrStudios[studio.id];
+                let studioState = _mcrStudios[studio.id];
                 
                 if (data && data.inputs && data.inputs.length > 0) {
                     let maxLinear = 0;
@@ -3400,49 +3429,48 @@ async function initMCRConnections() {
                 
                 if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) currentDb = -60;
 
-                st.audioProblem = null;
-                let isAudioCritical = false;
-                let isSupposedToLive = isStudioSupposedToLive(studio.id);
+                let audioProblem = null;
+                let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null;
 
                 if (currentDb <= -55) {
-                    st.silentSeconds += deltaTimeSec; 
-                    if (st.silentSeconds >= 90) {
-                        st.audioProblem = "Mic Mati / Tidak ada suara";
-                        if (isSupposedToLive) isAudioCritical = true; 
+                    studioState.silentSeconds += deltaTimeSec; 
+                    if (studioState.silentSeconds >= 90) {
+                        audioProblem = "Mic Mati / Tidak ada suara";
                     }
                 } else {
-                    st.silentSeconds = 0; 
+                    studioState.silentSeconds = 0; 
                 }
 
                 if (Math.floor(nowTime / 1000) !== Math.floor((nowTime - deltaTimeSec*1000) / 1000)) { 
-                    st.lastDbHistory.push(currentDb);
-                    if (st.lastDbHistory.length > 30) st.lastDbHistory.shift(); 
+                    studioState.lastDbHistory.push(currentDb);
+                    if (studioState.lastDbHistory.length > 30) studioState.lastDbHistory.shift(); 
 
-                    if (st.lastDbHistory.length === 30) {
-                        let highest = Math.max(...st.lastDbHistory);
-                        let lowest = Math.min(...st.lastDbHistory);
+                    if (studioState.lastDbHistory.length === 30) {
+                        let highest = Math.max(...studioState.lastDbHistory);
+                        let lowest = Math.min(...studioState.lastDbHistory);
                         let difference = highest - lowest;
 
                         if (difference <= 3 && highest > -30) {
-                            st.staticNoiseSeconds++;
-                            if (st.staticNoiseSeconds > 60 && isSupposedToLive) {
-                                st.audioProblem = "Terdeteksi Noise atau Dengung Statis";
+                            studioState.staticNoiseSeconds++;
+                            if (studioState.staticNoiseSeconds > 60) {
+                                audioProblem = "Terdeteksi Noise atau Dengung Statis";
                             }
                         } else {
-                            st.staticNoiseSeconds = 0; 
+                            studioState.staticNoiseSeconds = 0; 
                         }
                     }
                 }
 
-                if (st.audioProblem && !st.alarmPlayed && !st.isHelpActive && isSupposedToLive) {
-                    triggerMCRAlarm(studio.id, st.audioProblem);
-                    st.alarmPlayed = true;
-                } else if (!st.audioProblem) {
-                    st.alarmPlayed = false;
+                // HANYA BUNYIKAN ALARM AUDIO JIKA MEMANG ADA JADWAL LIVE
+                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive && isSupposedToLive) {
+                    triggerMCRAlarm(studio.id, audioProblem);
+                    studioState.alarmPlayed = true;
+                } else if (!audioProblem) {
+                    studioState.alarmPlayed = false;
                 }
 
-                if (nowTime - st.lastUiUpdate > 100) { 
-                    st.lastUiUpdate = nowTime;
+                if (nowTime - studioState.lastUiUpdate > 100) { 
+                    studioState.lastUiUpdate = nowTime;
                     
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
@@ -3450,8 +3478,9 @@ async function initMCRConnections() {
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
                         
-                        if (audioEl && audioBar && warnEl && cardElement) {
+                        if (audioEl && audioBar && cardElement && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
+                            
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
@@ -3468,8 +3497,9 @@ async function initMCRConnections() {
                                 audioEl.style.color = "gray"; 
                             }
                             
-                            if (st.audioProblem && isSupposedToLive) {
-                                warnEl.innerText = `⚠️ ${st.audioProblem}`;
+                            // Visual peringatan merah tetap muncul asal kritis (tanpa harus nunggu jadwal)
+                            if (audioProblem && isSupposedToLive) {
+                                warnEl.innerText = `⚠️ ${audioProblem}`;
                                 warnEl.style.display = "block";
                             } else {
                                 warnEl.style.display = "none";
@@ -3478,9 +3508,11 @@ async function initMCRConnections() {
                     }
                 }
 
-                if (isAudioCritical) st.currentSeverity = 'critical';
-                else if (st.audioProblem) st.currentSeverity = 'warning';
-                else st.currentSeverity = 'normal';
+                // Tentukan level severity
+                let isAudioCritical = (audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive);
+                if (isAudioCritical) studioState.currentSeverity = 'critical';
+                else if (audioProblem && isSupposedToLive) studioState.currentSeverity = 'warning';
+                else studioState.currentSeverity = 'normal';
             });
 
             // PANTAU BITRATE
@@ -3496,7 +3528,7 @@ async function initMCRConnections() {
                     st.lastDroppedFrames = status.outputSkippedFrames;
 
                     let isCurrentlyStreaming = status.outputActive;
-                    let isSupposedToLive = isStudioSupposedToLive(studio.id);
+                    let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null;
 
                     if (isCurrentlyStreaming) st.lastAliveTime = Date.now();
 
@@ -3523,7 +3555,7 @@ async function initMCRConnections() {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             st.netProblem = "Koneksi Macet Parah";
                             isNetCritical = true;
-                            if (Math.random() > 0.9 && !st.isHelpActive) triggerMCRAlarm(studio.id, "Koneksi macet. Potensi stream terputus.");
+                            if (Math.random() > 0.9 && !st.isHelpActive) triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
                         }
@@ -3546,6 +3578,7 @@ async function initMCRConnections() {
                             if (!isCurrentlyStreaming) {
                                 bitEl.innerText = "0 kbps";
                                 bitEl.style.color = "gray"; 
+                                
                                 if (isSupposedToLive) {
                                     netWarnEl.innerText = "🔴 ERROR: STREAM PUTUS";
                                     netWarnEl.style.color = "#dc3545";
