@@ -3033,6 +3033,7 @@ document.head.appendChild(styleSheet);
 
 
 // === FUNGSI MENCARI JADWAL LIVE SEKARANG ===
+// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
 function getStudioCurrentSchedule(studioId) {
     if (!sessions || sessions.length === 0) return null;
     let now = new Date();
@@ -3043,27 +3044,57 @@ function getStudioCurrentSchedule(studioId) {
         let schedStudioNum = schedStudioStr.match(/\d+/);
         
         if (schedStudioNum && parseInt(schedStudioNum[0]) === studioId) {
+            
+            let sessionStartMin = 1440;
+            let sessionEndMin = 0;
+            let startTimeStr = "00:00";
+            let endTimeStr = "00:00";
+
             if (s.hosts && s.hosts.length > 0) {
+                // Cari titik awal dan akhir dari seluruh host di ID Line/Sesi ini
                 for (let h of s.hosts) {
                     let start = toMin(h.startTime);
                     let end = toMin(h.endTime);
                     if (end === 0) end = 1440;
                     
-                    // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
-                    if (currentMin >= (start - 15) && currentMin <= (end + 15)) {
-                        return {
-                            brand: s.brand || "Brand Unknown",
-                            startTime: h.startTime,
-                            endTime: h.endTime,
-                            host: h.host
-                        }; 
+                    if (start < sessionStartMin) {
+                        sessionStartMin = start;
+                        startTimeStr = h.startTime; 
                     }
+                    if (end > sessionEndMin) {
+                        sessionEndMin = end;
+                        endTimeStr = h.endTime; 
+                    }
+                }
+                
+                // Toleransi: Mulai 15 menit sebelum marathon dibuka, sampai 15 menit sesudah marathon ditutup
+                if (currentMin >= (sessionStartMin - 15) && currentMin <= (sessionEndMin + 15)) {
+                    
+                    // Cari tahu Host mana yang sedang bertugas di detik ini
+                    let currentActiveHost = "Multiple Hosts";
+                    for (let h of s.hosts) {
+                        let hStart = toMin(h.startTime);
+                        let hEnd = toMin(h.endTime);
+                        if (hEnd === 0) hEnd = 1440;
+                        if (currentMin >= hStart && currentMin <= hEnd) {
+                            currentActiveHost = h.host;
+                            break; 
+                        }
+                    }
+
+                    return {
+                        brand: s.brand || "Brand Unknown",
+                        startTime: startTimeStr, 
+                        endTime: endTimeStr,     
+                        host: currentActiveHost  
+                    }; 
                 }
             }
         }
     }
-    return null; // Tidak ada jadwal
+    return null; 
 }
+
 
 
 function renderMCR() {
