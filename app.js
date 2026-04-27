@@ -3102,10 +3102,10 @@ function renderMCR() {
             <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
                 <div class="card p-4 shadow-sm" style="width: 350px; text-align: center; border-top: 5px solid #0d6efd;">
                     <h4 class="mb-3">Login to MCR System</h4>
-                    <p class="text-muted small mb-4">Authorized Person Only.</p>
-                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="Masukkan PIN 6 Angka" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
-                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Buka Akses MCR</button>
-                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">❌ PIN Salah!</div>
+                    <p class="text-muted small mb-4">Master Control Room</p>
+                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="PIN Input" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
+                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Login</button>
+                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">PIN Salah!</div>
                 </div>
             </div>
         `;
@@ -3119,7 +3119,7 @@ function renderMCR() {
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
-            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">🔌 Connect All Studios</button>
+            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">Connect All Studios</button>
         </div>
         <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
@@ -3586,7 +3586,7 @@ async function initMCRConnections() {
                             st.netProblem = "Koneksi Macet Parah";
                             isNetCritical = true; 
                             if (Math.random() > 0.9 && !st.isHelpActive) {
-                                triggerMCRAlarm(studio.id, "Koneksi macet. Potensi stream terputus.");
+                                triggerMCRAlarm(studio.id, "Koneksi bermasalah. Potensi stream terputus.");
                             }
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
@@ -3624,9 +3624,9 @@ async function initMCRConnections() {
                             } else {
                                 bitEl.innerText = Math.round(kbps) + " kbps";
                                 
-                                if (st.netProblem === "Koneksi Macet Parah") {
+                                if (st.netProblem === "Koneksi Drop Parah") {
                                     bitEl.style.color = "#dc3545"; 
-                                    netWarnEl.innerText = "⚠️ Macet (Drop Frame)";
+                                    netWarnEl.innerText = "⚠️ Problem (Drop Frame)";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
                                 } else if (st.netProblem === "Jaringan Tidak Stabil") {
