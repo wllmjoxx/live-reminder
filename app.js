@@ -3597,7 +3597,7 @@ async function initMCRConnections() {
                             isNetCritical = true;
                             // Bunyikan suara HANYA jika memang harus Live
                             if (Math.random() > 0.9 && !st.isHelpActive && isSupposedToLive) {
-                                triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
+                                triggerMCRAlarm(studio.id, "Connection problem and frame dropped");
                             }
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
