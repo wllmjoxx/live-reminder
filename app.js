@@ -3033,7 +3033,7 @@ styleSheet.innerText = cssPulse;
 document.head.appendChild(styleSheet);
 
 
-// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
+// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Dengan Toleransi +- 15 Menit untuk UI) ===
 function getStudioCurrentSchedule(studioId) {
     if (!sessions || sessions.length === 0) return null;
     let now = new Date();
@@ -3050,25 +3050,17 @@ function getStudioCurrentSchedule(studioId) {
             let endTimeStr = "00:00";
 
             if (s.hosts && s.hosts.length > 0) {
-                // Cari titik awal dan akhir dari seluruh host di ID Line ini
                 for (let h of s.hosts) {
                     let start = toMin(h.startTime);
                     let end = toMin(h.endTime);
                     if (end === 0) end = 1440;
                     
-                    if (start < sessionStartMin) {
-                        sessionStartMin = start;
-                        startTimeStr = h.startTime; 
-                    }
-                    if (end > sessionEndMin) {
-                        sessionEndMin = end;
-                        endTimeStr = h.endTime; 
-                    }
+                    if (start < sessionStartMin) { sessionStartMin = start; startTimeStr = h.startTime; }
+                    if (end > sessionEndMin) { sessionEndMin = end; endTimeStr = h.endTime; }
                 }
                 
-                // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
+                // UNTUK UI (Teks Brand), berikan toleransi +- 15 Menit
                 if (currentMin >= (sessionStartMin - 15) && currentMin <= (sessionEndMin + 15)) {
-                    // Cari tahu Host mana yang sedang bertugas di detik ini
                     let currentActiveHost = "Multiple Hosts";
                     for (let h of s.hosts) {
                         let hStart = toMin(h.startTime);
@@ -3082,15 +3074,43 @@ function getStudioCurrentSchedule(studioId) {
 
                     return {
                         brand: s.brand || "Brand Unknown",
-                        startTime: startTimeStr,
-                        endTime: endTimeStr,
-                        host: currentActiveHost
+                        startTime: startTimeStr, 
+                        endTime: endTimeStr,     
+                        host: currentActiveHost  
                     }; 
                 }
             }
         }
     }
-    return null; // Tidak ada jadwal untuk studio ini di jam sekarang
+    return null; 
+}
+
+// === FUNGSI BARU: CEK STRICT LIVE (Tanpa Toleransi) UNTUK ALARM SUARA ===
+function isStudioStrictlyLiveNow(studioId) {
+    if (!sessions || sessions.length === 0) return false;
+    let now = new Date();
+    let currentMin = now.getHours() * 60 + now.getMinutes();
+
+    for (let s of sessions) {
+        let schedStudioStr = s.studio ? String(s.studio).toLowerCase() : "";
+        let schedStudioNum = schedStudioStr.match(/\d+/);
+        
+        if (schedStudioNum && parseInt(schedStudioNum[0]) === studioId) {
+            if (s.hosts && s.hosts.length > 0) {
+                for (let h of s.hosts) {
+                    let start = toMin(h.startTime);
+                    let end = toMin(h.endTime);
+                    if (end === 0) end = 1440;
+                    
+                    // STRICT: Harus tepat di dalam jam jadwal (misal 14:00 - 16:00)
+                    if (currentMin >= start && currentMin <= end) {
+                        return true; 
+                    }
+                }
+            }
+        }
+    }
+    return false;
 }
 
 
@@ -3103,10 +3123,10 @@ function renderMCR() {
             <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
                 <div class="card p-4 shadow-sm" style="width: 350px; text-align: center; border-top: 5px solid #0d6efd;">
                     <h4 class="mb-3">Login to MCR System</h4>
-                    <p class="text-muted small mb-4">Master Control Room</p>
-                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="PIN Input" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
-                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Login</button>
-                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">PIN Salah!</div>
+                    <p class="text-muted small mb-4">Authorized Person Only.</p>
+                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="Masukkan PIN 6 Angka" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
+                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Buka Akses MCR</button>
+                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">❌ PIN Salah!</div>
                 </div>
             </div>
         `;
@@ -3120,44 +3140,37 @@ function renderMCR() {
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
-            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">Connect All Studios</button>
+            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">🔌 Connect All Studios</button>
         </div>
         <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
 
     // === SMART SORTING (Prioritas: Pin > Jadwal Live > OBS Online > Kosong) ===
+    let now = Date.now();
     let sortedConfig = [...MCR_CONFIG].sort((a, b) => {
         let aState = _mcrStudios[a.id] || {};
         let bState = _mcrStudios[b.id] || {};
 
-        // 1. PIN SELALU NOMOR 1
         let aPinned = _pinnedStudios.includes(a.id);
         let bPinned = _pinnedStudios.includes(b.id);
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
-        // 2. CEK JADWAL LIVE SEKARANG
         let aHasSchedule = getStudioCurrentSchedule(a.id) !== null;
         let bHasSchedule = getStudioCurrentSchedule(b.id) !== null;
-        
         if (aHasSchedule && !bHasSchedule) return -1;
         if (!aHasSchedule && bHasSchedule) return 1;
 
-        // 3. JIKA SAMA (Sama-sama ada jadwal atau kosong), CEK OBS ONLINE
-        let aIsOnline = aState.isConnected;
-        let bIsOnline = bState.isConnected;
+        let aIsAlive = (aState.isConnected && aState.isCurrentlyStreaming);
+        let bIsAlive = (bState.isConnected && bState.isCurrentlyStreaming);
+        let aGracePeriod = (aState.lastAliveTime && (now - aState.lastAliveTime < 300000)) ? true : false;
+        let bGracePeriod = (bState.lastAliveTime && (now - bState.lastAliveTime < 300000)) ? true : false;
 
-        if (aIsOnline && !bIsOnline) return -1;
-        if (!aIsOnline && bIsOnline) return 1;
+        let aSortActive = aIsAlive || aGracePeriod;
+        let bSortActive = bIsAlive || bGracePeriod;
+        if (aSortActive && !bSortActive) return -1;
+        if (!aSortActive && bSortActive) return 1;
 
-        // 4. JIKA SAMA ONLINE, CEK STATUS STREAMING (Mencegah Studio Mati nyempil di atas)
-        let aIsStreaming = aState.isCurrentlyStreaming;
-        let bIsStreaming = bState.isCurrentlyStreaming;
-
-        if (aIsStreaming && !bIsStreaming) return -1;
-        if (!aIsStreaming && bIsStreaming) return 1;
-
-        // 5. SISANYA URUTKAN BERDASARKAN NOMOR STUDIO
         return a.id - b.id;
     });
 
@@ -3181,10 +3194,8 @@ function renderMCR() {
             mpDisplay = "inline-block"; mpName = st.lastMpName; mpColor = st.lastMpColor; mpBg = st.lastMpBg;
         }
 
-        // --- TAMPILKAN DATA JADWAL (BRAND & JAM) ---
         let currentSched = getStudioCurrentSchedule(s.id);
         let infoJadwalHtml = "";
-        
         if (currentSched) {
             infoJadwalHtml = `
                 <div style="background: #eef2f5; padding: 6px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #0d6efd;">
@@ -3257,18 +3268,13 @@ function renderMCR() {
     }
 }
 
-// Render Ulang (Sort) tiap 30 detik untuk memperbarui layout MCR
 setInterval(() => {
     if (_isMcrUnlocked && activeTab === "mcr") renderMCR();
 }, 30000);
 
-
 function togglePinStudio(studioId) {
-    if (_pinnedStudios.includes(studioId)) {
-        _pinnedStudios = _pinnedStudios.filter(id => id !== studioId);
-    } else {
-        _pinnedStudios.push(studioId);
-    }
+    if (_pinnedStudios.includes(studioId)) _pinnedStudios = _pinnedStudios.filter(id => id !== studioId);
+    else _pinnedStudios.push(studioId);
     localStorage.setItem('mcrPinnedStudios', JSON.stringify(_pinnedStudios));
     renderMCR(); 
 }
@@ -3430,12 +3436,11 @@ async function initMCRConnections() {
                 } catch(e) {}
             }, 3000);
 
-                        // PANTAU AUDIO
+            // PANTAU AUDIO
             obs.on('InputVolumeMeters', (data) => {
                 let nowTime = Date.now();
                 let deltaTimeSec = (nowTime - lastAudioCheckTime) / 1000; 
                 lastAudioCheckTime = nowTime; 
-                
                 if (deltaTimeSec > 2) deltaTimeSec = 0; 
 
                 if (_mcrStudios[studio.id].isConnected && activeTab === "mcr" && _isMcrUnlocked) {
@@ -3465,10 +3470,11 @@ async function initMCRConnections() {
                 if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) currentDb = -60;
 
                 let audioProblem = null;
-                // Cek apakah punya jadwal Live (atau sengaja di-pin untuk ditest)
-                let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null || _pinnedStudios.includes(studio.id);
 
-                // Hitung timer deteksi mic mati
+                // Cek status "STRICTLY LIVE" (Tanpa Toleransi) khusus untuk Alarm Suara
+                let isSupposedToLiveUI = getStudioCurrentSchedule(studio.id) !== null || _pinnedStudios.includes(studio.id);
+                let isStrictlyLiveNow = isStudioStrictlyLiveNow(studio.id) || _pinnedStudios.includes(studio.id);
+
                 if (currentDb <= -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) {
@@ -3478,7 +3484,6 @@ async function initMCRConnections() {
                     studioState.silentSeconds = 0; 
                 }
 
-                // Hitung timer deteksi noise
                 if (Math.floor(nowTime / 1000) !== Math.floor((nowTime - deltaTimeSec*1000) / 1000)) { 
                     studioState.lastDbHistory.push(currentDb);
                     if (studioState.lastDbHistory.length > 30) studioState.lastDbHistory.shift(); 
@@ -3499,11 +3504,11 @@ async function initMCRConnections() {
                     }
                 }
 
-                // HANYA BUNYIKAN ALARM AUDIO JIKA SEDANG JADWAL LIVE (ATAU DI-PIN)
-                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive && isSupposedToLive) {
+                // HANYA BUNYIKAN SUARA ALARM JIKA STRICTLY LIVE (TEPAT DI DALAM JAM JADWAL)
+                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive && isStrictlyLiveNow) {
                     triggerMCRAlarm(studio.id, audioProblem);
                     studioState.alarmPlayed = true;
-                } else if (!audioProblem || !isSupposedToLive) {
+                } else if (!audioProblem || !isStrictlyLiveNow) {
                     studioState.alarmPlayed = false;
                 }
 
@@ -3518,7 +3523,6 @@ async function initMCRConnections() {
                         
                         if (audioEl && audioBar && cardElement && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
-                            
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
@@ -3535,8 +3539,8 @@ async function initMCRConnections() {
                                 audioEl.style.color = "gray"; 
                             }
                             
-                            // Visual peringatan merah teks HANYA MUNCUL jika memang ada jadwal Live (atau Di-Pin)
-                            if (audioProblem && isSupposedToLive) {
+                            // Visual UI Warning pakai batas toleransi (isSupposedToLiveUI)
+                            if (audioProblem && isSupposedToLiveUI) {
                                 warnEl.innerText = `⚠️ ${audioProblem}`;
                                 warnEl.style.display = "block";
                             } else {
@@ -3546,10 +3550,9 @@ async function initMCRConnections() {
                     }
                 }
 
-                // Tentukan level severity Card untuk pewarnaan background
-                let isAudioCritical = (audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive);
+                let isAudioCritical = (audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLiveUI);
                 if (isAudioCritical) studioState.currentSeverity = 'critical';
-                else if (audioProblem && isSupposedToLive) studioState.currentSeverity = 'warning';
+                else if (audioProblem && isSupposedToLiveUI) studioState.currentSeverity = 'warning';
                 else studioState.currentSeverity = 'normal';
             });
 
@@ -3566,13 +3569,14 @@ async function initMCRConnections() {
                     st.lastDroppedFrames = status.outputSkippedFrames;
 
                     let isCurrentlyStreaming = status.outputActive;
-                    let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null || _pinnedStudios.includes(studio.id);
+                    let isSupposedToLiveUI = getStudioCurrentSchedule(studio.id) !== null || _pinnedStudios.includes(studio.id);
+                    let isStrictlyLiveNow = isStudioStrictlyLiveNow(studio.id) || _pinnedStudios.includes(studio.id);
 
                     if (isCurrentlyStreaming) st.lastAliveTime = Date.now();
 
-                    // Alarm Terputus Mendadak
+                    // Alarm Terputus Mendadak (Hanya teriak kalau STRICTLY LIVE)
                     if (st.isCurrentlyStreaming === true && isCurrentlyStreaming === false) {
-                        if (isSupposedToLive) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
+                        if (isStrictlyLiveNow) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
                     }
                     st.isCurrentlyStreaming = isCurrentlyStreaming;
 
@@ -3590,30 +3594,23 @@ async function initMCRConnections() {
                     st.netProblem = null;
                     let isNetCritical = false;
 
-                    // Hitung masalah jaringan
                     if (isCurrentlyStreaming) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             st.netProblem = "Koneksi Macet Parah";
                             isNetCritical = true;
-                            // Bunyikan suara HANYA jika memang harus Live
-                            if (Math.random() > 0.9 && !st.isHelpActive && isSupposedToLive) {
-                                triggerMCRAlarm(studio.id, "Connection problem and frame dropped");
+                            // Suara Alarm HANYA BUNYI JIKA STRICTLY LIVE
+                            if (Math.random() > 0.9 && !st.isHelpActive && isStrictlyLiveNow) {
+                                triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
                             }
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
                         }
                     }
 
-                    // Gabungkan Severity Audio & Network (Bebas Drama jika tidak Live)
-                    if (!isCurrentlyStreaming) {
-                        st.currentSeverity = 'inactive';
-                    } else if ((isNetCritical || st.audioProblem === "Mic Mati / Tidak ada suara") && isSupposedToLive) {
-                        st.currentSeverity = 'critical';
-                    } else if ((st.netProblem || st.audioProblem) && isSupposedToLive) {
-                        st.currentSeverity = 'warning';
-                    } else {
-                        st.currentSeverity = 'normal';
-                    }
+                    if (!isCurrentlyStreaming) st.currentSeverity = 'inactive';
+                    else if ((isNetCritical || st.audioProblem === "Mic Mati / Tidak ada suara") && isSupposedToLiveUI) st.currentSeverity = 'critical';
+                    else if ((st.netProblem || st.audioProblem) && isSupposedToLiveUI) st.currentSeverity = 'warning';
+                    else st.currentSeverity = 'normal';
 
                     if (activeTab === "mcr" && _isMcrUnlocked) {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
@@ -3628,8 +3625,8 @@ async function initMCRConnections() {
                                 bitEl.innerText = "0 kbps";
                                 bitEl.style.color = "gray"; 
                                 
-                                // Jika tidak stream TAPI harusnya Live = Error. Kalau tidak Live = Santai
-                                if (isSupposedToLive) {
+                                // UI Warning Teks (Pakai batas toleransi isSupposedToLiveUI)
+                                if (isSupposedToLiveUI) {
                                     netWarnEl.innerText = "🔴 ERROR: STREAM PUTUS";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
@@ -3641,13 +3638,12 @@ async function initMCRConnections() {
                             } else {
                                 bitEl.innerText = Math.round(kbps) + " kbps";
                                 
-                                // Tampilkan teks warning jaringan HANYA JIKA memang jadwalnya Live
-                                if (st.netProblem === "Koneksi Macet Parah" && isSupposedToLive) {
+                                if (st.netProblem === "Koneksi Macet Parah" && isSupposedToLiveUI) {
                                     bitEl.style.color = "#dc3545"; 
                                     netWarnEl.innerText = "⚠️ Macet (Drop Frame)";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
-                                } else if (st.netProblem === "Jaringan Tidak Stabil" && isSupposedToLive) {
+                                } else if (st.netProblem === "Jaringan Tidak Stabil" && isSupposedToLiveUI) {
                                     bitEl.style.color = "#ffc107"; 
                                     netWarnEl.innerText = "⚠️ Tidak Stabil";
                                     netWarnEl.style.color = "#ffc107";
@@ -3684,7 +3680,6 @@ async function initMCRConnections() {
                     }
                 } catch(e){}
             }, 2000);
-
 
         } catch (error) {
             _mcrStudios[studio.id].isConnected = false;
