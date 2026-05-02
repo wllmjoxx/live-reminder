@@ -3746,7 +3746,7 @@ function downloadReportOperator() {
     let month = parts[0];
     let year = parts[1];
 
-    showBanner("⏳ Sedang menghitung beban kerja dan merakit file Excel (.xlsx)...", "warning");
+    showBanner("Processing (.xlsx)...", "warning");
 
     let url = API_URL + `?action=monthlyreport&month=${month}&year=${year}&nocache=${Date.now()}`;
 
