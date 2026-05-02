@@ -1061,8 +1061,19 @@ function renderKlasemen(data) {
     });
   }
 
-  html += `<button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block" style="margin-top:6px;padding:10px">🔄 Refresh (Clear Cache)</button>`;
-  html += `</div>`;
+  // --- INI VERSI YANG SUDAH DIPERBAIKI (TIDAK AKAN ERROR) ---
+  html += `
+    <div style="display: flex; gap: 10px; margin-top: 6px;">
+        <button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary" style="flex: 1; padding: 10px;">
+            🔄 Refresh (Clear Cache)
+        </button>
+        <button onclick="downloadReportOperator()" class="btn btn-success" style="flex: 1; padding: 10px;">
+            📊 Download Excel Operator
+        </button>
+    </div>
+  `;
+  html += `</div>`; // Tutup div container luarnya
+
   container.innerHTML = html;
 }
 
