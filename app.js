@@ -3746,8 +3746,10 @@ function triggerMCRAlarm(studioId, masalah) {
 // ============================================
 // FUNGSI REQUEST DOWNLOAD REPORT EXCEL
 // ============================================
+// ============================================
+// FUNGSI REQUEST DOWNLOAD REPORT EXCEL
+// ============================================
 function downloadReportOperator() {
-    // Gunakan tanggal saat ini untuk default nilai bulan
     const d = new Date();
     let currMonth = (d.getMonth() + 1).toString().padStart(2, '0');
     let currYear = d.getFullYear();
@@ -3765,7 +3767,12 @@ function downloadReportOperator() {
     let month = parts[0];
     let year = parts[1];
 
-    showBanner("⏳ Mengambil data dari server (proses butuh bbrp detik)...", "warning");
+    // Tampilkan Loading Full Screen & ubah teksnya
+    const loadingEl = document.getElementById("loading");
+    const loadingText = loadingEl.querySelector("span");
+    const originalText = loadingText.textContent; // Simpan teks aslinya ("Memuat jadwal...")
+    loadingText.textContent = "Mengambil data Excel dari server...";
+    showLoading(true);
 
     let url = API_URL + `?action=monthlyreport&month=${month}&year=${year}&nocache=${Date.now()}`;
 
@@ -3773,19 +3780,30 @@ function downloadReportOperator() {
     .then(response => response.json())
     .then(data => {
         if (data.success && data.data) {
-            // Kita sudah tidak perlu redirect ke link Google, karena PWA yang akan compile JS-nya jadi file Excel langsung
-            generateAndDownloadExcelClientSide(data.data, month, year);
-            showBanner(`✅ File .xlsx siap dan berhasil diunduh!`, "success");
+            loadingText.textContent = "Menyusun file .xlsx...";
+            // Beri jeda sedikit agar teks loading sempat berubah
+            setTimeout(() => {
+                generateAndDownloadExcelClientSide(data.data, month, year);
+                showLoading(false);
+                loadingText.textContent = originalText; // Kembalikan teks asli
+                showBanner(`✅ File .xlsx siap dan berhasil diunduh!`, "success");
+            }, 500);
         } else if(data.success && data.downloadUrl) {
-           // Fallback bila backend masih pake logic GAS generate spreadsheet temp
-           showBanner(`✅ File .xlsx siap! Unduhan akan segera dimulai...`, "success");
+           // Fallback bila backend masih pake logic GAS lama
+           showLoading(false);
+           loadingText.textContent = originalText;
+           showBanner(`✅ File .xlsx siap! Unduhan dimulai...`, "success");
            window.open(data.downloadUrl, '_blank');
         } else {
+            showLoading(false);
+            loadingText.textContent = originalText;
             showBanner("❌ Gagal membuat report: " + (data.error || "Data kosong"), "danger");
         }
     })
     .catch(err => {
         console.error(err);
+        showLoading(false);
+        loadingText.textContent = originalText;
         showBanner("❌ Terjadi kesalahan jaringan saat request report.", "danger");
     });
 }
@@ -3805,7 +3823,7 @@ function generateAndDownloadExcelClientSide(jsonData, month, year) {
   const worksheet = XLSX.utils.json_to_sheet(jsonData);
   
   // 2. Mengatur lebar kolom agar rapi (asumsi array of object)
-  const wscols = Object.keys(jsonData[0] || {}).map(() => ({ wch: 18 }));
+  const wscols = Object.keys(jsonData[0] || {}).map(() => ({ wch: 22 }));
   worksheet['!cols'] = wscols;
 
   // 3. Buat workbook baru dan tempelkan sheet-nya
@@ -3816,9 +3834,8 @@ function generateAndDownloadExcelClientSide(jsonData, month, year) {
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
   const mIndex = parseInt(month) - 1;
   const monthName = mIndex >= 0 && mIndex < 12 ? monthNames[mIndex] : month;
-  const fileName = `OperatorLoad_Report_${monthName}_${year}.xlsx`;
+  const fileName = `Castlive_Ops_Report_${monthName}_${year}.xlsx`;
   
   // 5. Trigger download file via browser
   XLSX.writeFile(workbook, fileName);
 }
-
