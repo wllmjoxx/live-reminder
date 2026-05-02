@@ -553,7 +553,7 @@
 
 <div class="sticky-top">
   <nav class="navbar">
-    <div class="navbar-brand">🎬 Live Schedule Reminder (v1.99, DB v1.56)</div>
+    <div class="navbar-brand">🎬 Live Schedule Reminder (v1.100, DB v1.56)</div>
     <div id="user-login-wrapper" style="display:none;flex-direction:column;align-items:center;gap:4px">
       <div style="font-size:0.65rem;color:rgba(255,255,255,0.7)">Login akun Google</div>
       <div id="google-signin-btn"></div>
@@ -598,8 +598,12 @@
 
   <div class="action-bar">
     <button class="btn btn-outline-secondary btn-sm" onclick="loadSchedule(true)" style="flex:1">
-      🔄 Refresh
+      Refresh
     </button>
+    <button class="btn btn-success btn-sm" onclick="downloadReportOperator()">
+       Download Load Operator
+    </button>
+
   </div>
 
   <div id="notif-panel" style="display:none;padding:8px 10px;background:var(--bs-light);border-bottom:1px solid var(--bs-border)">

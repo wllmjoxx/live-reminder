@@ -3727,3 +3727,52 @@ function triggerMCRAlarm(studioId, masalah) {
     speech.rate = 0.9;
     window.speechSynthesis.speak(speech);
 }
+
+
+// ============================================
+// FUNGSI REQUEST DOWNLOAD REPORT EXCEL
+// ============================================
+function downloadReportOperator() {
+    // 1. Minta operator memasukkan Bulan dan Tahun (Sederhana via Prompt)
+    let input = prompt("Masukkan Bulan dan Tahun yang ingin didownload.\nFormat: MM-YYYY\nContoh untuk April 2026: 04-2026", "04-2026");
+    
+    if (!input || input.trim() === "") return;
+    
+    let parts = input.split("-");
+    if (parts.length !== 2) {
+        showBanner("Format salah! Harap gunakan format MM-YYYY", "danger");
+        return;
+    }
+    
+    let month = parts[0];
+    let year = parts[1];
+
+    showBanner("⏳ Sedang menghitung beban kerja dan membuat Excel...", "warning");
+
+    // 2. Panggil Apps Script API
+    // Ganti URL ini dengan URL Apps Script Anda (const API_URL di app.js Anda)
+    let url = API_URL + `?action=monthlyreport&month=${month}&year=${year}&nocache=${Date.now()}`;
+
+    fetch(url)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showBanner(`✅ File Excel berhasil dibuat! Mengunduh otomatis...`, "success");
+            
+            // 3. Paksa browser untuk mendownload file Excel
+            let downloadLink = document.createElement("a");
+            downloadLink.href = data.downloadUrl;
+            downloadLink.download = `Report_BebanKerja_${month}_${year}.xlsx`; // Browser akan menyimpan sebagai file excel
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            
+        } else {
+            showBanner("❌ Gagal membuat report: " + data.error, "danger");
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showBanner("❌ Terjadi kesalahan jaringan saat request report.", "danger");
+    });
+}
