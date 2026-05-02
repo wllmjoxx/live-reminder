@@ -3733,7 +3733,6 @@ function triggerMCRAlarm(studioId, masalah) {
 // FUNGSI REQUEST DOWNLOAD REPORT EXCEL
 // ============================================
 function downloadReportOperator() {
-    // 1. Minta operator memasukkan Bulan dan Tahun (Sederhana via Prompt)
     let input = prompt("Masukkan Bulan dan Tahun yang ingin didownload.\nFormat: MM-YYYY\nContoh untuk April 2026: 04-2026", "04-2026");
     
     if (!input || input.trim() === "") return;
@@ -3747,28 +3746,21 @@ function downloadReportOperator() {
     let month = parts[0];
     let year = parts[1];
 
-    showBanner("⏳ Sedang menghitung beban kerja dan membuat Excel...", "warning");
+    showBanner("⏳ Sedang menghitung beban kerja dan merakit file Excel (.xlsx)...", "warning");
 
-    // 2. Panggil Apps Script API
-    // Ganti URL ini dengan URL Apps Script Anda (const API_URL di app.js Anda)
     let url = API_URL + `?action=monthlyreport&month=${month}&year=${year}&nocache=${Date.now()}`;
 
     fetch(url)
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            showBanner(`✅ File Excel berhasil dibuat! Mengunduh otomatis...`, "success");
+        if (data.success && data.downloadUrl) {
+            showBanner(`✅ File .xlsx siap! Unduhan akan segera dimulai...`, "success");
             
-            // 3. Paksa browser untuk mendownload file Excel
-            let downloadLink = document.createElement("a");
-            downloadLink.href = data.downloadUrl;
-            downloadLink.download = `Report_BebanKerja_${month}_${year}.xlsx`; // Browser akan menyimpan sebagai file excel
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
+            // Buka link Google Export di tab/jendela baru yang akan otomatis nge-trigger proses download .xlsx
+            window.open(data.downloadUrl, '_blank');
             
         } else {
-            showBanner("❌ Gagal membuat report: " + data.error, "danger");
+            showBanner("❌ Gagal membuat report: " + (data.error || "Data kosong"), "danger");
         }
     })
     .catch(err => {
