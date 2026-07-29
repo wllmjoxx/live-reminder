@@ -1061,19 +1061,8 @@ function renderKlasemen(data) {
     });
   }
 
-  // --- INI VERSI YANG SUDAH DIPERBAIKI (TIDAK AKAN ERROR) ---
-  html += `
-    <div style="display: flex; gap: 10px; margin-top: 6px;">
-        <button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary" style="flex: 1; padding: 10px;">
-            🔄 Refresh (Clear Cache)
-        </button>
-        <button onclick="downloadReportOperator()" class="btn btn-success" style="flex: 1; padding: 10px;">
-            📊 Download Excel Operator
-        </button>
-    </div>
-  `;
-  html += `</div>`; // Tutup div container luarnya
-
+  html += `<button onclick="forceRefreshKlasemen()" class="btn btn-outline-primary btn-block" style="margin-top:6px;padding:10px">🔄 Refresh (Clear Cache)</button>`;
+  html += `</div>`;
   container.innerHTML = html;
 }
 
@@ -3010,32 +2999,27 @@ window.speechSynthesis.onvoiceschanged = () => {
 };
 
 const MCR_CONFIG = [
-    { id: 1, ip: ["ws://192.168.100.237:4455"], pw: "123456" }, // Castlive
-    { id: 2, ip: ["ws://192.168.100.103:4455", "ws://192.168.100.102:4455"], pw: "123456" },
-    { id: 5, ip: ["ws://192.168.100.105:4455", "ws://192.168.100.104:4455"], pw: "123456" },
-    { id: 6, ip: ["ws://192.168.100.107:4455", "ws://192.168.100.106:4455"], pw: "123456" },
-    { id: 7, ip: ["ws://192.168.100.109:4455", "ws://192.168.100.108:4455"], pw: "123456" },
-    { id: 8, ip: ["ws://192.168.100.111:4455", "ws://192.168.100.110:4455"], pw: "123456" },
-    { id: 9, ip: ["ws://192.168.100.113:4455", "ws://192.168.100.112:4455"], pw: "123456" },
-    { id: 10, ip: ["ws://192.168.100.115:4455", "ws://192.168.100.114:4455"], pw: "123456" },
-    { id: 11, ip: ["ws://192.168.100.117:4455", "ws://192.168.100.116:4455"], pw: "123456" },
-    { id: 12, ip: ["ws://192.168.100.119:4455"], pw: "123456" }, // Hanya LAN
-    { id: 15, ip: ["ws://192.168.100.121:4455", "ws://192.168.100.120:4455"], pw: "123456" },
-    { id: 16, ip: ["ws://192.168.100.123:4455", "ws://192.168.100.122:4455"], pw: "123456" }, // Baru
-    { id: 17, ip: ["ws://192.168.100.125:4455", "ws://192.168.100.124:4455"], pw: "123456" },
-    { id: 18, ip: ["ws://192.168.100.127:4455", "ws://192.168.100.126:4455"], pw: "123456" },
-    { id: 19, ip: ["ws://192.168.100.129:4455", "ws://192.168.100.128:4455"], pw: "123456" },
-    { id: 20, ip: ["ws://192.168.100.131:4455", "ws://192.168.100.130:4455"], pw: "123456" },
-    { id: 21, ip: ["ws://192.168.100.133:4455", "ws://192.168.100.132:4455"], pw: "123456" },
-    { id: 22, ip: ["ws://192.168.100.113:4455"], pw: "123456" }, // Castlive
-    { id: 23, ip: ["ws://192.168.100.137:4455", "ws://192.168.100.136:4455"], pw: "123456" },
-    { id: 25, ip: ["ws://192.168.100.139:4455", "ws://192.168.100.138:4455"], pw: "123456" },
-    { id: 26, ip: ["ws://192.168.100.141:4455", "ws://192.168.100.140:4455"], pw: "123456" },
-    { id: 29, ip: ["ws://192.168.100.143:4455", "ws://192.168.100.142:4455"], pw: "123456" },
-    { id: 30, ip: ["ws://192.168.100.145:4455", "ws://192.168.100.144:4455"], pw: "123456" }  // Baru
+    { id: 2, ip: "ws://192.168.100.208:4455", pw: "123456" },
+    { id: 5, ip: "ws://192.168.100.131:4455", pw: "123456" },
+    { id: 6, ip: "ws://192.168.100.63:4455", pw: "123456" },
+    { id: 7, ip: "ws://192.168.100.55:4455", pw: "123456" },
+    { id: 8, ip: "ws://192.168.100.71:4455", pw: "123456" },
+    { id: 9, ip: "ws://192.168.100.235:4455", pw: "123456" },
+    { id: 10, ip: "ws://192.168.100.65:4455", pw: "123456" },
+    { id: 11, ip: "ws://192.168.100.162:4455", pw: "123456" },
+    { id: 12, ip: "ws://192.168.100.224:4455", pw: "123456" },
+    { id: 15, ip: "ws://192.168.100.130:4455", pw: "123456" },
+    { id: 17, ip: "ws://192.168.100.125:4455", pw: "123456" },
+    { id: 18, ip: "ws://192.168.100.136:4455", pw: "123456" },
+    { id: 19, ip: "ws://192.168.100.61:4455", pw: "123456" },
+    { id: 20, ip: "ws://192.168.100.252:4455", pw: "123456" },
+    { id: 21, ip: "ws://192.168.100.188:4455", pw: "123456" },
+    { id: 22, ip: "ws://192.168.100.113:4455", pw: "123456" },
+    { id: 23, ip: "ws://192.168.100.214:4455", pw: "123456" },
+    { id: 25, ip: "ws://192.168.100.60:4455", pw: "123456" },
+    { id: 26, ip: "ws://192.168.100.228:4455", pw: "123456" },
+    { id: 29, ip: "ws://192.168.100.64:4455", pw: "123456" }
 ];
-
-
 
 const cssPulse = `
 @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
@@ -3048,7 +3032,7 @@ styleSheet.innerText = cssPulse;
 document.head.appendChild(styleSheet);
 
 
-// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Dengan Toleransi +- 15 Menit untuk UI) ===
+// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
 function getStudioCurrentSchedule(studioId) {
     if (!sessions || sessions.length === 0) return null;
     let now = new Date();
@@ -3065,17 +3049,25 @@ function getStudioCurrentSchedule(studioId) {
             let endTimeStr = "00:00";
 
             if (s.hosts && s.hosts.length > 0) {
+                // Cari titik awal dan akhir dari seluruh host di ID Line ini
                 for (let h of s.hosts) {
                     let start = toMin(h.startTime);
                     let end = toMin(h.endTime);
                     if (end === 0) end = 1440;
                     
-                    if (start < sessionStartMin) { sessionStartMin = start; startTimeStr = h.startTime; }
-                    if (end > sessionEndMin) { sessionEndMin = end; endTimeStr = h.endTime; }
+                    if (start < sessionStartMin) {
+                        sessionStartMin = start;
+                        startTimeStr = h.startTime; 
+                    }
+                    if (end > sessionEndMin) {
+                        sessionEndMin = end;
+                        endTimeStr = h.endTime; 
+                    }
                 }
                 
-                // UNTUK UI (Teks Brand), berikan toleransi +- 15 Menit
+                // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
                 if (currentMin >= (sessionStartMin - 15) && currentMin <= (sessionEndMin + 15)) {
+                    // Cari tahu Host mana yang sedang bertugas di detik ini
                     let currentActiveHost = "Multiple Hosts";
                     for (let h of s.hosts) {
                         let hStart = toMin(h.startTime);
@@ -3089,43 +3081,15 @@ function getStudioCurrentSchedule(studioId) {
 
                     return {
                         brand: s.brand || "Brand Unknown",
-                        startTime: startTimeStr, 
-                        endTime: endTimeStr,     
-                        host: currentActiveHost  
+                        startTime: startTimeStr,
+                        endTime: endTimeStr,
+                        host: currentActiveHost
                     }; 
                 }
             }
         }
     }
-    return null; 
-}
-
-// === FUNGSI BARU: CEK STRICT LIVE (Tanpa Toleransi) UNTUK ALARM SUARA ===
-function isStudioStrictlyLiveNow(studioId) {
-    if (!sessions || sessions.length === 0) return false;
-    let now = new Date();
-    let currentMin = now.getHours() * 60 + now.getMinutes();
-
-    for (let s of sessions) {
-        let schedStudioStr = s.studio ? String(s.studio).toLowerCase() : "";
-        let schedStudioNum = schedStudioStr.match(/\d+/);
-        
-        if (schedStudioNum && parseInt(schedStudioNum[0]) === studioId) {
-            if (s.hosts && s.hosts.length > 0) {
-                for (let h of s.hosts) {
-                    let start = toMin(h.startTime);
-                    let end = toMin(h.endTime);
-                    if (end === 0) end = 1440;
-                    
-                    // STRICT: Harus tepat di dalam jam jadwal (misal 14:00 - 16:00)
-                    if (currentMin >= start && currentMin <= end) {
-                        return true; 
-                    }
-                }
-            }
-        }
-    }
-    return false;
+    return null; // Tidak ada jadwal untuk studio ini di jam sekarang
 }
 
 
@@ -3138,10 +3102,10 @@ function renderMCR() {
             <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
                 <div class="card p-4 shadow-sm" style="width: 350px; text-align: center; border-top: 5px solid #0d6efd;">
                     <h4 class="mb-3">Login to MCR System</h4>
-                    <p class="text-muted small mb-4">Authorized Person Only.</p>
-                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="Masukkan PIN 6 Angka" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
-                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Buka Akses MCR</button>
-                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">❌ PIN Salah!</div>
+                    <p class="text-muted small mb-4">Master Control Room</p>
+                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="PIN Input" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
+                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Login</button>
+                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">PIN Salah!</div>
                 </div>
             </div>
         `;
@@ -3155,37 +3119,44 @@ function renderMCR() {
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
-            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">🔌 Connect All Studios</button>
+            <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">Connect All Studios</button>
         </div>
         <div id="mcr-grid" style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
     `;
 
     // === SMART SORTING (Prioritas: Pin > Jadwal Live > OBS Online > Kosong) ===
-    let now = Date.now();
     let sortedConfig = [...MCR_CONFIG].sort((a, b) => {
         let aState = _mcrStudios[a.id] || {};
         let bState = _mcrStudios[b.id] || {};
 
+        // 1. PIN SELALU NOMOR 1
         let aPinned = _pinnedStudios.includes(a.id);
         let bPinned = _pinnedStudios.includes(b.id);
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
+        // 2. CEK JADWAL LIVE SEKARANG
         let aHasSchedule = getStudioCurrentSchedule(a.id) !== null;
         let bHasSchedule = getStudioCurrentSchedule(b.id) !== null;
+        
         if (aHasSchedule && !bHasSchedule) return -1;
         if (!aHasSchedule && bHasSchedule) return 1;
 
-        let aIsAlive = (aState.isConnected && aState.isCurrentlyStreaming);
-        let bIsAlive = (bState.isConnected && bState.isCurrentlyStreaming);
-        let aGracePeriod = (aState.lastAliveTime && (now - aState.lastAliveTime < 300000)) ? true : false;
-        let bGracePeriod = (bState.lastAliveTime && (now - bState.lastAliveTime < 300000)) ? true : false;
+        // 3. JIKA SAMA (Sama-sama ada jadwal atau kosong), CEK OBS ONLINE
+        let aIsOnline = aState.isConnected;
+        let bIsOnline = bState.isConnected;
 
-        let aSortActive = aIsAlive || aGracePeriod;
-        let bSortActive = bIsAlive || bGracePeriod;
-        if (aSortActive && !bSortActive) return -1;
-        if (!aSortActive && bSortActive) return 1;
+        if (aIsOnline && !bIsOnline) return -1;
+        if (!aIsOnline && bIsOnline) return 1;
 
+        // 4. JIKA SAMA ONLINE, CEK STATUS STREAMING (Mencegah Studio Mati nyempil di atas)
+        let aIsStreaming = aState.isCurrentlyStreaming;
+        let bIsStreaming = bState.isCurrentlyStreaming;
+
+        if (aIsStreaming && !bIsStreaming) return -1;
+        if (!aIsStreaming && bIsStreaming) return 1;
+
+        // 5. SISANYA URUTKAN BERDASARKAN NOMOR STUDIO
         return a.id - b.id;
     });
 
@@ -3209,8 +3180,10 @@ function renderMCR() {
             mpDisplay = "inline-block"; mpName = st.lastMpName; mpColor = st.lastMpColor; mpBg = st.lastMpBg;
         }
 
+        // --- TAMPILKAN DATA JADWAL (BRAND & JAM) ---
         let currentSched = getStudioCurrentSchedule(s.id);
         let infoJadwalHtml = "";
+        
         if (currentSched) {
             infoJadwalHtml = `
                 <div style="background: #eef2f5; padding: 6px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #0d6efd;">
@@ -3283,13 +3256,18 @@ function renderMCR() {
     }
 }
 
+// Render Ulang (Sort) tiap 30 detik untuk memperbarui layout MCR
 setInterval(() => {
     if (_isMcrUnlocked && activeTab === "mcr") renderMCR();
 }, 30000);
 
+
 function togglePinStudio(studioId) {
-    if (_pinnedStudios.includes(studioId)) _pinnedStudios = _pinnedStudios.filter(id => id !== studioId);
-    else _pinnedStudios.push(studioId);
+    if (_pinnedStudios.includes(studioId)) {
+        _pinnedStudios = _pinnedStudios.filter(id => id !== studioId);
+    } else {
+        _pinnedStudios.push(studioId);
+    }
     localStorage.setItem('mcrPinnedStudios', JSON.stringify(_pinnedStudios));
     renderMCR(); 
 }
@@ -3485,10 +3463,7 @@ async function initMCRConnections() {
                 if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) currentDb = -60;
 
                 let audioProblem = null;
-
-                // Cek status "STRICTLY LIVE" (Tanpa Toleransi) khusus untuk Alarm Suara
-                let isSupposedToLiveUI = getStudioCurrentSchedule(studio.id) !== null || _pinnedStudios.includes(studio.id);
-                let isStrictlyLiveNow = isStudioStrictlyLiveNow(studio.id) || _pinnedStudios.includes(studio.id);
+                let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null;
 
                 if (currentDb <= -55) {
                     studioState.silentSeconds += deltaTimeSec; 
@@ -3519,11 +3494,10 @@ async function initMCRConnections() {
                     }
                 }
 
-                // HANYA BUNYIKAN SUARA ALARM JIKA STRICTLY LIVE (TEPAT DI DALAM JAM JADWAL)
-                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive && isStrictlyLiveNow) {
+                if (audioProblem && !studioState.alarmPlayed && !studioState.isHelpActive && isSupposedToLive) {
                     triggerMCRAlarm(studio.id, audioProblem);
                     studioState.alarmPlayed = true;
-                } else if (!audioProblem || !isStrictlyLiveNow) {
+                } else if (!audioProblem) {
                     studioState.alarmPlayed = false;
                 }
 
@@ -3538,6 +3512,7 @@ async function initMCRConnections() {
                         
                         if (audioEl && audioBar && cardElement && warnEl) {
                             audioEl.innerText = currentDb.toFixed(1) + " dB";
+                            
                             let barPercent = ((currentDb + 60) / 60) * 100;
                             if (barPercent < 0) barPercent = 0;
                             if (barPercent > 100) barPercent = 100;
@@ -3554,8 +3529,7 @@ async function initMCRConnections() {
                                 audioEl.style.color = "gray"; 
                             }
                             
-                            // Visual UI Warning pakai batas toleransi (isSupposedToLiveUI)
-                            if (audioProblem && isSupposedToLiveUI) {
+                            if (audioProblem && isSupposedToLive) {
                                 warnEl.innerText = `⚠️ ${audioProblem}`;
                                 warnEl.style.display = "block";
                             } else {
@@ -3565,13 +3539,13 @@ async function initMCRConnections() {
                     }
                 }
 
-                let isAudioCritical = (audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLiveUI);
+                let isAudioCritical = (audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive);
                 if (isAudioCritical) studioState.currentSeverity = 'critical';
-                else if (audioProblem && isSupposedToLiveUI) studioState.currentSeverity = 'warning';
+                else if (audioProblem && isSupposedToLive) studioState.currentSeverity = 'warning';
                 else studioState.currentSeverity = 'normal';
             });
 
-            // PANTAU BITRATE
+            // PANTAU BITRATE & TENTUKAN WARNA CARD KESELURUHAN
             setInterval(async () => {
                 if (!_mcrStudios[studio.id].isConnected) return; 
 
@@ -3584,14 +3558,12 @@ async function initMCRConnections() {
                     st.lastDroppedFrames = status.outputSkippedFrames;
 
                     let isCurrentlyStreaming = status.outputActive;
-                    let isSupposedToLiveUI = getStudioCurrentSchedule(studio.id) !== null || _pinnedStudios.includes(studio.id);
-                    let isStrictlyLiveNow = isStudioStrictlyLiveNow(studio.id) || _pinnedStudios.includes(studio.id);
+                    let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null;
 
                     if (isCurrentlyStreaming) st.lastAliveTime = Date.now();
 
-                    // Alarm Terputus Mendadak (Hanya teriak kalau STRICTLY LIVE)
                     if (st.isCurrentlyStreaming === true && isCurrentlyStreaming === false) {
-                        if (isStrictlyLiveNow) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
+                        if (isSupposedToLive) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
                     }
                     st.isCurrentlyStreaming = isCurrentlyStreaming;
 
@@ -3609,13 +3581,12 @@ async function initMCRConnections() {
                     st.netProblem = null;
                     let isNetCritical = false;
 
-                    if (isCurrentlyStreaming) {
+                    if (isCurrentlyStreaming && isSupposedToLive) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             st.netProblem = "Koneksi Macet Parah";
-                            isNetCritical = true;
-                            // Suara Alarm HANYA BUNYI JIKA STRICTLY LIVE
-                            if (Math.random() > 0.9 && !st.isHelpActive && isStrictlyLiveNow) {
-                                triggerMCRAlarm(studio.id, "Koneksi macet dan frame terbuang.");
+                            isNetCritical = true; 
+                            if (Math.random() > 0.9 && !st.isHelpActive) {
+                                triggerMCRAlarm(studio.id, "Koneksi bermasalah. Potensi stream terputus.");
                             }
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
@@ -3623,8 +3594,8 @@ async function initMCRConnections() {
                     }
 
                     if (!isCurrentlyStreaming) st.currentSeverity = 'inactive';
-                    else if ((isNetCritical || st.audioProblem === "Mic Mati / Tidak ada suara") && isSupposedToLiveUI) st.currentSeverity = 'critical';
-                    else if ((st.netProblem || st.audioProblem) && isSupposedToLiveUI) st.currentSeverity = 'warning';
+                    else if (isNetCritical || (st.audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive)) st.currentSeverity = 'critical';
+                    else if ((st.netProblem || st.audioProblem) && isSupposedToLive) st.currentSeverity = 'warning';
                     else st.currentSeverity = 'normal';
 
                     if (activeTab === "mcr" && _isMcrUnlocked) {
@@ -3640,25 +3611,25 @@ async function initMCRConnections() {
                                 bitEl.innerText = "0 kbps";
                                 bitEl.style.color = "gray"; 
                                 
-                                // UI Warning Teks (Pakai batas toleransi isSupposedToLiveUI)
-                                if (isSupposedToLiveUI) {
+                                if (isSupposedToLive) {
                                     netWarnEl.innerText = "🔴 ERROR: STREAM PUTUS";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
                                 } else {
-                                    netWarnEl.innerText = "Stream Selesai / Belum Mulai";
+                                    netWarnEl.innerText = "Stream Selesai";
                                     netWarnEl.style.color = "gray";
                                     netWarnEl.style.display = "block";
                                 }
+
                             } else {
                                 bitEl.innerText = Math.round(kbps) + " kbps";
                                 
-                                if (st.netProblem === "Koneksi Macet Parah" && isSupposedToLiveUI) {
+                                if (st.netProblem === "Koneksi Drop Parah") {
                                     bitEl.style.color = "#dc3545"; 
-                                    netWarnEl.innerText = "⚠️ Macet (Drop Frame)";
+                                    netWarnEl.innerText = "⚠️ Problem (Drop Frame)";
                                     netWarnEl.style.color = "#dc3545";
                                     netWarnEl.style.display = "block";
-                                } else if (st.netProblem === "Jaringan Tidak Stabil" && isSupposedToLiveUI) {
+                                } else if (st.netProblem === "Jaringan Tidak Stabil") {
                                     bitEl.style.color = "#ffc107"; 
                                     netWarnEl.innerText = "⚠️ Tidak Stabil";
                                     netWarnEl.style.color = "#ffc107";
@@ -3741,105 +3712,4 @@ function triggerMCRAlarm(studioId, masalah) {
     if (_indoVoice) speech.voice = _indoVoice;
     speech.rate = 0.9;
     window.speechSynthesis.speak(speech);
-}
-
-
-// ============================================
-// FUNGSI REQUEST DOWNLOAD REPORT EXCEL
-// ============================================
-// ============================================
-// FUNGSI REQUEST DOWNLOAD REPORT EXCEL
-// ============================================
-// ============================================
-// FUNGSI REQUEST DOWNLOAD REPORT EXCEL
-// ============================================
-function downloadReportOperator() {
-    const d = new Date();
-    let currMonth = (d.getMonth() + 1).toString().padStart(2, '0');
-    let currYear = d.getFullYear();
-    
-    let input = prompt("Masukkan Bulan dan Tahun yang ingin didownload.\nFormat: MM-YYYY\nContoh untuk bulan ini: " + currMonth + "-" + currYear, currMonth + "-" + currYear);
-    
-    if (!input || input.trim() === "") return;
-    
-    let parts = input.split("-");
-    if (parts.length !== 2) {
-        showBanner("Format salah! Harap gunakan format MM-YYYY", "danger");
-        return;
-    }
-    
-    let month = parts[0];
-    let year = parts[1];
-
-    // Tampilkan Loading Full Screen & ubah teksnya
-    const loadingEl = document.getElementById("loading");
-    const loadingText = loadingEl.querySelector("span");
-    const originalText = loadingText.textContent; // Simpan teks aslinya ("Memuat jadwal...")
-    loadingText.textContent = "Mengambil data Excel dari server...";
-    showLoading(true);
-
-    let url = API_URL + `?action=monthlyreport&month=${month}&year=${year}&nocache=${Date.now()}`;
-
-    fetch(url)
-    .then(response => response.json())
-    .then(data => {
-        if (data.success && data.data) {
-            loadingText.textContent = "Menyusun file .xlsx...";
-            // Beri jeda sedikit agar teks loading sempat berubah
-            setTimeout(() => {
-                generateAndDownloadExcelClientSide(data.data, month, year);
-                showLoading(false);
-                loadingText.textContent = originalText; // Kembalikan teks asli
-                showBanner(`✅ File .xlsx siap dan berhasil diunduh!`, "success");
-            }, 500);
-        } else if(data.success && data.downloadUrl) {
-           // Fallback bila backend masih pake logic GAS lama
-           showLoading(false);
-           loadingText.textContent = originalText;
-           showBanner(`✅ File .xlsx siap! Unduhan dimulai...`, "success");
-           window.open(data.downloadUrl, '_blank');
-        } else {
-            showLoading(false);
-            loadingText.textContent = originalText;
-            showBanner("❌ Gagal membuat report: " + (data.error || "Data kosong"), "danger");
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        showLoading(false);
-        loadingText.textContent = originalText;
-        showBanner("❌ Terjadi kesalahan jaringan saat request report.", "danger");
-    });
-}
-
-function generateAndDownloadExcelClientSide(jsonData, month, year) {
-  if (typeof XLSX === 'undefined') {
-    showBanner("❌ Library SheetJS gagal dimuat. Refresh browser.", "danger");
-    return;
-  }
-  
-  if (!jsonData || jsonData.length === 0) {
-      showBanner("⚠️ Tidak ada data untuk bulan/tahun tersebut.", "warning");
-      return;
-  }
-
-  // 1. Konversi data JSON menjadi format Sheet
-  const worksheet = XLSX.utils.json_to_sheet(jsonData);
-  
-  // 2. Mengatur lebar kolom agar rapi (asumsi array of object)
-  const wscols = Object.keys(jsonData[0] || {}).map(() => ({ wch: 22 }));
-  worksheet['!cols'] = wscols;
-
-  // 3. Buat workbook baru dan tempelkan sheet-nya
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, `Report_${month}_${year}`);
-  
-  // 4. Susun nama file
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
-  const mIndex = parseInt(month) - 1;
-  const monthName = mIndex >= 0 && mIndex < 12 ? monthNames[mIndex] : month;
-  const fileName = `Castlive_Ops_Report_${monthName}_${year}.xlsx`;
-  
-  // 5. Trigger download file via browser
-  XLSX.writeFile(workbook, fileName);
 }
