@@ -3012,16 +3012,16 @@ const MCR_CONFIG = [
     { id: 15, ip: ["ws://192.168.100.121:4455", "ws://192.168.100.120:4455"], pw: "123456" },
     { id: 16, ip: ["ws://192.168.100.123:4455", "ws://192.168.100.122:4455"], pw: "123456" }, // Baru
     { id: 17, ip: ["ws://192.168.100.125:4455", "ws://192.168.100.124:4455"], pw: "123456" },
-    { id: 18, ips: ["ws://192.168.100.127:4455", "ws://192.168.100.126:4455"], pw: "123456" },
-    { id: 19, ips: ["ws://192.168.100.129:4455", "ws://192.168.100.128:4455"], pw: "123456" },
-    { id: 20, ips: ["ws://192.168.100.131:4455", "ws://192.168.100.130:4455"], pw: "123456" },
-    { id: 21, ips: ["ws://192.168.100.133:4455", "ws://192.168.100.132:4455"], pw: "123456" },
-    { id: 22, ips: ["ws://192.168.100.113:4455"], pw: "123456" }, // Castlive
-    { id: 23, ips: ["ws://192.168.100.137:4455", "ws://192.168.100.136:4455"], pw: "123456" },
-    { id: 25, ips: ["ws://192.168.100.139:4455", "ws://192.168.100.138:4455"], pw: "123456" },
-    { id: 26, ips: ["ws://192.168.100.141:4455", "ws://192.168.100.140:4455"], pw: "123456" },
-    { id: 29, ips: ["ws://192.168.100.143:4455", "ws://192.168.100.142:4455"], pw: "123456" },
-    { id: 30, ips: ["ws://192.168.100.145:4455", "ws://192.168.100.144:4455"], pw: "123456" }  // Baru
+    { id: 18, ip: ["ws://192.168.100.127:4455", "ws://192.168.100.126:4455"], pw: "123456" },
+    { id: 19, ip: ["ws://192.168.100.129:4455", "ws://192.168.100.128:4455"], pw: "123456" },
+    { id: 20, ip: ["ws://192.168.100.131:4455", "ws://192.168.100.130:4455"], pw: "123456" },
+    { id: 21, ip: ["ws://192.168.100.133:4455", "ws://192.168.100.132:4455"], pw: "123456" },
+    { id: 22, ip: ["ws://192.168.100.113:4455"], pw: "123456" }, // Castlive
+    { id: 23, ip: ["ws://192.168.100.137:4455", "ws://192.168.100.136:4455"], pw: "123456" },
+    { id: 25, ip: ["ws://192.168.100.139:4455", "ws://192.168.100.138:4455"], pw: "123456" },
+    { id: 26, ip: ["ws://192.168.100.141:4455", "ws://192.168.100.140:4455"], pw: "123456" },
+    { id: 29, ip: ["ws://192.168.100.143:4455", "ws://192.168.100.142:4455"], pw: "123456" },
+    { id: 30, ip: ["ws://192.168.100.145:4455", "ws://192.168.100.144:4455"], pw: "123456" }  // Baru
 ];
 
 
@@ -3330,6 +3330,25 @@ function detectMarketplace(serverUrl) {
     return { name: "RTMP", color: "#ffffff", bg: "#6c757d" }; 
 }
 
+// Helper function untuk mencoba koneksi IP satu per satu (Failover)
+async function connectObsWithFallback(obs, ipArrayOrString, password, options) {
+    // Normalisasi agar selalu berbentuk Array (mendukung ip maupun ips)
+    const ipList = Array.isArray(ipArrayOrString) 
+        ? ipArrayOrString 
+        : [ipArrayOrString];
+
+    for (const url of ipList) {
+        try {
+            await obs.connect(url, password, options);
+            console.log(`[Studio OBS] Berhasil terhubung ke: ${url}`);
+            return true; // Berhasil terhubung!
+        } catch (err) {
+            console.warn(`[Studio OBS] Gagal terhubung ke IP ${url}, mencoba IP berikutnya...`);
+        }
+    }
+    throw new Error("Semua IP WebSocket tidak dapat dihubungi.");
+}
+
 async function initMCRConnections() {
     if (_mcrInitialized) return;
 
@@ -3374,7 +3393,11 @@ async function initMCRConnections() {
         });
 
         try {
-            await obs.connect(studio.ip, studio.pw, {
+            // Ambil array IP dari property `ips` atau `ip`
+            const targets = studio.ips || studio.ip;
+
+            // Mencoba koneksi dengan pola Fallback
+            await connectObsWithFallback(obs, targets, studio.pw, {
                 eventSubscriptions: (1 | 65536 | 64) 
             });
             
@@ -3672,6 +3695,7 @@ async function initMCRConnections() {
             }, 2000);
 
         } catch (error) {
+            console.error(`[MCR Studio ${studio.id}] Gagal terhubung ke semua IP.`, error);
             _mcrStudios[studio.id].isConnected = false;
         }
     });
