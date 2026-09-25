@@ -1,4 +1,4 @@
-const CACHE_NAME = "live-reminder-v12";
+const CACHE_NAME = "live-reminder-v15";
 const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json", "./icon-192.png"];
 
 self.addEventListener("install", e => {
