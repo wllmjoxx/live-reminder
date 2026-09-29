@@ -3958,54 +3958,80 @@ function renderMicHistorySection() {
   `;
 }
 
+// 1. Taruh URL hasil deploy dari Langkah 1 di sini:
+const MIC_STORE_API_URL = "https://script.google.com/macros/s/AKfycbzJ1yL3r5Vn8XpH9pJAJQIrN4p44wJLDDb-88Cp7xpBxUlbYOvXmBnXeCuNnB3MRNik/exec
+
 /**
- * Handle tombol Submit operator
+ * Handle tombol Submit operator (Simpan lokal + Kirim ke Google Sheet)
  */
 function submitMicChange(slotId, studio, targetTime) {
   const inputEl = document.getElementById(`pic-input-${slotId}`);
   const picName = inputEl ? inputEl.value.trim() : "";
 
   if (!picName) {
-    alert("⚠️ Mohon pastikan nama PIC Data / Operator sudah terisi!");
+    alert("⚠️ Mohon pastikan nama PIC Operator sudah terisi!");
     if (inputEl) inputEl.focus();
     return;
   }
 
   const now = new Date();
   const timeSubmit = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+  
+  // Ambil detail slot dari daftar
+  const allSlots = getAllMicSlots();
+  const currentSlot = allSlots.find(s => s.slotId === slotId) || {};
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  const isOverdue = currentMin > (currentSlot.targetMin || 0);
+  const lateMin = isOverdue ? Math.abs(currentMin - currentSlot.targetMin) : 0;
 
   const record = {
     slotId: slotId,
+    date: currentSlot.date || new Date().toISOString().split("T")[0],
     studio: studio,
+    brand: currentSlot.brand || "-",
+    marketplace: currentSlot.marketplace || "-",
     targetTime: targetTime,
     pic: picName,
     submittedAt: timeSubmit,
+    isOverdue: isOverdue,
+    lateMin: lateMin,
     timestamp: Date.now()
   };
 
-  // Simpan slot sudah selesai ke localStorage
+  // 1. Simpan ke localStorage agar kartu seketika hilang dari layar
   localStorage.setItem(slotId, JSON.stringify(record));
 
-  // Simpan ke riwayat hari ini
-  const todayStr = (typeof sessions !== "undefined" && sessions[0] && sessions[0].date) 
-    ? sessions[0].date 
-    : new Date().toISOString().split("T")[0];
-  const historyKey = "mic_history_" + todayStr;
-
+  // 2. Simpan ke riwayat lokal hari ini
+  const historyKey = "mic_history_" + record.date;
   let historyList = [];
-  try {
-    historyList = JSON.parse(localStorage.getItem(historyKey) || "[]");
-  } catch (e) { historyList = []; }
+  try { historyList = JSON.parse(localStorage.getItem(historyKey) || "[]"); } catch (e) { historyList = []; }
   historyList.unshift(record);
   localStorage.setItem(historyKey, JSON.stringify(historyList));
 
-  if (typeof showBanner === "function") {
-    showBanner(`✅ Berhasil: Mic ${studio} (${targetTime}) telah dikonfirmasi oleh ${picName}`, "success");
-  }
-
-  // Render ulang seketika (kartu kotak langsung hilang)
+  // 3. Render ulang seketika di layar operator
   renderMicTab();
+
+  // 4. KIRIM DATA KE GOOGLE SHEET BACKEND
+  if (MIC_STORE_API_URL && !MIC_STORE_API_URL.includes("PASTE_URL")) {
+    fetch(MIC_STORE_API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(record)
+    }).then(() => {
+      if (typeof showBanner === "function") {
+        showBanner(`✅ Berhasil tersimpan ke Google Sheet: ${studio} (${targetTime}) oleh ${picName}`, "success");
+      }
+    }).catch(err => {
+      console.warn("Gagal simpan ke Google Sheet:", err);
+    });
+  } else {
+    if (typeof showBanner === "function") {
+      showBanner(`✅ Tersimpan lokal: ${studio} (${targetTime}) oleh ${picName}`, "success");
+    }
+  }
 }
+
 
 /**
  * FUNGSI UTAMA RENDER TAB MIC (TAMPILAN CARD KOTAK-KOTAK)
