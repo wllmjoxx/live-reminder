@@ -3959,7 +3959,7 @@ function renderMicHistorySection() {
 }
 
 // 1. Taruh URL hasil deploy dari Langkah 1 di sini:
-const MIC_STORE_API_URL = "https://script.google.com/macros/s/AKfycbzJ1yL3r5Vn8XpH9pJAJQIrN4p44wJLDDb-88Cp7xpBxUlbYOvXmBnXeCuNnB3MRNik/exec
+const MIC_STORE_API_URL = "https://script.google.com/macros/s/AKfycbzJ1yL3r5Vn8XpH9pJAJQIrN4p44wJLDDb-88Cp7xpBxUlbYOvXmBnXeCuNnB3MRNik/exec";
 
 /**
  * Handle tombol Submit operator (Simpan lokal + Kirim ke Google Sheet)
