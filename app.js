@@ -253,17 +253,37 @@ function connectNtfy(){
     try{
       const d=JSON.parse(e.data);
 
-      // ── SINKRONISASI REALTIME GANTI MIC (MULTI-LAPTOP) ──
+      // ── SINKRONISASI REALTIME GANTI MIC & RIWAYAT (MULTI-LAPTOP) ──
       let micPayload = null;
       try { micPayload = JSON.parse(d.message || d.body || "{}"); } catch(_) {}
       if (micPayload && micPayload.type === "mic_change_submitted") {
         if (typeof _submittedMicSlots !== "undefined") {
+          // 1. Simpan slot agar card warning hilang di laptop ini
           _submittedMicSlots.add(micPayload.slotId);
           localStorage.setItem(micPayload.slotId, "true");
+
+          // 2. Tambahkan langsung ke tabel Riwayat di laptop ini
+          const historyDate = micPayload.date || (sessions[0]?.date) || new Date().toISOString().split("T")[0];
+          const historyKey = "mic_history_" + historyDate;
+          let historyList = [];
+          try { historyList = JSON.parse(localStorage.getItem(historyKey) || "[]"); } catch(err) { historyList = []; }
+          
+          if (!historyList.some(h => h.slotId === micPayload.slotId)) {
+            historyList.unshift({
+              slotId: micPayload.slotId,
+              studio: micPayload.studio,
+              targetTime: micPayload.targetTime,
+              pic: micPayload.pic,
+              submittedAt: micPayload.submittedAt || new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" })
+            });
+            localStorage.setItem(historyKey, JSON.stringify(historyList));
+          }
+
+          // 3. Update counter badge & re-render tampilan tab mic
           updateMicBadgeCount();
           if (activeTab === "mic") renderMicTab();
         }
-        return; // Hentikan agar tidak memicu pop-up notifikasi reminder biasa
+        return; // Hentikan agar tidak memicu notifikasi teks biasa
       }
 
       if(d.event!=="message")return;
@@ -275,6 +295,7 @@ function connectNtfy(){
   });
   ntfySource.onerror=()=>{ntfySource?.close();ntfySource=null;setTimeout(connectNtfy,5000);};
 }
+
 
 
 async function broadcastNotif(title,body,urgent=false){
@@ -3791,11 +3812,42 @@ async function syncSubmittedMicSlotsFromSheet() {
   try {
     const res = await fetch(MIC_STORE_API_URL);
     const json = await res.json();
-    if (json.success && Array.isArray(json.submittedSlots)) {
-      json.submittedSlots.forEach(id => {
-        _submittedMicSlots.add(id);
-        localStorage.setItem(id, "true");
-      });
+    
+    if (json.success) {
+      // 1. Sinkronkan Slot yang sudah submit (supaya card tidak muncul lagi)
+      if (Array.isArray(json.submittedSlots)) {
+        json.submittedSlots.forEach(id => {
+          _submittedMicSlots.add(id);
+          localStorage.setItem(id, "true");
+        });
+      }
+
+      // 2. Sinkronkan Daftar Riwayat dari Sheet ke localStorage
+      if (Array.isArray(json.history) && json.history.length > 0) {
+        const todayStr = (sessions[0] && sessions[0].date) 
+          ? sessions[0].date 
+          : new Date().toISOString().split("T")[0];
+        const historyKey = "mic_history_" + todayStr;
+
+        let localHistory = [];
+        try { localHistory = JSON.parse(localStorage.getItem(historyKey) || "[]"); } catch(e) { localHistory = []; }
+
+        // Gabungkan riwayat dari Google Sheet yang belum ada di lokal
+        json.history.forEach(item => {
+          if (!localHistory.some(l => l.slotId === item.slotId)) {
+            localHistory.push({
+              slotId: item.slotId,
+              studio: item.studio,
+              targetTime: item.targetTime,
+              pic: item.pic,
+              submittedAt: item.submittedAt
+            });
+          }
+        });
+
+        localStorage.setItem(historyKey, JSON.stringify(localHistory));
+      }
+
       updateMicBadgeCount();
       if (activeTab === "mic") renderMicTab();
     }
@@ -3803,6 +3855,8 @@ async function syncSubmittedMicSlotsFromSheet() {
     console.warn("Sync mic sheet status error:", err);
   }
 }
+
+
 
 function parseSafeMin(t) {
   if (t === null || t === undefined || t === "" || t === "-") return 0;
@@ -4005,10 +4059,11 @@ function submitMicChange(slotId, studio, targetTime) {
   const currentMin = now.getHours() * 60 + now.getMinutes();
   const isOverdue = currentMin > (currentSlot.targetMin || 0);
   const lateMin = isOverdue ? Math.abs(currentMin - currentSlot.targetMin) : 0;
+  const slotDate = currentSlot.date || new Date().toISOString().split("T")[0];
 
   const record = {
     slotId: slotId,
-    date: currentSlot.date || new Date().toISOString().split("T")[0],
+    date: slotDate,
     studio: studio,
     brand: currentSlot.brand || "-",
     marketplace: currentSlot.marketplace || "-",
@@ -4020,19 +4075,21 @@ function submitMicChange(slotId, studio, targetTime) {
     timestamp: Date.now()
   };
 
-  // 1. Simpan lokal & hilangkan dari laptop saat ini
+  // 1. Simpan lokal di laptop ini
   _submittedMicSlots.add(slotId);
   localStorage.setItem(slotId, JSON.stringify(record));
 
-  const historyKey = "mic_history_" + record.date;
+  const historyKey = "mic_history_" + slotDate;
   let historyList = [];
   try { historyList = JSON.parse(localStorage.getItem(historyKey) || "[]"); } catch (e) { historyList = []; }
-  historyList.unshift(record);
-  localStorage.setItem(historyKey, JSON.stringify(historyList));
+  if (!historyList.some(h => h.slotId === slotId)) {
+    historyList.unshift(record);
+    localStorage.setItem(historyKey, JSON.stringify(historyList));
+  }
 
   renderMicTab();
 
-  // 2. Kirim ke Google Sheet Rekap
+  // 2. Simpan ke Google Sheet
   if (MIC_STORE_API_URL && !MIC_STORE_API_URL.includes("PASTE_URL")) {
     fetch(MIC_STORE_API_URL, {
       method: "POST",
@@ -4042,16 +4099,18 @@ function submitMicChange(slotId, studio, targetTime) {
     }).catch(err => console.warn("Store to sheet error:", err));
   }
 
-  // 3. Broadcast ntfy agar laptop B otomatis menghilangkan kartu
+  // 3. Broadcast ke ntfy (membawa data lengkap agar laptop B otomatis update tabel riwayat)
   if (typeof NTFY_TOPIC !== "undefined" && NTFY_TOPIC) {
     fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
       method: "POST",
       body: JSON.stringify({
         type: "mic_change_submitted",
         slotId: slotId,
+        date: slotDate,
         studio: studio,
         targetTime: targetTime,
-        pic: picName
+        pic: picName,
+        submittedAt: timeSubmit
       })
     }).catch(() => {});
   }
@@ -4060,6 +4119,7 @@ function submitMicChange(slotId, studio, targetTime) {
     showBanner(`✅ Berhasil disubmit: ${studio} (${targetTime}) oleh ${picName}`, "success");
   }
 }
+
 
 /**
  * Render Tampilan Tab Mic (Grid Kotak-Kotak)
