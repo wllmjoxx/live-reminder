@@ -252,6 +252,20 @@ function connectNtfy(){
   ntfySource.addEventListener("message",e=>{
     try{
       const d=JSON.parse(e.data);
+
+      // ── SINKRONISASI REALTIME GANTI MIC (MULTI-LAPTOP) ──
+      let micPayload = null;
+      try { micPayload = JSON.parse(d.message || d.body || "{}"); } catch(_) {}
+      if (micPayload && micPayload.type === "mic_change_submitted") {
+        if (typeof _submittedMicSlots !== "undefined") {
+          _submittedMicSlots.add(micPayload.slotId);
+          localStorage.setItem(micPayload.slotId, "true");
+          updateMicBadgeCount();
+          if (activeTab === "mic") renderMicTab();
+        }
+        return; // Hentikan agar tidak memicu pop-up notifikasi reminder biasa
+      }
+
       if(d.event!=="message")return;
       if(seenNtfyIds.has(d.id))return;
       seenNtfyIds.add(d.id);
@@ -261,6 +275,7 @@ function connectNtfy(){
   });
   ntfySource.onerror=()=>{ntfySource?.close();ntfySource=null;setTimeout(connectNtfy,5000);};
 }
+
 
 async function broadcastNotif(title,body,urgent=false){
   sendNotification(title,body,`local-${Date.now()}`,urgent);
@@ -300,15 +315,15 @@ async function loadSchedule(){
       if(cached){
         const data=JSON.parse(cached);
         sessions=data.sessions.map(s=>{
-        s.isMarathon=s.hosts.length>1;
-        s.hosts=(s.hosts||[]).map(h=>({
-          host:      h.host      ?? h.name  ?? '-',
-          startTime: h.startTime ?? h.start ?? '-',
-          endTime:   h.endTime   ?? h.end   ?? '-',
-          picData:   h.picData   ?? h.pic   ?? '-',
-        }));
-        return s;
-      });
+          s.isMarathon=s.hosts.length>1;
+          s.hosts=(s.hosts||[]).map(h=>({
+            host:      h.host      ?? h.name  ?? '-',
+            startTime: h.startTime ?? h.start ?? '-',
+            endTime:   h.endTime   ?? h.end   ?? '-',
+            picData:   h.picData   ?? h.pic   ?? '-',
+          }));
+          return s;
+        });
 
         renderTab(activeTab);updateStats();
       }
@@ -324,15 +339,19 @@ async function loadSchedule(){
     if(!data.success)throw new Error(data.error);
     localStorage.setItem("lastSchedule",JSON.stringify(data));
     sessions=data.sessions.map(s=>{
-        s.isMarathon=s.hosts.length>1;
-        s.hosts=(s.hosts||[]).map(h=>({
-          host:      h.host      ?? h.name  ?? '-',
-          startTime: h.startTime ?? h.start ?? '-',
-          endTime:   h.endTime   ?? h.end   ?? '-',
-          picData:   h.picData   ?? h.pic   ?? '-',
-        }));
-        return s;
-      });
+      s.isMarathon=s.hosts.length>1;
+      s.hosts=(s.hosts||[]).map(h=>({
+        host:      h.host      ?? h.name  ?? '-',
+        startTime: h.startTime ?? h.start ?? '-',
+        endTime:   h.endTime   ?? h.end   ?? '-',
+        picData:   h.picData   ?? h.pic   ?? '-',
+      }));
+      return s;
+    });
+
+    // ── SINKRONISASI SLOT MIC YANG SUDAH DISUBMIT DI GOOGLE SHEET ──
+    syncSubmittedMicSlotsFromSheet();
+
     renderTab(activeTab);cancelAllScheduled();scheduleAllNotifications(sessions);updateStats();
     showBanner(`✅ ${data.date} — ${sessions.length} sesi`,"success");
   }catch(err){
@@ -344,6 +363,7 @@ async function loadSchedule(){
   }
   showLoading(false);
 }
+
 
 function switchTab(tab){
   activeTab=tab;
@@ -3078,8 +3098,8 @@ function getStudioCurrentSchedule(studioId) {
                 
                      // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
                     // KODE BARU (STRICT: HANYA SAAT SESI LIVE BERJALAN):
-                 if (currentMin >= sessionStartMin && currentMin < sessionEndMin) {
-                    // Cari tahu Host mana yang sedang bertugas di detik ini
+                // Strict: hanya aktif saat sesi live benar-benar sedang berjalan
+                if (currentMin >= sessionStartMin && currentMin < sessionEndMin) {
                     let currentActiveHost = "Multiple Hosts";
                     for (let h of s.hosts) {
                         let hStart = toMin(h.startTime);
@@ -3090,7 +3110,6 @@ function getStudioCurrentSchedule(studioId) {
                             break; 
                         }
                     }
-
                     return {
                         brand: s.brand || "Brand Unknown",
                         startTime: startTimeStr,
@@ -3098,6 +3117,7 @@ function getStudioCurrentSchedule(studioId) {
                         host: currentActiveHost
                     }; 
                 }
+
             }
         }
     }
@@ -3753,35 +3773,52 @@ function triggerMCRAlarm(studioId, masalah) {
 
 
 // ════════════════════════════════════════════════════════════════════════════
-// MODUL PERGANTIAN MIC WIRELESS (SELF-CONTAINED & BUG-FREE)
+// MODUL PERGANTIAN MIC WIRELESS (GRID KOTAK, PIC DATA, SYNC SHEET & NTFY)
 // ════════════════════════════════════════════════════════════════════════════
 
+// URL Web App Rekap Sheet (doPost & doGet)
+const MIC_STORE_API_URL = "https://script.google.com/macros/s/AKfycbzJ1yL3r5Vn8XpH9pJAJQIrN4p44wJLDDb-88Cp7xpBxUlbYOvXmBnXeCuNnB3MRNik/exec";
+
+// 13 Studio Target
 const MIC_TARGET_STUDIOS = new Set([2, 12, 5, 16, 11, 15, 26, 27, 23, 25, 30, 29]);
+let _submittedMicSlots = new Set();
 
 /**
- * Helper aman untuk konversi waktu string / desimal ke menit
+ * Sinkronisasi data slot yang sudah disubmit di Google Sheet hari ini
  */
+async function syncSubmittedMicSlotsFromSheet() {
+  if (!MIC_STORE_API_URL || MIC_STORE_API_URL.includes("PASTE_URL")) return;
+  try {
+    const res = await fetch(MIC_STORE_API_URL);
+    const json = await res.json();
+    if (json.success && Array.isArray(json.submittedSlots)) {
+      json.submittedSlots.forEach(id => {
+        _submittedMicSlots.add(id);
+        localStorage.setItem(id, "true");
+      });
+      updateMicBadgeCount();
+      if (activeTab === "mic") renderMicTab();
+    }
+  } catch (err) {
+    console.warn("Sync mic sheet status error:", err);
+  }
+}
+
 function parseSafeMin(t) {
   if (t === null || t === undefined || t === "" || t === "-") return 0;
   if (typeof t === "number") return Math.round(t * 60);
   const str = String(t).trim();
   if (str === "23:59/00:00" || str === "24:00") return 1440;
   const parts = str.split(":");
-  if (parts.length >= 2) {
-    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-  }
+  if (parts.length >= 2) return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
   const num = parseFloat(str);
-  if (!isNaN(num)) return Math.round(num * 60);
-  return 0;
+  return !isNaN(num) ? Math.round(num * 60) : 0;
 }
 
-/**
- * Cek apakah studio merupakan salah satu dari 13 studio target
- */
 function isMicTargetStudio(studioName) {
   if (!studioName) return false;
   const s = String(studioName).toLowerCase().trim();
-  if (s.includes("jogja")) return false; // Abaikan studio regional di luar Jakarta
+  if (s.includes("jogja")) return false;
   if (s.includes("showcase")) return true;
 
   const m = s.match(/studio\s*(\d+)/i) || s.match(/(\d+)/);
@@ -3793,13 +3830,12 @@ function isMicTargetStudio(studioName) {
 }
 
 /**
- * Mengambil nama PIC Data dari Kolom N di sheet
+ * Ambil nama PIC Data dari Kolom N yang bertugas di jam pergantian terkait
  */
 function getPicDataForSlot(session, targetTimeStr) {
   if (!session || !session.hosts || !session.hosts.length) return "";
   const targetMin = parseSafeMin(targetTimeStr);
 
-  // 1. Cari host yang jam tugasnya mencakup jam target pergantian mic
   for (let h of session.hosts) {
     const hStart = parseSafeMin(h.startTime);
     let hEnd = parseSafeMin(h.endTime);
@@ -3812,7 +3848,6 @@ function getPicDataForSlot(session, targetTimeStr) {
     }
   }
 
-  // 2. Fallback jika tidak pas jamnya: ambil host pertama yang memiliki picData
   const validHost = session.hosts.find(h => h.picData && h.picData !== "-" && h.picData.trim() !== "");
   if (validHost) return validHost.picData.trim();
 
@@ -3820,7 +3855,7 @@ function getPicDataForSlot(session, targetTimeStr) {
 }
 
 /**
- * Menghitung semua slot pergantian mic per 2 jam
+ * Buat daftar seluruh slot per 2 jam sekali untuk studio target
  */
 function getAllMicSlots() {
   if (typeof sessions === "undefined" || !sessions || !sessions.length) return [];
@@ -3840,7 +3875,7 @@ function getAllMicSlots() {
     let endMin = parseSafeMin(s.endTime);
     if (endMin <= startMin) endMin += 1440;
 
-    // Titik ganti mic setiap +2 jam setelah start
+    // Pergantian setiap 2 jam (120 menit) setelah live dimulai
     for (let t = startMin + 120; t < endMin; t += 120) {
       const h = Math.floor((t % 1440) / 60);
       const m = (t % 1440) % 60;
@@ -3849,7 +3884,6 @@ function getAllMicSlots() {
       const safeStudio = String(s.studio).replace(/[^a-zA-Z0-9]/g, "_");
       const slotId = `mic_${todayStr}_${safeStudio}_${targetTimeFormatted.replace(":", "")}`;
 
-      // Ambil nama PIC Data dari Kolom N
       const picColN = getPicDataForSlot(s, targetTimeFormatted);
 
       slots.push({
@@ -3865,7 +3899,7 @@ function getAllMicSlots() {
         targetTime: targetTimeFormatted,
         picData: picColN,
         warningStartMin: t - 60, // Muncul H-1 jam
-        expireMin: t + 120       // KEDALUWARSA / HILANG SETELAH LEWAT 2 JAM
+        expireMin: t + 120       // Hilang jika lewat > 2 jam
       });
     }
   });
@@ -3874,10 +3908,7 @@ function getAllMicSlots() {
 }
 
 /**
- * Filter kartu yang saat ini aktif ditampilkan:
- * 1. Belum disubmit operator
- * 2. Sudah masuk H-1 jam
- * 3. BELUM lewat lebih dari 2 jam (> 120 menit otomatis hilang)
+ * Filter slot yang sedang aktif (H-1 jam s/d 2 jam setelahnya & belum disubmit)
  */
 function getActiveMicWarnings() {
   const allSlots = getAllMicSlots();
@@ -3885,20 +3916,17 @@ function getActiveMicWarnings() {
   const currentMin = now.getHours() * 60 + now.getMinutes();
 
   return allSlots.filter(slot => {
-    // 1. Lewati jika sudah disubmit oleh operator
-    if (localStorage.getItem(slot.slotId)) return false;
+    // 1. Lewati jika sudah disubmit (lokal maupun laptop lain via Google Sheet/ntfy)
+    if (localStorage.getItem(slot.slotId) || _submittedMicSlots.has(slot.slotId)) return false;
 
-    // 2. REVISI: Jika sudah lewat > 2 jam dari jadwal ganti mic, gausah ditampilin lagi
+    // 2. Hilang jika sudah lewat > 2 jam dari jadwal pergantian
     if (currentMin > slot.expireMin) return false;
 
-    // 3. Tampilkan jika sudah masuk H-1 jam
+    // 3. Hanya tampilkan jika sudah masuk H-1 jam
     return currentMin >= slot.warningStartMin;
   }).sort((a, b) => a.targetMin - b.targetMin);
 }
 
-/**
- * Update angka badge counter di navbar
- */
 function updateMicBadgeCount() {
   const badgeEl = document.getElementById("mic-nav-badge");
   if (!badgeEl) return;
@@ -3912,9 +3940,6 @@ function updateMicBadgeCount() {
   }
 }
 
-/**
- * Render Riwayat Pergantian Hari Ini
- */
 function renderMicHistorySection() {
   const todayStr = (typeof sessions !== "undefined" && sessions[0] && sessions[0].date) 
     ? sessions[0].date 
@@ -3959,11 +3984,8 @@ function renderMicHistorySection() {
   `;
 }
 
-// 1. Taruh URL hasil deploy dari Langkah 1 di sini:
-const MIC_STORE_API_URL = "https://script.google.com/macros/s/AKfycbzJ1yL3r5Vn8XpH9pJAJQIrN4p44wJLDDb-88Cp7xpBxUlbYOvXmBnXeCuNnB3MRNik/exec";
-
 /**
- * Handle tombol Submit operator (Simpan lokal + Kirim ke Google Sheet)
+ * Handle submit ganti mic
  */
 function submitMicChange(slotId, studio, targetTime) {
   const inputEl = document.getElementById(`pic-input-${slotId}`);
@@ -3978,7 +4000,6 @@ function submitMicChange(slotId, studio, targetTime) {
   const now = new Date();
   const timeSubmit = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
   
-  // Ambil detail slot dari daftar
   const allSlots = getAllMicSlots();
   const currentSlot = allSlots.find(s => s.slotId === slotId) || {};
   const currentMin = now.getHours() * 60 + now.getMinutes();
@@ -3999,43 +4020,49 @@ function submitMicChange(slotId, studio, targetTime) {
     timestamp: Date.now()
   };
 
-  // 1. Simpan ke localStorage agar kartu seketika hilang dari layar
+  // 1. Simpan lokal & hilangkan dari laptop saat ini
+  _submittedMicSlots.add(slotId);
   localStorage.setItem(slotId, JSON.stringify(record));
 
-  // 2. Simpan ke riwayat lokal hari ini
   const historyKey = "mic_history_" + record.date;
   let historyList = [];
   try { historyList = JSON.parse(localStorage.getItem(historyKey) || "[]"); } catch (e) { historyList = []; }
   historyList.unshift(record);
   localStorage.setItem(historyKey, JSON.stringify(historyList));
 
-  // 3. Render ulang seketika di layar operator
   renderMicTab();
 
-  // 4. KIRIM DATA KE GOOGLE SHEET BACKEND
+  // 2. Kirim ke Google Sheet Rekap
   if (MIC_STORE_API_URL && !MIC_STORE_API_URL.includes("PASTE_URL")) {
     fetch(MIC_STORE_API_URL, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(record)
-    }).then(() => {
-      if (typeof showBanner === "function") {
-        showBanner(`✅ Berhasil tersimpan ke Google Sheet: ${studio} (${targetTime}) oleh ${picName}`, "success");
-      }
-    }).catch(err => {
-      console.warn("Gagal simpan ke Google Sheet:", err);
-    });
-  } else {
-    if (typeof showBanner === "function") {
-      showBanner(`✅ Tersimpan lokal: ${studio} (${targetTime}) oleh ${picName}`, "success");
-    }
+    }).catch(err => console.warn("Store to sheet error:", err));
+  }
+
+  // 3. Broadcast ntfy agar laptop B otomatis menghilangkan kartu
+  if (typeof NTFY_TOPIC !== "undefined" && NTFY_TOPIC) {
+    fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "mic_change_submitted",
+        slotId: slotId,
+        studio: studio,
+        targetTime: targetTime,
+        pic: picName
+      })
+    }).catch(() => {});
+  }
+
+  if (typeof showBanner === "function") {
+    showBanner(`✅ Berhasil disubmit: ${studio} (${targetTime}) oleh ${picName}`, "success");
   }
 }
 
-
 /**
- * FUNGSI UTAMA RENDER TAB MIC (TAMPILAN CARD KOTAK-KOTAK)
+ * Render Tampilan Tab Mic (Grid Kotak-Kotak)
  */
 function renderMicTab() {
   const container = document.getElementById("schedule-list");
@@ -4059,7 +4086,6 @@ function renderMicTab() {
         </div>
     `;
 
-    // JIKA TIDAK ADA JADWAL GANTI MIC (KOSONG / BERSIH)
     if (activeWarnings.length === 0) {
       html += `
         <div class="mic-empty-box">
@@ -4072,14 +4098,12 @@ function renderMicTab() {
         </div>
       `;
     } else {
-      // JIKA ADA WARNING AKTIF
       html += `
         <div style="background:#fff3cd; color:#664d03; padding:8px 12px; border-radius:8px; font-size:0.83rem; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
           <span>⚠️</span>
           <span>Terdapat <strong>${activeWarnings.length} studio</strong> aktif yang perlu diganti mic wireless-nya.</span>
         </div>
 
-        <!-- CONTAINER GRID KOTAK-KOTAK -->
         <div class="mic-grid-container">
       `;
 
@@ -4095,12 +4119,10 @@ function renderMicTab() {
           statusBadge = `<span class="badge bg-warning text-dark" style="font-size:0.75rem; padding: 4px 6px;">⏳ ${diffMin}m Lagi</span>`;
         }
 
-        // Nilai input otomatis mengambil PIC DATA Kolom N
         const defaultPicVal = item.picData || "";
 
         html += `
           <div class="mic-card-box ${isOverdue ? 'overdue' : ''}">
-            <!-- Bagian Atas Card -->
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                 <span class="badge bg-dark" style="font-size:0.85rem; padding: 4px 8px;">${item.studio}</span>
@@ -4114,7 +4136,6 @@ function renderMicTab() {
                 Channel: <strong>${item.marketplace}</strong>
               </div>
 
-              <!-- Kotak Detail Jam -->
               <div style="background:#f8f9fa; border-radius:8px; padding:8px 10px; font-size:0.8rem; margin-bottom:12px;">
                 <div style="color:#555; display:flex; justify-content:space-between; margin-bottom:3px;">
                   <span>🕒 Live:</span>
@@ -4127,7 +4148,6 @@ function renderMicTab() {
               </div>
             </div>
 
-            <!-- Bagian Bawah Card: Input PIC Kolom N & Tombol Submit -->
             <div>
               <label style="font-size:0.72rem; color:#6c757d; font-weight:600; margin-bottom:3px; display:block;">
                 PIC DATA (KOLOM N):
@@ -4146,10 +4166,9 @@ function renderMicTab() {
         `;
       });
 
-      html += `</div>`; // Tutup mic-grid-container
+      html += `</div>`;
     }
 
-    // Riwayat pergantian
     html += renderMicHistorySection();
     html += `</div>`;
 
@@ -4158,14 +4177,5 @@ function renderMicTab() {
 
   } catch (err) {
     console.error("Gagal me-render tab mic:", err);
-    container.innerHTML = `
-      <div style="max-width: 600px; margin: 40px auto; padding: 20px; background:#fff3cd; border-radius:8px; text-align:center;">
-        <h5>⚠️ Terjadi Kendala Render</h5>
-        <p style="font-size:0.9rem; color:#856404;">${err.message}</p>
-        <button class="btn btn-sm btn-warning" onclick="renderMicTab()">Coba Lagi</button>
-      </div>
-    `;
   }
 }
-
-

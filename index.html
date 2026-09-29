@@ -604,6 +604,49 @@
   text-align: center;
   margin: 20px 0;
 }
+/* Container Grid Kotak-kotak Tab Mic */
+.mic-grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+/* Kotak Card Mic */
+.mic-card-box {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-left: 5px solid #ffc107;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 220px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mic-card-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Card Jika Sudah Lewat Jadwal (Overdue) */
+.mic-card-box.overdue {
+  border-left-color: #dc3545;
+  background: #fff8f8;
+}
+
+/* Kotak Bersih (All Clear) */
+.mic-empty-box {
+  text-align: center;
+  padding: 50px 20px;
+  background: #f8fdf9;
+  border: 1px dashed #a3cfbb;
+  border-radius: 12px;
+  margin-top: 20px;
+}
 
 
   </style>
@@ -653,9 +696,9 @@
       <button id="tab-buktiTayang" class="nav-link"        onclick="switchTab('buktiTayang')">Bukti Tayang</button>
       <button class="nav-link" id="tab-mcr" onclick="switchTab('mcr')">MCR Monitor (ACCESS ON LAPTOP MONITOR ROOM ONLY)</button>
       <!-- Tambahkan di dalam <div class="nav-pills"> -->
-      <button id="tab-mic" class="nav-link" onclick="switchTab('mic')">
+      <button class="nav-link" id="tab-mic" onclick="switchTab('mic')">
         🎤 Ganti Mic 
-        <span id="mic-nav-badge" class="badge bg-danger ms-1" style="display:none; font-size:0.7rem; padding: 2px 6px; border-radius:10px;">0</span>
+        <span id="mic-nav-badge" class="badge rounded-pill bg-danger" style="display:none; font-size:0.7rem; margin-left:4px;">0</span>
       </button>
     </div>
   </div>
