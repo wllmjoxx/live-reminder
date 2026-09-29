@@ -3076,8 +3076,9 @@ function getStudioCurrentSchedule(studioId) {
                     }
                 }
                 
-                // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
-                if (currentMin >= (sessionStartMin - 15) && currentMin <= (sessionEndMin + 15)) {
+                     // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
+                    // KODE BARU (STRICT: HANYA SAAT SESI LIVE BERJALAN):
+                 if (currentMin >= sessionStartMin && currentMin < sessionEndMin) {
                     // Cari tahu Host mana yang sedang bertugas di detik ini
                     let currentActiveHost = "Multiple Hosts";
                     for (let h of s.hosts) {
@@ -3502,7 +3503,7 @@ async function initMCRConnections() {
                 if (currentDb <= -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) {
-                        audioProblem = "Mic Mati / Tidak ada suara";
+                        audioProblem = "Mic Mati";
                     }
                 } else {
                     studioState.silentSeconds = 0; 
@@ -3620,7 +3621,7 @@ async function initMCRConnections() {
                             st.netProblem = "Koneksi Macet Parah";
                             isNetCritical = true; 
                             if (Math.random() > 0.9 && !st.isHelpActive) {
-                                triggerMCRAlarm(studio.id, "Koneksi bermasalah. Potensi stream terputus.");
+                                triggerMCRAlarm(studio.id, "Koneksi bermasalah.");
                             }
                         } else if (congestion > 0.1 || (kbps < 1000 && kbps > 0)) {
                             st.netProblem = "Jaringan Tidak Stabil";
