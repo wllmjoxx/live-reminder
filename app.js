@@ -360,8 +360,8 @@ function renderTab(tab) {
   if(tab==="klasemen")    loadKlasemen();
   if(tab==="hariH")       loadHariH();
   if(tab==="buktiTayang") loadBuktiTayang();
-  if(tab === "mcr")         renderMCR();
-
+  if(tab === "mcr")       renderMCR();
+  if(tab === "mic")       renderMicTab(); // <--- TAMBAHKAN BARIS INI
 }
 
 
@@ -1980,6 +1980,9 @@ function updateClock(){
   const de=document.getElementById("date-display");
   if(el)el.textContent=now.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",second:"2-digit",timeZone:"Asia/Jakarta"});
   if(de)de.textContent=now.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"Asia/Jakarta"});
+  // Di akhir fungsi updateClock(), tambahkan:
+  updateMicBadgeCount();
+
 }
 
 function showLoading(show){document.getElementById("loading").style.display=show?"flex":"none";}
@@ -3744,4 +3747,322 @@ function triggerMCRAlarm(studioId, masalah) {
     if (_indoVoice) speech.voice = _indoVoice;
     speech.rate = 0.9;
     window.speechSynthesis.speak(speech);
+}
+
+
+
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODUL PERGANTIAN MIC WIRELESS (SETIAP 2 JAM, MUNCUL H-1 JAM)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Daftar 13 Studio Target
+const MIC_TARGET_STUDIOS = new Set([2, 12, 5, 16, 11, 15, 26, 27, 23, 25, 30, 29]);
+
+/**
+ * Filter apakah nama studio masuk dalam 13 studio target
+ */
+function isMicTargetStudio(studioName) {
+  if (!studioName) return false;
+  const s = String(studioName).toLowerCase().trim();
+  
+  // Abaikan studio regional di luar Jakarta (misal Studio Jogja)
+  if (s.includes("jogja")) return false;
+  
+  // Studio Showcase (misal: "Showcase VIP", "Studio Showcase", "Showcase")
+  if (s.includes("showcase")) return true;
+  
+  // Ambil angka studio
+  const m = s.match(/studio\s*(\d+)/i) || s.match(/(\d+)/);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    return MIC_TARGET_STUDIOS.has(num);
+  }
+  return false;
+}
+
+/**
+ * Menghitung semua slot pergantian mic per 2 jam dari seluruh sesi aktif
+ */
+function getAllMicSlots() {
+  if (!sessions || !sessions.length) return [];
+  
+  const todayStr = (sessions[0] && sessions[0].date) 
+    ? sessions[0].date 
+    : new Date().toISOString().split("T")[0];
+
+  const slots = [];
+
+  // Filter hanya studio target yang memiliki jam start & end valid
+  const targetSessions = sessions.filter(s => 
+    isMicTargetStudio(s.studio) && s.startTime && s.endTime && s.startTime !== "-" && s.endTime !== "-"
+  );
+
+  targetSessions.forEach(s => {
+    const startMin = toMinJS(s.startTime);
+    let endMin = toMinJS(s.endTime === "23:59/00:00" ? "24:00" : s.endTime);
+    if (endMin <= startMin) endMin += 1440; // Melewati tengah malam
+
+    // Pergantian terjadi setiap 2 jam (120 menit) setelah start, dan sebelum end live
+    for (let t = startMin + 120; t < endMin; t += 120) {
+      const h = Math.floor((t % 1440) / 60);
+      const m = (t % 1440) % 60;
+      const targetTimeFormatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      
+      // ID unik slot per hari, studio, dan jam pergantian
+      const safeStudio = String(s.studio).replace(/[^a-zA-Z0-9]/g, "_");
+      const slotId = `mic_${todayStr}_${safeStudio}_${targetTimeFormatted.replace(":", "")}`;
+
+      slots.push({
+        slotId: slotId,
+        date: todayStr,
+        studio: s.studio,
+        brand: s.brand || "-",
+        marketplace: s.marketplace || "-",
+        liveRange: `${s.startTime} - ${s.endTime}`,
+        startMin: startMin,
+        endMin: endMin,
+        targetMin: t,
+        targetTime: targetTimeFormatted,
+        warningStartMin: t - 60 // MUNCUL H-1 JAM SEBELUM JAM GANTI
+      });
+    }
+  });
+
+  return slots;
+}
+
+/**
+ * Mengambil daftar warning mic yang saat ini harus tampil di layar
+ */
+function getActiveMicWarnings() {
+  const allSlots = getAllMicSlots();
+  const now = new Date();
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+
+  return allSlots.filter(slot => {
+    // 1. Cek apakah sudah disubmit oleh operator (tersimpan di localStorage)
+    const isSubmitted = localStorage.getItem(slot.slotId);
+    if (isSubmitted) return false;
+
+    // 2. Cek apakah sudah masuk H-1 jam (atau sudah lewat dan belum disubmit)
+    // Sesi normal dalam hari yang sama:
+    if (currentMin >= slot.warningStartMin) {
+      return true;
+    }
+    return false;
+  }).sort((a, b) => a.targetMin - b.targetMin);
+}
+
+/**
+ * Update angka badge notifikasi di tombol tab "Ganti Mic"
+ */
+function updateMicBadgeCount() {
+  const badgeEl = document.getElementById("mic-nav-badge");
+  if (!badgeEl) return;
+  
+  const activeCount = getActiveMicWarnings().length;
+  if (activeCount > 0) {
+    badgeEl.textContent = activeCount;
+    badgeEl.style.display = "inline-block";
+  } else {
+    badgeEl.style.display = "none";
+  }
+}
+
+/**
+ * Render Tampilan Utama Tab Ganti Mic
+ */
+function renderMicTab() {
+  const container = document.getElementById("schedule-list");
+  if (!container) return;
+
+  const now = new Date();
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  const activeWarnings = getActiveMicWarnings();
+
+  let html = `
+    <div style="max-width: 850px; margin: 0 auto; padding: 10px 15px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+        <div>
+          <h4 style="margin:0; font-weight:700; color:#333;">🎤 Pergantian Mic Wireless</h4>
+          <span style="font-size:0.85rem; color:#666;">
+            Studio wajib ganti mic setiap 2 jam. Warning otomatis muncul <strong>H-1 jam</strong> sebelum jadwal.
+          </span>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="renderMicTab()">🔄 Refresh</button>
+      </div>
+  `;
+
+  // JIKA TIDAK ADA WARNING (KOSONG / SEMUA AMAN)
+  if (activeWarnings.length === 0) {
+    html += `
+      <div class="mic-empty-state">
+        <div style="font-size: 3rem; margin-bottom: 10px;">🎉</div>
+        <h5 style="font-weight:700; color:#28a745; margin-bottom:6px;">Semua Mic Wireless Aman!</h5>
+        <p style="color:#6c757d; font-size:0.9rem; margin-bottom:0;">
+          Tidak ada studio yang memerlukan pergantian mic saat ini.<br/>
+          Peringatan baru akan otomatis muncul <strong>1 jam sebelum</strong> jadwal pergantian studio terkait.
+        </p>
+      </div>
+    `;
+  } else {
+    // JIKA ADA WARNING YANG AKTIF
+    html += `
+      <div style="margin-bottom: 20px;">
+        <div style="background:#fff3cd; color:#856404; padding:10px 14px; border-radius:8px; font-size:0.85rem; margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+          <span>⚠️</span>
+          <span>Ditemukan <strong>${activeWarnings.length} studio</strong> yang perlu diganti mic wireless-nya. Silakan isi nama operator setelah mengganti.</span>
+        </div>
+    `;
+
+    activeWarnings.forEach(item => {
+      const diffMin = item.targetMin - currentMin;
+      const isOverdue = diffMin <= 0;
+      
+      let statusBadge = "";
+      if (isOverdue) {
+        const lateMin = Math.abs(diffMin);
+        statusBadge = `<span class="badge bg-danger" style="font-size:0.8rem; padding: 5px 9px;">🚨 LEWAT ${lateMin} MENIT (SEGERA GANTI!)</span>`;
+      } else {
+        statusBadge = `<span class="badge bg-warning text-dark" style="font-size:0.8rem; padding: 5px 9px;">⏳ ${diffMin} Menit Lagi (Jadwal: ${item.targetTime})</span>`;
+      }
+
+      // Default value operator dari user yang login (jika ada)
+      const defaultPic = currentUserEmail ? currentUserEmail.split("@")[0] : "";
+
+      html += `
+        <div class="mic-alert-card ${isOverdue ? 'overdue' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+            <div>
+              <span class="badge bg-dark" style="font-size:0.9rem; padding: 4px 8px;">${item.studio}</span>
+              <span style="font-weight:600; font-size:1rem; margin-left:6px; color:#212529;">${item.brand}</span>
+              <span style="font-size:0.8rem; color:#6c757d; margin-left:4px;">(${item.marketplace})</span>
+            </div>
+            <div>${statusBadge}</div>
+          </div>
+
+          <div style="font-size:0.85rem; color:#555; margin: 8px 0 14px 0;">
+            🕒 <strong>Jadwal Live:</strong> ${item.liveRange} &nbsp;|&nbsp; 
+            🔋 <strong>Target Ganti Mic:</strong> <span style="font-size:1rem; font-weight:700; color:#d63384;">${item.targetTime}</span>
+          </div>
+
+          <!-- Form PIC & Submit -->
+          <div style="background: rgba(0,0,0,0.03); padding: 10px 12px; border-radius: 8px; display:flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 220px;">
+              <input type="text" id="pic-input-${item.slotId}" class="form-control form-control-sm" 
+                     placeholder="Ketik Nama PIC Operator yang ganti..." value="${defaultPic}" 
+                     style="background:#fff; border:1px solid #ced4da;" />
+            </div>
+            <button class="btn btn-sm btn-success px-3" onclick="submitMicChange('${item.slotId}', '${item.studio}', '${item.targetTime}')" style="font-weight:600;">
+              ✓ Submit Sudah Diganti
+            </button>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  }
+
+  // RIWAYAT PERGANTIAN HARI INI
+  html += renderMicHistorySection();
+  html += `</div>`;
+
+  container.innerHTML = html;
+  updateMicBadgeCount();
+}
+
+/**
+ * Menyimpan data saat operator klik Submit
+ */
+function submitMicChange(slotId, studio, targetTime) {
+  const inputEl = document.getElementById(`pic-input-${slotId}`);
+  const picName = inputEl ? inputEl.value.trim() : "";
+
+  if (!picName) {
+    alert("⚠️ Mohon isi nama PIC Operator yang melakukan pergantian mic!");
+    if (inputEl) inputEl.focus();
+    return;
+  }
+
+  const now = new Date();
+  const timeSubmit = now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+
+  const record = {
+    slotId: slotId,
+    studio: studio,
+    targetTime: targetTime,
+    pic: picName,
+    submittedAt: timeSubmit,
+    timestamp: Date.now()
+  };
+
+  // 1. Simpan flag selesai ke localStorage
+  localStorage.setItem(slotId, JSON.stringify(record));
+
+  // 2. Simpan juga ke daftar riwayat hari ini
+  const historyKey = "mic_history_" + (sessions[0]?.date || new Date().toISOString().split("T")[0]);
+  let historyList = [];
+  try {
+    historyList = JSON.parse(localStorage.getItem(historyKey) || "[]");
+  } catch (e) { historyList = []; }
+  historyList.unshift(record);
+  localStorage.setItem(historyKey, JSON.stringify(historyList));
+
+  // 3. Tampilkan banner sukses
+  if (typeof showBanner === "function") {
+    showBanner(`✅ Berhasil: Mic ${studio} (${targetTime}) telah diganti oleh ${picName}`, "success");
+  }
+
+  // 4. Render ulang (kartu langsung hilang)
+  renderMicTab();
+}
+
+/**
+ * Menampilkan section riwayat pergantian mic hari ini
+ */
+function renderMicHistorySection() {
+  const todayStr = (sessions[0] && sessions[0].date) 
+    ? sessions[0].date 
+    : new Date().toISOString().split("T")[0];
+  const historyKey = "mic_history_" + todayStr;
+
+  let historyList = [];
+  try {
+    historyList = JSON.parse(localStorage.getItem(historyKey) || "[]");
+  } catch(e) { historyList = []; }
+
+  if (historyList.length === 0) return "";
+
+  let rows = historyList.map((h, i) => `
+    <tr>
+      <td style="padding:6px 10px; font-size:0.82rem; color:#666;">${i + 1}</td>
+      <td style="padding:6px 10px; font-weight:600; font-size:0.85rem;">${h.studio}</td>
+      <td style="padding:6px 10px; font-size:0.85rem;"><span class="badge bg-secondary">${h.targetTime}</span></td>
+      <td style="padding:6px 10px; font-size:0.85rem; font-weight:600; color:#0d6efd;">👤 ${h.pic}</td>
+      <td style="padding:6px 10px; font-size:0.82rem; color:#6c757d;">Jam ${h.submittedAt} WIB</td>
+    </tr>
+  `).join("");
+
+  return `
+    <div style="margin-top: 30px; border-top: 1px solid #dee2e6; padding-top: 18px;">
+      <h6 style="font-weight:700; color:#495057; margin-bottom:10px;">📋 Riwayat Pergantian Mic Hari Ini</h6>
+      <div style="background:#fff; border-radius:8px; border:1px solid #e9ecef; overflow:hidden;">
+        <table class="table table-sm table-striped mb-0" style="width:100%;">
+          <thead style="background:#f8f9fa;">
+            <tr style="font-size:0.8rem; color:#6c757d;">
+              <th style="padding:6px 10px;">#</th>
+              <th style="padding:6px 10px;">Studio</th>
+              <th style="padding:6px 10px;">Jadwal Ganti</th>
+              <th style="padding:6px 10px;">Operator (PIC)</th>
+              <th style="padding:6px 10px;">Waktu Submit</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
