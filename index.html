@@ -548,32 +548,51 @@
 #tab-buktiTayang.active{ background: #0dcaf0; color: #fff; border-color: #0dcaf0; }
 
 
-/* Style Tab & Card Pergantian Mic */
+/* ─── STYLE TAB & GRID KARTU PERGANTIAN MIC ─── */
 #tab-mic.active { 
   background: #fd7e14 !important; 
   color: #fff !important; 
   border-color: #fd7e14 !important; 
 }
 
-.mic-alert-card {
-  border-radius: 10px;
-  border-left: 6px solid #fd7e14;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  margin-bottom: 12px;
-  padding: 14px 18px;
-  transition: all 0.2s ease;
+/* Grid Container Kotak-kotak */
+.mic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
 }
 
-.mic-alert-card.overdue {
-  border-left-color: #dc3545;
-  background: #fff5f5;
-  animation: pulse-border 1.5s infinite;
+/* Kartu Kotak Individu */
+.mic-card {
+  background: #ffffff;
+  border: 1px solid #e9ecef;
+  border-top: 5px solid #fd7e14;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
-  70% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+.mic-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Kartu jika sudah lewat jam jadwal */
+.mic-card.overdue {
+  border-top-color: #dc3545;
+  background: #fff8f8;
+  border-color: #f5c2c7;
+  animation: pulse-card 1.5s infinite;
+}
+
+@keyframes pulse-card {
+  0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.35); }
+  70% { box-shadow: 0 0 0 6px rgba(220, 53, 69, 0); }
   100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
 }
 
@@ -585,6 +604,7 @@
   text-align: center;
   margin: 20px 0;
 }
+
 
   </style>
 </head>
