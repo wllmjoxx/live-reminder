@@ -3167,8 +3167,7 @@ function getStudioCurrentSchedule(studioId) {
 function renderMCR() {
     const el = document.getElementById('schedule-list');
     if (!el) return;
-    
-    // Dashboard MCR langsung tampil tanpa PIN
+
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <h5 style="margin: 0;">📡 MCR Network & Audio Monitor</h5>
@@ -3191,27 +3190,108 @@ function renderMCR() {
         // 2. CEK JADWAL LIVE SEKARANG
         let aHasSchedule = getStudioCurrentSchedule(a.id) !== null;
         let bHasSchedule = getStudioCurrentSchedule(b.id) !== null;
+        
         if (aHasSchedule && !bHasSchedule) return -1;
         if (!aHasSchedule && bHasSchedule) return 1;
 
-        // 3. JIKA SAMA, CEK OBS ONLINE
+        // 3. JIKA SAMA (Sama-sama ada jadwal atau kosong), CEK OBS ONLINE
         let aIsOnline = aState.isConnected;
         let bIsOnline = bState.isConnected;
+
         if (aIsOnline && !bIsOnline) return -1;
         if (!aIsOnline && bIsOnline) return 1;
 
-        // 4. JIKA SAMA ONLINE, CEK STATUS STREAMING
+        // 4. JIKA SAMA ONLINE, CEK STATUS STREAMING (Mencegah Studio Mati nyempil di atas)
         let aIsStreaming = aState.isCurrentlyStreaming;
         let bIsStreaming = bState.isCurrentlyStreaming;
+
         if (aIsStreaming && !bIsStreaming) return -1;
         if (!aIsStreaming && bIsStreaming) return 1;
 
-        // 5. SISANYA BERDASARKAN NOMOR STUDIO
+        // 5. SISANYA URUTKAN BERDASARKAN NOMOR STUDIO
         return a.id - b.id;
     });
 
     sortedConfig.forEach(s => {
-        // ... (render kartu studio)
+        let st = _mcrStudios[s.id] || {};
+        let isConnected = st.isConnected ? true : false;
+        let isPinned = _pinnedStudios.includes(s.id);
+        
+        let pinIcon = isPinned ? '📌' : '📍';
+        let pinColor = isPinned ? '#0d6efd' : 'gray';
+        let statusText = isConnected ? "🟢 Online" : "⚫ Offline";
+        
+        let bgStyle = 'background: white; border: 1px solid transparent; border-left: 4px solid gray;';
+        if (st.currentSeverity === 'critical') bgStyle = 'background: #fff5f5; border: 1px solid transparent; border-left: 4px solid #dc3545; box-shadow: 0 0 10px rgba(220,53,69,0.5);';
+        else if (st.currentSeverity === 'warning') bgStyle = 'background: #fffdf5; border: 1px solid transparent; border-left: 4px solid #ffc107;';
+        else if (st.currentSeverity === 'inactive') bgStyle = 'background: #f8f9fa; border: 1px solid transparent; border-left: 4px solid gray;';
+        else if (isConnected) bgStyle = `background: ${isPinned ? '#f8faff' : 'white'}; border: 1px solid ${isPinned ? '#cce5ff' : 'transparent'}; border-left: 4px solid var(--bs-success);`;
+
+        let mpDisplay = "none", mpName = "UNKNOWN", mpColor = "#6c757d", mpBg = "#e9ecef";
+        if (isConnected && st.lastMpName && st.lastMpName !== "CUSTOM") {
+            mpDisplay = "inline-block"; mpName = st.lastMpName; mpColor = st.lastMpColor; mpBg = st.lastMpBg;
+        }
+
+        // --- TAMPILKAN DATA JADWAL (BRAND & JAM) ---
+        let currentSched = getStudioCurrentSchedule(s.id);
+        let infoJadwalHtml = "";
+        
+        if (currentSched) {
+            infoJadwalHtml = `
+                <div style="background: #eef2f5; padding: 6px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #0d6efd;">
+                    <div style="font-weight: bold; font-size: 0.75rem; color: #0d6efd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${currentSched.brand}</div>
+                    <div style="font-size: 0.7rem; color: #495057;">🕛 ${currentSched.startTime} - ${currentSched.endTime} | 🎤 ${currentSched.host}</div>
+                </div>
+            `;
+        } else {
+            infoJadwalHtml = `
+                <div style="background: #f8f9fa; padding: 6px; border-radius: 4px; margin-bottom: 10px; border: 1px dashed #dee2e6; text-align: center;">
+                    <span style="font-size: 0.7rem; color: #adb5bd; font-style: italic;">Tidak ada sesi live</span>
+                </div>
+            `;
+        }
+
+        html += `
+            <div style="flex: 0 0 auto; width: 220px;" id="mcr-wrap-${s.id}">
+                <div id="mcr-card-${s.id}" style="${bgStyle} border-radius: 8px; padding: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: all 0.3s ease; position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 8px;">
+                        <div style="font-weight: bold; font-size: 1rem;">Studio ${s.id}</div>
+                        <button onclick="togglePinStudio(${s.id})" class="btn btn-sm" style="padding: 0 5px; font-size: 1rem; color: ${pinColor}; background: none; border: none;" title="Pin Studio ini ke atas">
+                            ${pinIcon}
+                        </button>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div id="mcr-status-${s.id}" style="font-size: 0.8rem; color: gray;">${statusText}</div>
+                        <span id="mcr-mp-${s.id}" style="font-size: 0.65rem; padding: 2px 5px; border-radius: 4px; background: ${mpBg}; color: ${mpColor}; display: ${mpDisplay}; font-weight: bold;">${mpName}</span>
+                    </div>
+
+                    ${infoJadwalHtml}
+
+                    <div id="mcr-help-alert-${s.id}" style="display: none; padding: 6px; border-radius: 5px; text-align: center; font-weight: bold; font-size: 0.8rem; margin-bottom: 10px; cursor: pointer;">
+                        🚨 BANTUAN
+                    </div>
+
+                    <div style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 10px;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                <span>🔈</span>
+                                <span id="mcr-audio-${s.id}" style="font-weight: bold; font-size: 0.8rem; color: gray;">-60.0 dB</span>
+                            </div>
+                            <div style="height: 6px; width: 100%; background-color: #e9ecef; border-radius: 3px; overflow: hidden;">
+                                <div id="mcr-audio-bar-${s.id}" style="height: 100%; width: 0%; background-color: #198754; transition: width 0.1s ease-out, background-color 0.2s;"></div>
+                            </div>
+                            <div id="mcr-audio-warn-${s.id}" style="font-size: 0.7rem; color: #dc3545; display: none; margin-top: 4px;">⚠️ Mic Mati / No Audio</div>
+                        </div>
+
+                        <div>
+                            📶 <span id="mcr-bitrate-${s.id}" style="font-weight: bold; color: gray;">0 kbps</span>
+                            <div id="mcr-net-warn-${s.id}" style="font-size: 0.7rem; color: #ffc107; display: none; margin-top: 2px;">⚠️ Tidak Stabil</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     });
 
     html += `</div>`;
@@ -3227,6 +3307,7 @@ function renderMCR() {
         }
     }
 }
+
 
 
 // Render Ulang (Sort) tiap 30 detik untuk memperbarui layout MCR
