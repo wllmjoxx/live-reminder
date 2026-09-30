@@ -3085,16 +3085,34 @@ document.head.appendChild(styleSheet);
 
 
 // === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
+// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
 function getStudioCurrentSchedule(studioId) {
     if (!sessions || sessions.length === 0) return null;
     let now = new Date();
     let currentMin = now.getHours() * 60 + now.getMinutes();
 
     for (let s of sessions) {
-        let schedStudioStr = s.studio ? String(s.studio).toLowerCase() : "";
-        let schedStudioNum = schedStudioStr.match(/\d+/);
-        
-        if (schedStudioNum && parseInt(schedStudioNum[0]) === studioId) {
+        if (!s.studio) continue;
+        let schedStudioClean = String(s.studio).trim().toLowerCase().replace(/\s+/g, " ");
+
+        // ── MATCHING NAMA PERSIS (EXACT MATCH) ──
+        let isMatch = false;
+        if (String(studioId).toUpperCase() === "SHOWCASE") {
+            // Khusus Showcase (mencakup Showcase VIP, Studio Showcase, dsb)
+            isMatch = schedStudioClean.includes("showcase");
+        } else if (!isNaN(studioId)) {
+            // Untuk studio angka (contoh: studioId = 2):
+            // Harus PERSIS "studio 2" atau "2" (tidak boleh ada kata tambahan seperti "Jogja", "Singapore", dll)
+            let reg = new RegExp(`^(?:studio\\s*)?0*${studioId}$`, "i");
+            isMatch = reg.test(schedStudioClean);
+        } else {
+            // Jika studioId berupa teks khusus (contoh: "2 Jogja", "Studio 2 Singapore", dsb):
+            let targetClean = String(studioId).trim().toLowerCase().replace(/\s+/g, " ");
+            isMatch = (schedStudioClean === targetClean) ||
+                      (schedStudioClean.replace(/^studio\s*/, "") === targetClean.replace(/^studio\s*/, ""));
+        }
+
+        if (isMatch) {
             let sessionStartMin = 1440;
             let sessionEndMin = 0;
             let startTimeStr = "00:00";
@@ -3117,10 +3135,9 @@ function getStudioCurrentSchedule(studioId) {
                     }
                 }
                 
-                     // Toleransi: Mulai membaca 15 menit sebelum start, sampai 15 menit sesudah end
-                    // KODE BARU (STRICT: HANYA SAAT SESI LIVE BERJALAN):
                 // Strict: hanya aktif saat sesi live benar-benar sedang berjalan
                 if (currentMin >= sessionStartMin && currentMin < sessionEndMin) {
+                    // Cari tahu Host mana yang sedang bertugas di detik ini
                     let currentActiveHost = "Multiple Hosts";
                     for (let h of s.hosts) {
                         let hStart = toMin(h.startTime);
@@ -3131,6 +3148,7 @@ function getStudioCurrentSchedule(studioId) {
                             break; 
                         }
                     }
+
                     return {
                         brand: s.brand || "Brand Unknown",
                         startTime: startTimeStr,
@@ -3138,12 +3156,12 @@ function getStudioCurrentSchedule(studioId) {
                         host: currentActiveHost
                     }; 
                 }
-
             }
         }
     }
     return null; // Tidak ada jadwal untuk studio ini di jam sekarang
 }
+
 
 
 function renderMCR() {
@@ -3871,17 +3889,18 @@ function parseSafeMin(t) {
 
 function isMicTargetStudio(studioName) {
   if (!studioName) return false;
-  const s = String(studioName).toLowerCase().trim();
-  if (s.includes("jogja")) return false;
+  const s = String(studioName).toLowerCase().trim().replace(/\s+/g, " ");
   if (s.includes("showcase")) return true;
 
-  const m = s.match(/studio\s*(\d+)/i) || s.match(/(\d+)/);
+  // Harus persis "studio X" atau "X" tanpa kata/kota tambahan
+  const m = s.match(/^(?:studio\s*)?0*(\d+)$/i);
   if (m) {
     const num = parseInt(m[1], 10);
     return MIC_TARGET_STUDIOS.has(num);
   }
   return false;
 }
+
 
 /**
  * Ambil nama PIC Data dari Kolom N yang bertugas di jam pergantian terkait
