@@ -584,12 +584,12 @@ function renderMarathon(){
       const isNext=!isEnded&&hi===curIdx+1;
       const isPast=isEnded||(curIdx>=0&&hi<curIdx);
       const row=document.createElement("div");
-      row.className=`host-rowisCurrent?"host-current":""{isNext?" host-next":""}${isPast?" host-past":""}`;
+      row.className=`host-row${isCurrent?" host-current":""}${isNext?" host-next":""}${isPast?" host-past":""}`;
       row.innerHTML=`
         <div class="hr-num">${hi+1}</div>
         <div class="hr-time"><span class="hr-start">▶ ${h.startTime}</span><span class="hr-arrow">→</span><span class="hr-end">⏹ ${h.endTime}</span></div>
         <div class="hr-info">
-          <div class="hr-name">h.host{isCurrent?`<span class="live-badge">● LIVE</span>`:""}isNext?`<spanclass="next-badge">NEXT</span>`:""{isEnded&&hi===s.hosts.length-1?`<span class="badge" style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);font-size:0.55rem;margin-left:4px">✓ selesai</span>`:""}</div>
+          <div class="hr-name">${h.host}${isCurrent?`<span class="live-badge">● LIVE</span>`:""}${isNext?`<span class="next-badge">NEXT</span>`:""}${isEnded&&hi===s.hosts.length-1?`<span class="badge" style="background:var(--bs-secondary-subtle);color:var(--bs-secondary);font-size:0.55rem;margin-left:4px">✓ selesai</span>`:""}</div>
           <div class="hr-pic">🧑‍💼 PIC: ${h.picData||"-"}</div>
         </div>`;
       hc.appendChild(row);
@@ -737,16 +737,16 @@ function makeTimelineCard(s,num,mode,eventTime=null){
   const isLSC=picLabel==="LSC";
   const firstHost=s.hosts?.[0]?.host||"-";
   const card=document.createElement("div");
-  card.className=`session-cardisPast?"past":""{isSoon?" soon":""}${s.isMarathon?" marathon-card":""}`;
+  card.className=`session-card${isPast?" past":""}${isSoon?" soon":""}${s.isMarathon?" marathon-card":""}`;
   card.innerHTML=`
     <div class="session-num">${num}</div>
     <div class="session-info">
-      <div class="session-brand">s.brand{s.isMarathon?`<span class="type-badge marathon-badge">🏃 Marathon</span>`:`<span class="type-badge single-badge">⚡ Single</span>`}</div>
-      <div class="session-meta"><span class="badge marketplace">s.marketplace</span><spanclass="badgestudio">{s.studio}</span></div>
+      <div class="session-brand">${s.brand}${s.isMarathon?`<span class="type-badge marathon-badge">🏃 Marathon</span>`:`<span class="type-badge single-badge">⚡ Single</span>`}</div>
+      <div class="session-meta"><span class="badge marketplace">${s.marketplace}</span><span class="badge studio">${s.studio}</span></div>
       <div class="session-host">👤 ${firstHost}</div>
       ${mode==="single"?`<div class="session-time-small">▶ ${s.startTime||"-"} &nbsp; ⏹ ${s.endTime||"-"}</div>`:""}
     </div>
-    <div class="session-pic-rightisLSC?"lsc":""">{picLabel}</div>`;
+    <div class="session-pic-right${isLSC?" lsc":""}">${picLabel}</div>`;
   return card;
 }
 
@@ -827,21 +827,21 @@ function buildStandbyData(){
             const backup=findBackup(shift,usedNonDed[shift]);if(!backup)return;
             picForSlot=backup.name;usedNonDed[shift].add(backup.name.toLowerCase());
           }else{picForSlot=h.picData.trim();}
-          const slotKey=`st-{en}-${picForSlot.toLowerCase()}`;
+          const slotKey=`${st}-${en}-${picForSlot.toLowerCase()}`;
           if(seenKey.has(slotKey))return;seenKey.add(slotKey);
-          slots.push({type:"slot",label:`st.replace(":00","")–{en.replace(":00","")}`,pic:picForSlot,nonDedPic:null,nonDedTime:null,sortKey:toMinJS(h.startTime)});
+          slots.push({type:"slot",label:`${st.replace(":00","")}–${en.replace(":00","")}`,pic:picForSlot,nonDedPic:null,nonDedTime:null,sortKey:toMinJS(h.startTime)});
         });
       }else{
         s.hosts.forEach(h=>{
           if(!h.picData||h.picData==="-")return;
           const endStr=(h.endTime&&h.endTime!=="-")?h.endTime:h.startTime;
           const shift=getShift(endStr);if(shift==="malam")return;
-          const shiftKey=`shift-{h.picData.trim().toLowerCase()}`;
+          const shiftKey=`${shift}-${h.picData.trim().toLowerCase()}`;
           if(seenKey.has(shiftKey))return;seenKey.add(shiftKey);
           let nonDedPic=null,nonDedTime=null;
           if(b.showBackup){
             const backup=findBackup(shift,usedNonDed[shift]);
-            if(backup){nonDedPic=backup.name;const st=backup.minStart.replace(":00","");const en=backup.maxEnd.replace(":00","");nonDedTime=`st–{en}`;usedNonDed[shift].add(backup.name.toLowerCase());}
+            if(backup){nonDedPic=backup.name;const st=backup.minStart.replace(":00","");const en=backup.maxEnd.replace(":00","");nonDedTime=`${st}–${en}`;usedNonDed[shift].add(backup.name.toLowerCase());}
           }
           slots.push({type:"shift",label:shift.toUpperCase(),pic:h.picData.trim(),nonDedPic,nonDedTime,sortKey:shift==="pagi"?0:1});
         });
@@ -878,8 +878,8 @@ function renderStandby(){
     b.slots.forEach(slot=>{
       const picDisp=formatPic(slot.pic);
       let backupStr="";
-      if(slot.nonDedPic){backupStr=` <span style="color:var(--bs-muted);font-weight:400">/ formatPic(slot.nonDedPic)</span>`;if(slot.nonDedTime)backupStr+=`<spanstyle="color:#adb5bd;font-size:0.62rem">({slot.nonDedTime})</span>`;}
-      html+=`<div class="standby-row-item"><span class="standby-time">slot.label</span><spanclass="standby-pic">{picDisp}${backupStr}</span></div>`;
+      if(slot.nonDedPic){backupStr=` <span style="color:var(--bs-muted);font-weight:400">/ ${formatPic(slot.nonDedPic)}</span>`;if(slot.nonDedTime)backupStr+=` <span style="color:#adb5bd;font-size:0.62rem">(${slot.nonDedTime})</span>`;}
+      html+=`<div class="standby-row-item"><span class="standby-time">${slot.label}</span><span class="standby-pic">${picDisp}${backupStr}</span></div>`;
     });
     html+=`</div>`;
   });
@@ -967,7 +967,7 @@ function renderKlasemen(data) {
 
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center;position:relative;overflow:hidden">
-       <div style="font-size:1.15rem;font-weight:800;color:numColor">{num}</div>
+       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
        <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
 
@@ -1015,7 +1015,7 @@ function renderKlasemen(data) {
       const parts = [];
       if (r.pendingHariH > 0) {
         const blStr = belumLengkapCount > 0 ? ` ()` : "";
-        parts.push(`r.pendingHariHHariH{blStr}`);
+        parts.push(`${r.pendingHariH} Hari H${blStr}`);
       }
       if (r.pendingH1 > 0) parts.push(`${r.pendingH1} H+1`);
       sTxt = parts.join(" · ");
@@ -1027,7 +1027,7 @@ function renderKlasemen(data) {
       <span style="width:26px;font-size:0.8rem">${medal}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:0.82rem;font-weight:700;color:var(--bs-dark)">${formatPic(r.pic)}</div>
-        <div style="font-size:0.6rem;color:sColor;font-weight:600;margin-top:1px">{sTxt}</div>
+        <div style="font-size:0.6rem;color:${sColor};font-weight:600;margin-top:1px">${sTxt}</div>
       </div>
       <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:#856404">${r.pendingH1}</span>
       <span style="width:44px;text-align:center;font-size:0.85rem;font-weight:700;color:var(--bs-danger)">${r.pendingHariH}</span>
@@ -1047,9 +1047,9 @@ function renderKlasemen(data) {
     const idLines    = (r.pendingRows || []).map(p => p.idLine).filter(Boolean);
     const pts        = r.pendingPoints;
     if (hasPending) {
-      html += `<button onclick="copyIdLines('r.pic',{JSON.stringify(idLines).replace(/"/g, '&quot;')})"
+      html += `<button onclick="copyIdLines('${r.pic}',${JSON.stringify(idLines).replace(/"/g, '&quot;')})"
         style="padding:5px 11px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.7rem;font-weight:600;cursor:pointer">
-        formatPic(r.pic)<spanstyle="color:#856404;font-weight:700">({pts})</span>
+        ${formatPic(r.pic)} <span style="color:#856404;font-weight:700">(${pts})</span>
       </button>`;
     } else {
       html += `<button disabled style="padding:5px 11px;border:1px solid var(--bs-border);border-radius:var(--bs-radius-pill);background:var(--bs-light);color:#adb5bd;font-size:0.7rem;font-weight:600;cursor:not-allowed">
@@ -1489,7 +1489,7 @@ function renderHariH(data, formResponses = []) {
   // ─── RENDER HTML ────────────────────────────────────────────────────────────
   const summaryCard = (bg, border, numColor, num, label) =>
     `<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:var(--bs-radius-lg);padding:10px 6px;text-align:center">
-       <div style="font-size:1.15rem;font-weight:800;color:numColor">{num}</div>
+       <div style="font-size:1.15rem;font-weight:800;color:${numColor}">${num}</div>
        <div style="font-size:0.58rem;color:var(--bs-muted);margin-top:1px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">${label}</div>
      </div>`;
 
@@ -1527,9 +1527,9 @@ function renderHariH(data, formResponses = []) {
       html += `
         <div style="background:${c.bg};border:1px solid ${c.border};border-radius:var(--bs-radius-lg);
                     padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:0.78rem;font-weight:700;color:c.text">{SHIFT_LABEL[shift]}</div>
+          <div style="font-size:0.78rem;font-weight:700;color:${c.text}">${SHIFT_LABEL[shift]}</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:0.68rem;font-weight:600;color:c.text;opacity:0.8">{totalShift} sesi belum</span>
+            <span style="font-size:0.68rem;font-weight:600;color:${c.text};opacity:0.8">${totalShift} sesi belum</span>
             <button onclick="copyShiftPending('${shift}')"
               style="padding:3px 9px;border:1px solid ${c.border};border-radius:var(--bs-radius-pill);
                      background:white;color:${c.text};font-size:0.62rem;font-weight:700;cursor:pointer">
@@ -1557,7 +1557,7 @@ function renderHariH(data, formResponses = []) {
                   ${rows.length} sesi
                 </span>
               </div>
-              <button onclick="event.stopPropagation();copyIdLines('picData.pic',{JSON.stringify(ids).replace(/"/g,'&quot;')})"
+              <button onclick="event.stopPropagation();copyIdLines('${picData.pic}',${JSON.stringify(ids).replace(/"/g,'&quot;')})"
                 style="padding:3px 10px;border:1px solid #9ec5fe;border-radius:var(--bs-radius-pill);
                        background:var(--bs-primary-subtle);color:var(--bs-primary-text);font-size:0.62rem;font-weight:600;cursor:pointer">
                 📋 ID
@@ -1594,8 +1594,8 @@ function renderHariH(data, formResponses = []) {
               let endMs = null;
               if (h.end && h.end !== '-' && data.date) {
                 try {
-                  const startMs = h.start ? new Date(`data.dateT{h.start}:00+07:00`).getTime() : 0;
-                  endMs = new Date(`data.dateT{h.end}:00+07:00`).getTime();
+                  const startMs = h.start ? new Date(`${data.date}T${h.start}:00+07:00`).getTime() : 0;
+                  endMs = new Date(`${data.date}T${h.end}:00+07:00`).getTime();
                   if (endMs <= startMs) endMs += 24 * 60 * 60 * 1000;
                 } catch(e) {}
               }
@@ -1639,8 +1639,8 @@ function renderHariH(data, formResponses = []) {
             matchedList.forEach(({ h, match, isValid, falseMatches, endMs }) => {
               const links = match.screenshot.split(',').map(l => l.trim()).filter(Boolean);
               const slotTime = h.start
-                ? `<span style="color:var(--bs-muted)">h.start{h.end ? ' → ' + h.end : ''}</span>`
-                : (match.startLive ? `<span style="color:var(--bs-muted)">match.startLive{match.endLive ? ' → ' + match.endLive : ''}</span>` : '');
+                ? `<span style="color:var(--bs-muted)">${h.start}${h.end ? ' → ' + h.end : ''}</span>`
+                : (match.startLive ? `<span style="color:var(--bs-muted)">${match.startLive}${match.endLive ? ' → ' + match.endLive : ''}</span>` : '');
 
               if (isValid) {
                 const prevFalseNote = falseMatches.length > 0
@@ -1712,7 +1712,7 @@ function renderHariH(data, formResponses = []) {
             unmatchedList.forEach(({ h, hIdx }) => {
               const candId     = (safeKey + "_p" + pIdx + "_h" + hIdx).replace(/[^a-zA-Z0-9]/g,'_');
               const candidates = findSessionCandidates(p, h);
-              const slotTime   = h.start ? `h.start{h.end ? ' → ' + h.end : ''}` : null;
+              const slotTime   = h.start ? `${h.start}${h.end ? ' → ' + h.end : ''}` : null;
 
               if (candidates.length > 0) {
                 html += `
@@ -1735,7 +1735,7 @@ function renderHariH(data, formResponses = []) {
                           <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:white;border-radius:var(--bs-radius);border:1px solid #ffe69c;gap:8px">
                             <div style="min-width:0">
                               <div style="font-size:0.7rem;font-weight:700;color:#92400e">${c.host}</div>
-                              <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">c.startLive{c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}</div>
+                              <div style="font-size:0.58rem;color:#a0832a;margin-top:1px">${c.startLive}${c.endLive?' → '+c.endLive:''} · ${c.typeLive||'-'}</div>
                             </div>
                             <div style="display:flex;gap:4px;flex-shrink:0">
                               ${links.map((lnk,li) => lnk
@@ -1806,9 +1806,9 @@ function copyShiftPending(shift) {
   let text = `📋 PENDING SHIFT ${label[shift]} — ${date}\n\n`;
   pics.sort((a,b) => b.rows.length - a.rows.length).forEach(picData => {
     const rows = [...picData.rows].sort((a,b) => a.startTime.localeCompare(b.startTime));
-    text += `formatPic(picData.pic)({rows.length} sesi)\n`;
+    text += `${formatPic(picData.pic)} (${rows.length} sesi)\n`;
     rows.forEach(p => {
-      const timeRange = (p.endTime && p.endTime !== '-') ? `p.startTime→{p.endTime}` : p.startTime;
+      const timeRange = (p.endTime && p.endTime !== '-') ? `${p.startTime}→${p.endTime}` : p.startTime;
       text += `• ${p.brand} | ${p.studio} | ${p.mp} | ${timeRange} | ID: ${p.idLine}\n`;
     });
     text += '\n';
@@ -1874,7 +1874,7 @@ function showNotifPanel(){
     btn.className="notif-time-btn";
     if(type==="start"){btn.style.background="var(--bs-success-subtle)";btn.style.color="var(--bs-success-text)";btn.style.border="1px solid #a3cfbb";}
     else{btn.style.background="var(--bs-danger-subtle)";btn.style.color="var(--bs-danger-text)";btn.style.border="1px solid #f1aeb5";}
-    btn.textContent=`${type==="start"?"▶":"⏹"} time{diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
+    btn.textContent=`${type==="start"?"▶":"⏹"} ${time}${diffMin>0?` (+${diffMin}m)`:" (lewat)"}`;
     btn.onclick=()=>sendManualNotifFor(time,type);
     list.appendChild(btn);
   };
@@ -1982,7 +1982,7 @@ function fireGroupNotif(title,group,type,urgent=false){
   const timeMatch=/(\d{2}:\d{2})/.exec(title);
   const eventTime=timeMatch?timeMatch[1]:null;
   const lines=buildNotifLines(group,type,eventTime);
-  sendNotification(title,lines.join("\n"),`grp-type-{title}-${Date.now()}`,urgent);
+  sendNotification(title,lines.join("\n"),`grp-${type}-${title}-${Date.now()}`,urgent);
 }
 
 // ─────────────────────────────────────────────
@@ -2011,7 +2011,7 @@ function timeToMs(dateStr,timeStr){
   try{
     if(!timeStr||timeStr==="-")return null;
     const t=timeStr.length===4?"0"+timeStr:timeStr;
-    return new Date(`dateStrT{t}:00+07:00`).getTime();
+    return new Date(`${dateStr}T${t}:00+07:00`).getTime();
   }catch{return null;}
 }
 
@@ -2040,7 +2040,7 @@ function showBanner(msg,type="info"){
 async function debugNotif(){
   const lines=[
     `URL: ${location.href}`,`Permission: ${Notification.permission}`,
-    `SW: !!swRegistration({swRegistration?.active?.state||"none"})`,
+    `SW: ${!!swRegistration} (${swRegistration?.active?.state||"none"})`,
     `ntfy: ${ntfySource?.readyState===1?"connected":"disconnected"}`,
     `User: ${currentUserEmail||"tidak login"}`,
     `Online: ${Object.keys(onlineUsers).length} users`,
@@ -2123,8 +2123,8 @@ function toggleBtShift(shift) {
 }
 
 function toggleBtStatus(shift, status) {
-  const body    = document.getElementById(`bt-status-body-shift-{status}`);
-  const chevron = document.getElementById(`bt-status-chevron-shift-{status}`);
+  const body    = document.getElementById(`bt-status-body-${shift}-${status}`);
+  const chevron = document.getElementById(`bt-status-chevron-${shift}-${status}`);
   if (!body) return;
   const isOpen = body.style.display !== 'none';
   body.style.display = isOpen ? 'none' : '';
@@ -2261,7 +2261,7 @@ function renderBuktiTayang(data) {
           style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f0f4ff;font-weight:700;font-size:15px;cursor:pointer;border:none;text-align:left;">
           ${emoji} ${label}
           <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
-            pillDone{pillNotDone}
+            ${pillDone}${pillNotDone}
             <span id="bt-shift-chevron-${shiftKey}">▾</span>
           </span>
         </button>
@@ -2338,15 +2338,15 @@ function copyBuktiTayangWA() {
 
   if (malam.length > 0) {
     text += `\n\n🌙 *Shift Malam (00:00–07:59)*\n`;
-    text += malam.map(s => `• ${s.brand} - s.mp({s.startTime}–${s.endTime})`).join('\n');
+    text += malam.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
   if (pagi.length > 0) {
     text += `\n\n🌅 *Shift Pagi (08:00–15:59)*\n`;
-    text += pagi.map(s => `• ${s.brand} - s.mp({s.startTime}–${s.endTime})`).join('\n');
+    text += pagi.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
   if (siang.length > 0) {
     text += `\n\n☀️ *Shift Siang (16:00–23:59)*\n`;
-    text += siang.map(s => `• ${s.brand} - s.mp({s.startTime}–${s.endTime})`).join('\n');
+    text += siang.map(s => `• ${s.brand} - ${s.mp} (${s.startTime}–${s.endTime})`).join('\n');
   }
 
   navigator.clipboard.writeText(text.trim())
@@ -2495,7 +2495,7 @@ function toMin(t) {
 function minToTime(min) {
   const h = Math.floor(min / 60) % 24;
   const m = min % 60;
-  return `String(h).padStart(2,'0'):{String(m).padStart(2,'0')}`;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
 
 // Klasifikasi shift berdasarkan start time
@@ -2592,8 +2592,8 @@ async function loadStandby(force = false) {
 
     // Parallel fetch schedule + picschedule
     const [schedResp, picResp] = await Promise.all([
-      fetch(`base?action=schedule{ts}`).then(r => r.json()),
-      fetch(`base?action=picschedule{ts}`).then(r => r.json()),
+      fetch(`${base}?action=schedule${ts}`).then(r => r.json()),
+      fetch(`${base}?action=picschedule${ts}`).then(r => r.json()),
     ]);
 
     // GANTI:
@@ -2656,7 +2656,7 @@ function renderStandby(schedData, picData) {
     for (const op of ops) {
       const st = op.studios && op.studios.length
         ? ` <span class="studio-badge">Studio ${op.studios.join(', ')}</span>` : '';
-      html += `<li><strong>op.name</strong><spanclass="section-tag">{op.section}</span>${st}</li>`;
+      html += `<li><strong>${op.name}</strong> <span class="section-tag">${op.section}</span>${st}</li>`;
     }
     html += `</ul></div>`;
   }
@@ -2701,7 +2701,7 @@ function renderStandby(schedData, picData) {
 
         const lbl = shift.charAt(0).toUpperCase() + shift.slice(1);
         html += `<div class="standby-row">`;
-        html += `<span class="shift-pill shift-shift">{shiftEmoji(shift)} lbl({cov.start}–${cov.end})</span>`;
+        html += `<span class="shift-pill shift-${shift}">${shiftEmoji(shift)} ${lbl} (${cov.start}–${cov.end})</span>`;
         html += `<span class="ops-list">${ops.map(o => o.name).join(', ')}</span>`;
         html += `</div>`;
         anyRow = true;
@@ -2721,7 +2721,7 @@ function renderStandby(schedData, picData) {
           for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
             const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
             html += `<div class="standby-row">`;
-            html += `<span class="shift-pill shift-seg.shift">{shiftEmoji(seg.shift)} seg.start–{seg.end}</span>`;
+            html += `<span class="shift-pill shift-${seg.shift}">${shiftEmoji(seg.shift)} ${seg.start}–${seg.end}</span>`;
             if (!pool.length) {
               html += `<span class="ops-list">—</span>`;
             } else {
@@ -2916,9 +2916,9 @@ async function copyAllStandby() {
       for (const slot of getStandbyHostSlots(brandSessions)) {
         for (const seg of splitAtShiftBoundary(slot.start, slot.end)) {
           const pool = getPoolForShift(picData, ['floating', 'intern'], seg.shift);
-          if (!pool.length) { brandLines.push(`fmtT(seg.start)-{fmtT(seg.end)} —`); continue; }
+          if (!pool.length) { brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} —`); continue; }
           const assigned = pickStandbyOp(pool, seg.shift, globalAssigned, rrState);
-          brandLines.push(`fmtT(seg.start)-{fmtT(seg.end)} ${assigned.name.toUpperCase()}`);
+          brandLines.push(`${fmtT(seg.start)}-${fmtT(seg.end)} ${assigned.name.toUpperCase()}`);
         }
       }
     }
@@ -2984,7 +2984,7 @@ function getStandbyHostSlots(brandSessions) {
   }
   const seen = new Set();
   return raw
-    .filter(s => { const k=`s.start|{s.end}`; if(seen.has(k)) return false; seen.add(k); return true; })
+    .filter(s => { const k=`${s.start}|${s.end}`; if(seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => toMin(a.start) - toMin(b.start));
 }
 
@@ -3031,8 +3031,12 @@ function getStandbyShiftCoverage(slots) {
 let _mcrInitialized = false;
 let _mcrStudios = {}; 
 let _indoVoice = null; 
-// Pinned Studios
+let _isMcrUnlocked = false; 
+
+// Daftar PIN dan Pinned Studios
+const MCR_SECRET_PIN = "134760"; 
 let _pinnedStudios = JSON.parse(localStorage.getItem('mcrPinnedStudios')) || [];
+
 window.speechSynthesis.onvoiceschanged = () => {
     let voices = window.speechSynthesis.getVoices();
     _indoVoice = voices.find(v => v.lang === 'id-ID' || v.name.includes('Indonesia'));
@@ -3081,7 +3085,8 @@ document.head.appendChild(styleSheet);
 
 
 // === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
-function getStudioCurrentSchedule(studioId, forWarning = false) {
+// === FUNGSI MENCARI JADWAL LIVE SEKARANG (Berdasarkan Sesi Utuh / 1 ID Line) ===
+function getStudioCurrentSchedule(studioId) {
     if (!sessions || sessions.length === 0) return null;
     let now = new Date();
     let currentMin = now.getHours() * 60 + now.getMinutes();
@@ -3098,7 +3103,7 @@ function getStudioCurrentSchedule(studioId, forWarning = false) {
         } else if (!isNaN(studioId)) {
             // Untuk studio angka (contoh: studioId = 2):
             // Harus PERSIS "studio 2" atau "2" (tidak boleh ada kata tambahan seperti "Jogja", "Singapore", dll)
-            let reg = new RegExp("^(?:studio\s*)?0*" + studioId + "$", "i");
+            let reg = new RegExp(`^(?:studio\\s*)?0*${studioId}$`, "i");
             isMatch = reg.test(schedStudioClean);
         } else {
             // Jika studioId berupa teks khusus (contoh: "2 Jogja", "Studio 2 Singapore", dsb):
@@ -3130,11 +3135,8 @@ function getStudioCurrentSchedule(studioId, forWarning = false) {
                     }
                 }
                 
-                // Toleransi penundaan peringatan 5 menit jika forWarning = true
-                let effectiveStartMin = forWarning ? sessionStartMin + 5 : sessionStartMin;
-
                 // Strict: hanya aktif saat sesi live benar-benar sedang berjalan
-                if (currentMin >= effectiveStartMin && currentMin < sessionEndMin) {
+                if (currentMin >= sessionStartMin && currentMin < sessionEndMin) {
                     // Cari tahu Host mana yang sedang bertugas di detik ini
                     let currentActiveHost = "Multiple Hosts";
                     for (let h of s.hosts) {
@@ -3160,9 +3162,30 @@ function getStudioCurrentSchedule(studioId, forWarning = false) {
     return null; // Tidak ada jadwal untuk studio ini di jam sekarang
 }
 
+
+
 function renderMCR() {
     const el = document.getElementById('schedule-list');
     if (!el) return;
+    
+    if (!_isMcrUnlocked) {
+        el.innerHTML = `
+            <div style="display: flex; justify-content: center; align-items: center; min-height: 400px;">
+                <div class="card p-4 shadow-sm" style="width: 350px; text-align: center; border-top: 5px solid #0d6efd;">
+                    <h4 class="mb-3">Login to MCR System</h4>
+                    <p class="text-muted small mb-4">Master Control Room</p>
+                    <input type="password" id="mcr-pin-input" class="form-control text-center mb-3" placeholder="PIN Input" maxlength="6" style="font-size: 1.5rem; letter-spacing: 5px;">
+                    <button class="btn btn-primary w-100 fw-bold" onclick="verifyMcrPin()">Login</button>
+                    <div id="mcr-pin-error" class="text-danger small mt-2" style="display:none;">PIN Salah!</div>
+                </div>
+            </div>
+        `;
+        setTimeout(() => {
+            const input = document.getElementById('mcr-pin-input');
+            if(input) input.addEventListener("keypress", function(e) { if (e.key === "Enter") verifyMcrPin(); });
+        }, 100);
+        return;
+    }
 
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -3304,11 +3327,9 @@ function renderMCR() {
     }
 }
 
-
-
 // Render Ulang (Sort) tiap 30 detik untuk memperbarui layout MCR
 setInterval(() => {
-    if (activeTab === "mcr") renderMCR();
+    if (_isMcrUnlocked && activeTab === "mcr") renderMCR();
 }, 30000);
 
 
@@ -3322,9 +3343,22 @@ function togglePinStudio(studioId) {
     renderMCR(); 
 }
 
+function verifyMcrPin() {
+    const inputVal = document.getElementById('mcr-pin-input').value;
+    const errorEl = document.getElementById('mcr-pin-error');
+    if (inputVal === MCR_SECRET_PIN) {
+        _isMcrUnlocked = true;
+        renderMCR(); 
+        showBanner("Akses MCR Terbuka", "success");
+    } else {
+        errorEl.style.display = "block";
+        document.getElementById('mcr-pin-input').value = ""; 
+        setTimeout(() => { errorEl.style.display = "none"; }, 3000);
+    }
+}
 
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized) {
+    if (document.visibilityState === "visible" && activeTab === "mcr" && _mcrInitialized && _isMcrUnlocked) {
         MCR_CONFIG.forEach(async (studio) => {
             const obsState = _mcrStudios[studio.id];
             if (obsState && obsState.isConnected) {
@@ -3413,7 +3447,7 @@ async function initMCRConnections() {
 
         obs.on('ConnectionClosed', () => {
             _mcrStudios[studio.id].isConnected = false;
-            if (activeTab === "mcr") {
+            if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                 const cardEl = document.getElementById(`mcr-card-${studio.id}`);
                 if (statusEl) statusEl.innerText = "⚫ Disconnected";
@@ -3437,7 +3471,7 @@ async function initMCRConnections() {
             _mcrStudios[studio.id].isConnected = true;
             _mcrStudios[studio.id].lastAliveTime = Date.now();
             
-            if (activeTab === "mcr") {
+            if (activeTab === "mcr" && _isMcrUnlocked) {
                 const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                 if(statusEl) statusEl.innerText = "🟢 Online";
             }
@@ -3452,7 +3486,7 @@ async function initMCRConnections() {
                 _mcrStudios[studio.id].lastMpBg = mpInfo.bg;
 
                 const mpBadge = document.getElementById(`mcr-mp-${studio.id}`);
-                if (mpBadge && activeTab === "mcr") {
+                if (mpBadge && activeTab === "mcr" && _isMcrUnlocked) {
                     mpBadge.innerText = mpInfo.name;
                     mpBadge.style.color = mpInfo.color;
                     mpBadge.style.background = mpInfo.bg;
@@ -3496,7 +3530,7 @@ async function initMCRConnections() {
                 lastAudioCheckTime = nowTime; 
                 if (deltaTimeSec > 2) deltaTimeSec = 0; 
 
-                if (_mcrStudios[studio.id].isConnected && activeTab === "mcr") {
+                if (_mcrStudios[studio.id].isConnected && activeTab === "mcr" && _isMcrUnlocked) {
                     const statusEl = document.getElementById(`mcr-status-${studio.id}`);
                     if (statusEl && statusEl.innerText !== "🟢 Online") statusEl.innerText = "🟢 Online";
                 }
@@ -3523,7 +3557,8 @@ async function initMCRConnections() {
                 if (isNaN(currentDb) || currentDb === -Infinity || currentDb < -60) currentDb = -60;
 
                 let audioProblem = null;
-                let isSupposedToLive = getStudioCurrentSchedule(studio.id, true) !== null;
+                let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null;
+
                 if (currentDb <= -55) {
                     studioState.silentSeconds += deltaTimeSec; 
                     if (studioState.silentSeconds >= 90) {
@@ -3563,7 +3598,7 @@ async function initMCRConnections() {
                 if (nowTime - studioState.lastUiUpdate > 100) { 
                     studioState.lastUiUpdate = nowTime;
                     
-                    if (activeTab === "mcr") {
+                    if (activeTab === "mcr" && _isMcrUnlocked) {
                         const audioEl = document.getElementById(`mcr-audio-${studio.id}`);
                         const audioBar = document.getElementById(`mcr-audio-bar-${studio.id}`);
                         const warnEl = document.getElementById(`mcr-audio-warn-${studio.id}`);
@@ -3598,12 +3633,12 @@ async function initMCRConnections() {
                     }
                 }
 
-                studioState.audioProblem = audioProblem;
-                let isAudioCritical = (audioProblem === "Mic Mati" && isSupposedToLive);
+                let isAudioCritical = (audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive);
                 if (isAudioCritical) studioState.currentSeverity = 'critical';
                 else if (audioProblem && isSupposedToLive) studioState.currentSeverity = 'warning';
-                else if (studioState.currentSeverity !== 'critical') studioState.currentSeverity = studioState.isCurrentlyStreaming ? 'normal' : 'inactive';
+                else studioState.currentSeverity = 'normal';
             });
+
             // PANTAU BITRATE & TENTUKAN WARNA CARD KESELURUHAN
             setInterval(async () => {
                 if (!_mcrStudios[studio.id].isConnected) return; 
@@ -3618,11 +3653,11 @@ async function initMCRConnections() {
 
                     let isCurrentlyStreaming = status.outputActive;
                     let isSupposedToLive = getStudioCurrentSchedule(studio.id) !== null;
-                    let isSupposedToLiveForWarning = getStudioCurrentSchedule(studio.id, true) !== null;
+
                     if (isCurrentlyStreaming) st.lastAliveTime = Date.now();
 
                     if (st.isCurrentlyStreaming === true && isCurrentlyStreaming === false) {
-                        if (isSupposedToLiveForWarning) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
+                        if (isSupposedToLive) triggerMCRAlarm(studio.id, "STREAM TERPUTUS ATAU END LIVE!");
                     }
                     st.isCurrentlyStreaming = isCurrentlyStreaming;
 
@@ -3640,10 +3675,10 @@ async function initMCRConnections() {
                     st.netProblem = null;
                     let isNetCritical = false;
 
-                    if (isCurrentlyStreaming && isSupposedToLiveForWarning) {
+                    if (isCurrentlyStreaming && isSupposedToLive) {
                         if (congestion > 0.5 || framesDroppedNow > 5) {
                             st.netProblem = "Koneksi Macet Parah";
-                            isNetCritical = true;
+                            isNetCritical = true; 
                             if (Math.random() > 0.9 && !st.isHelpActive) {
                                 triggerMCRAlarm(studio.id, "Koneksi bermasalah.");
                             }
@@ -3652,18 +3687,12 @@ async function initMCRConnections() {
                         }
                     }
 
-                    if (!isCurrentlyStreaming) {
-                        if (isSupposedToLiveForWarning) st.currentSeverity = 'critical';
-                        else if (isSupposedToLive) st.currentSeverity = 'warning';
-                        else st.currentSeverity = 'inactive';
-                    } else if (isNetCritical || (st.audioProblem === "Mic Mati" && isSupposedToLiveForWarning)) {
-                        st.currentSeverity = 'critical';
-                    } else if ((st.netProblem || st.audioProblem) && isSupposedToLiveForWarning) {
-                        st.currentSeverity = 'warning';
-                    } else {
-                        st.currentSeverity = 'normal';
-                    }
-                    if (activeTab === "mcr") {
+                    if (!isCurrentlyStreaming) st.currentSeverity = 'inactive';
+                    else if (isNetCritical || (st.audioProblem === "Mic Mati / Tidak ada suara" && isSupposedToLive)) st.currentSeverity = 'critical';
+                    else if ((st.netProblem || st.audioProblem) && isSupposedToLive) st.currentSeverity = 'warning';
+                    else st.currentSeverity = 'normal';
+
+                    if (activeTab === "mcr" && _isMcrUnlocked) {
                         const bitEl = document.getElementById(`mcr-bitrate-${studio.id}`);
                         const netWarnEl = document.getElementById(`mcr-net-warn-${studio.id}`);
                         const cardElement = document.getElementById(`mcr-card-${studio.id}`);
@@ -3677,20 +3706,15 @@ async function initMCRConnections() {
                                 bitEl.style.color = "gray"; 
                                 
                                 if (isSupposedToLive) {
-                                    if (!isSupposedToLiveForWarning) {
-                                        netWarnEl.innerText = "⏳ Persiapan Live (Buffer 5m)";
-                                        netWarnEl.style.color = "#ffc107";
-                                        netWarnEl.style.display = "block";
-                                    } else {
-                                        netWarnEl.innerText = "🔴 ERROR: STREAM PUTUS";
-                                        netWarnEl.style.color = "#dc3545";
-                                        netWarnEl.style.display = "block";
-                                    }
+                                    netWarnEl.innerText = "🔴 ERROR: STREAM PUTUS";
+                                    netWarnEl.style.color = "#dc3545";
+                                    netWarnEl.style.display = "block";
                                 } else {
                                     netWarnEl.innerText = "Stream Selesai";
                                     netWarnEl.style.color = "gray";
                                     netWarnEl.style.display = "block";
                                 }
+
                             } else {
                                 bitEl.innerText = Math.round(kbps) + " kbps";
                                 
@@ -3745,7 +3769,7 @@ async function initMCRConnections() {
 }
 
 function activatePanicAlert(studioId, tipeBantuan, jenisCard) {
-    if (activeTab !== "mcr") return;
+    if (activeTab !== "mcr" || !_isMcrUnlocked) return;
 
     const cardEl = document.getElementById(`mcr-card-${studioId}`);
     const alertEl = document.getElementById(`mcr-help-alert-${studioId}`);
@@ -3928,7 +3952,7 @@ function getAllMicSlots() {
     for (let t = startMin + 120; t < endMin; t += 120) {
       const h = Math.floor((t % 1440) / 60);
       const m = (t % 1440) % 60;
-      const targetTimeFormatted = `String(h).padStart(2,"0"):{String(m).padStart(2, "0")}`;
+      const targetTimeFormatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
       
       const safeStudio = String(s.studio).replace(/[^a-zA-Z0-9]/g, "_");
       const slotId = `mic_${todayStr}_${safeStudio}_${targetTimeFormatted.replace(":", "")}`;
@@ -4111,7 +4135,7 @@ function submitMicChange(slotId, studio, targetTime) {
   }
 
   if (typeof showBanner === "function") {
-    showBanner(`✅ Berhasil disubmit: studio({targetTime}) oleh ${picName}`, "success");
+    showBanner(`✅ Berhasil disubmit: ${studio} (${targetTime}) oleh ${picName}`, "success");
   }
 }
 
@@ -4211,7 +4235,7 @@ function renderMicTab() {
                 <input type="text" id="pic-input-${item.slotId}" class="form-control form-control-sm" 
                        value="${defaultPicVal}" placeholder="Nama PIC..." 
                        style="font-size:0.82rem; font-weight:700; color:#0d6efd; background:#fff; border:1px solid #ced4da;" />
-                <button class="btn btn-sm btn-success px-2" onclick="submitMicChange('item.slotId','{item.studio}', '${item.targetTime}')" 
+                <button class="btn btn-sm btn-success px-2" onclick="submitMicChange('${item.slotId}', '${item.studio}', '${item.targetTime}')" 
                         title="Klik untuk konfirmasi sudah diganti" style="font-size:0.8rem; font-weight:600; white-space:nowrap;">
                   ✓ Submit
                 </button>
@@ -4234,6 +4258,3 @@ function renderMicTab() {
     console.error("Gagal me-render tab mic:", err);
   }
 }
-
-
-
