@@ -3031,7 +3031,7 @@ function getStandbyShiftCoverage(slots) {
 let _mcrInitialized = false;
 let _mcrStudios = {}; 
 let _indoVoice = null; 
-let _isMcrUnlocked = false; 
+let _isMcrUnlocked = true; 
 
 // Daftar PIN dan Pinned Studios
 const MCR_SECRET_PIN = "134760"; 
