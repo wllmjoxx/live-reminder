@@ -3191,8 +3191,8 @@ function renderMCR() {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px;">
             <div>
                 <h5 style="margin: 0; font-weight: 700; color: #212529;">📡 MCR Network & Audio Monitor</h5>
-                <div style="font-size: 0.8rem; color: #dc3545; font-weight: 700; margin-top: 4px;">
-                    ⚠️ Jika ada yang disconnect atau belum connect, silakan refresh (<span style="background: #f1f3f5; border: 1px solid #ced4da; padding: 2px 6px; border-radius: 4px; color: #212529; font-family: monospace;">CTRL+SHIFT+R</span>) dan klik connect lagi
+                <div style="font-size: 1.25rem; color: #dc3545; font-weight: 800; margin-top: 6px;">
+                    ⚠️ JIKA ADA YANG DISCONNECT / BELUM CONNECT, SILAKAN REFRESH (<span style="background: #fee2e2; border: 2px solid #dc3545; padding: 2px 8px; border-radius: 6px; color: #b91c1c; font-family: monospace; font-size: 1.2rem; font-weight: 900;">CTRL+SHIFT+R</span>) DAN KLIK CONNECT LAGI
                 </div>
             </div>
             <button class="btn btn-sm btn-primary" onclick="initMCRConnections()" id="btn-connect-mcr">Connect All Studios</button>
