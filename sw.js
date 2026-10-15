@@ -1,4 +1,4 @@
-const CACHE_NAME = "live-reminder-kill-v12"; // Ubah nama cache supaya browser tahu ini versi pemusnah
+const CACHE_NAME = "live-reminder-kill-v123"; // Ubah nama cache supaya browser tahu ini versi pemusnah
 const ASSETS = ["./index.html"]; // Cukup arahkan ke index.html baru yang kosong/pesan error
 
 self.addEventListener("install", e => {
