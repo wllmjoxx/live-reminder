@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // const CACHE_NAME = "live-reminder-v35";
+=======
+const CACHE_NAME = "live-reminder-v40";
+>>>>>>> 228f620f242f85ca25cb07cd3ac07ea6bf8d3762
 const ASSETS = ["./", "./index.html", "./app.js", "./manifest.json", "./icon-192.png"];
 
 self.addEventListener("install", e => {
